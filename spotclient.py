@@ -29,8 +29,8 @@ class Client():
             playlists = self._sp.user_playlists(self.user)
             while playlists:
                 for p in playlists['items']:
-                    if 'conference of the birds' in p['name'].lower():
-                          self._allbirds.append(p)
+                    if 'conference of the birds' in p['name'].lower() and 'jqbx' in p['name'].lower():
+                        self._allbirds.append(p)
                 if playlists['next']:
                     playlists = self._sp.next(playlists)
                 else:
@@ -64,5 +64,21 @@ class Client():
         return self._sp.artist(artist_id)
 
     def artists(self, artist_ids):
-        result = self._sp.artists(artist_ids)
-        return result['artists']
+        # max of 50
+        artists = []
+        ids = list(artist_ids)
+        while len(ids) > 0:
+            result = self._sp.artists(ids[:50])
+            artists.extend(result['artists'])
+            ids = ids[50:]
+        return artists
+
+        
+    def audio_features(self, track_ids):
+        # max 100
+        features = []
+        ids = list(track_ids)
+        while len(ids) > 0:
+            features.extend(self._sp.audio_features(ids[:100]))
+            ids = ids[100:]
+        return features
