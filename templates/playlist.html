@@ -1,0 +1,25 @@
+<html>
+
+<head>
+    <title>Conference of the Birds — {{ playlist.date }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='/style.css') }}">
+</head>
+
+<body>
+    <section class="playlist">
+        <h1>Conference of the Birds — {{ playlist.date }}</h1>
+        <ol class="tracks">
+            {% for track in playlist.tracks %}
+            <li>
+                <div class='track'>
+                    <div class='title'><a href="{{ track.spotify_url}}">{{ track.name }}</a></div>
+                    <div class='artists'>{% for artist in track.artists%}{% if not loop.first %}, {% endif %}<a href="{{ artist.spotify_url}}">{{ artist.name }}</a>{% endfor %}</div>
+                </div>
+            </li>
+            {% endfor %}
+
+        </ol>
+    </section>
+</body>
+
+</html>

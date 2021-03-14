@@ -96,6 +96,9 @@ class Database(object):
     def insert_artist_from_json(self, session, a):
         artist = Artist.get_or_create(session, a['id'])
         artist.name = a['name']
+
+        artist.spotify_url = t['external_urls'].get('spotify')
+
         try:
             artist.popularity = a['popularity']
         except KeyError: pass

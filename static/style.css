@@ -1,0 +1,40 @@
+ @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600&display=swap');
+ @import url('https://fonts.googleapis.com/css2?family=David+Libre&display=swap');
+ section.playlist h1 {
+     font-size: 1.75rem;
+     font-family: 'Teko', sans-serif;
+ }
+ 
+ section.playlist .track {
+     font-family: 'Teko', sans-serif
+ }
+ 
+ section.playlist ol {
+     list-style-type: none;
+ }
+ 
+ section.playlist .track {
+     font-family: 'David Libre', serif;
+     padding: 5px 0;
+ }
+ 
+ section.playlist .track a {
+     text-decoration: none;
+ }
+ 
+ section.playlist .track a:hover {
+     text-decoration: underline dotted;
+ }
+ 
+ section.playlist .track a {
+     color: #333
+ }
+ 
+ section.playlist .track .title {
+     font-size: 1.25rem;
+ }
+ 
+ section.playlist .track .artists {
+     margin-left: 10px;
+     font-size: 1rem;
+ }

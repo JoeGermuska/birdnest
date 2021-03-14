@@ -4,12 +4,17 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+jupyterlab = "3.0.10"
+pandas = "1.2.3"
 
 [packages]
-sqlalchemy = "*"
-yolk3k = "*"
-jupyterlab = "*"
-spotipy = "*"
+sqlalchemy = "1.3.23"
+yolk3k = "0.9"
+spotipy = "2.17.1"
+flask = "1.1.2"
 
 [requires]
 python_version = "3.8"
+
+[pipenv]
+allow_prereleases = true
