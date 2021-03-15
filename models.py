@@ -1,9 +1,11 @@
-from sqlalchemy import create_engine, ForeignKey, Column, Table
+from sqlalchemy import create_engine, text, ForeignKey, Column, Table
 from sqlalchemy import Integer, Float, Date, String, Boolean, JSON
-from sqlalchemy.orm import relation, sessionmaker, relationship, backref
+from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
 import re
 from datetime import date
+
+from sqlalchemy.orm.base import attribute_str
 from spotclient import Client
 
 PLAYLIST_DATE_PATTERN = re.compile('^.*(?P<year>20\d{2})-(?P<month>\d{2})-(?P<day>\d{2}).*$')
@@ -36,6 +38,8 @@ class Database(object):
         try:
             playlist.images = j['images']
         except KeyError: pass
+
+        playlist.spotify_url = j['external_urls'].get('spotify')
 
         if match := PLAYLIST_DATE_PATTERN.match(playlist.name): # := walrus requires Python 3.8
             playlist.date = date(*(map(int,match.groups())))
@@ -119,6 +123,13 @@ class Database(object):
         session.add(artist)
         return artist
         
+    def search_tracks(self, session, query):
+        sql = """select t.* from 
+        track t, track_search ts 
+        where t.track_id = ts.track_id
+        and track_search match :terms"""
+        return session.query(Track).from_statement(text(sql)).params(terms=query).all()
+
 
 Base = declarative_base()
 
@@ -146,6 +157,7 @@ class Playlist(Base):
     __tablename__ = 'playlist'
     playlist_id = Column(Integer, primary_key=True)
     spotify_id = Column(String)
+    spotify_url = Column(String)
     name = Column(String)
     description = Column(String)
     date = Column(Date) # not a spotify property, we have to infer from name
@@ -160,6 +172,14 @@ class Playlist(Base):
     
     def __str__(self) -> str:
         return f"{self.name} (Playlist)"
+
+    @property
+    def image_url(self):
+        # spotify is inconsistent -- artist images have various dimensions. playlists have
+        # a single image URL with undefined dimensions. For now we'll bank on only one.
+        if self.images:
+            return self.images[0]['url']
+        return None
 
     @staticmethod
     def get_or_create(session, spotify_id):

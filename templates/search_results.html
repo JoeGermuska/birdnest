@@ -1,0 +1,30 @@
+<html>
+
+<head>
+    <title>Conference of the Birds — search — {{ terms }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='/style.css') }}">
+</head>
+
+<body>
+    <section class="search-results">
+        <h1>Conference of the Birds — Search Results</h1>
+        {% if tracks %}
+        <ul class="tracks">
+            {% for track in tracks %}
+            <li>
+                <h2>{{ track.artists_str() }} — {{ track.name }}</h2>
+                <ul>
+                    {% for playlist in track.playlists %}
+                    <li><a href="{{ url_for('show_playlist',date_str=playlist.date)}}">{{ playlist.date }}</a></li>
+                    {% endfor %}
+                </ul>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <h2>No Results</h2>
+        {% endif %}
+    </section>
+</body>
+
+</html>

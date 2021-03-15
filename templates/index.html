@@ -1,0 +1,37 @@
+<html>
+
+<head>
+    <title>Conference of the Birds</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='/style.css') }}">
+</head>
+
+<body>
+    <section class="playlist-tiles">
+        <h1>Conference of the Birds</h1>
+        <div class="search">
+            <form action="{{ url_for('search')}}" method="GET">
+                <input type="text" id="q" name="q">
+            </form>
+        </div>
+        <div class="playlists">
+            {% for playlist in playlists %}
+            <button class='playlist-tile' data-internal-url="{{ url_for('show_playlist',date_str=playlist.date)}}" style="background-image: url({{playlist.image_url}})">
+                <div>
+                    {{ playlist.date }}
+                </div>
+            </button> {% endfor %}
+        </div>
+    </section>
+</body>
+<script>
+    function playlistTileClickHandler(e) {
+        window.location = this.dataset['internalUrl']
+    }
+    document.addEventListener('DOMContentLoaded', (e) => {
+        document.querySelectorAll('button.playlist-tile').forEach(elem => {
+            elem.addEventListener('click', playlistTileClickHandler.bind(elem))
+        })
+    })
+</script>
+
+</html>

@@ -1,6 +1,6 @@
  @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600&display=swap');
  @import url('https://fonts.googleapis.com/css2?family=David+Libre&display=swap');
- section.playlist h1 {
+ h1 {
      font-size: 1.75rem;
      font-family: 'Teko', sans-serif;
  }
@@ -37,4 +37,21 @@
  section.playlist .track .artists {
      margin-left: 10px;
      font-size: 1rem;
+ }
+ 
+ .playlist-tiles {
+     flex-direction: row;
+ }
+ 
+ .playlist-tile {
+     display: flex;
+     background-size: 200px;
+     width: 200px;
+     height: 200px;
+     cursor: pointer;
+ }
+ 
+ .playlist-tile img {
+     width: 100px;
+     height: 100px;
  }

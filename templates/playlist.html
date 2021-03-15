@@ -8,6 +8,7 @@
 <body>
     <section class="playlist">
         <h1>Conference of the Birds — {{ playlist.date }}</h1>
+        <p><a href="{{playlist.spotify_url}}">listen on spotify</a></p>
         <ol class="tracks">
             {% for track in playlist.tracks %}
             <li>

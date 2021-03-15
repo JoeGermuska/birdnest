@@ -1,7 +1,7 @@
-from flask import Flask, render_template, _app_ctx_stack
+from flask import Flask, request, render_template, _app_ctx_stack
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from models import Playlist
+from models import Database, Playlist
 from datetime import date
 
 app = Flask(__name__,
@@ -19,8 +19,18 @@ app.session = scoped_session(SessionLocal,
 scopefunc=_app_ctx_stack.__ident_func__)
 @app.route('/')
 def index():
-    p = app.session.query(Playlist).order_by(Playlist.date.desc()).first()
-    return render_template("playlist.html", playlist=p)
+    playlists = app.session.query(Playlist).order_by(Playlist.date.desc()).all()
+    return render_template("index.html", playlists=playlists)
+
+@app.route('/search')
+def search():
+    db = Database()
+    terms = request.args.get('q')
+    if terms:
+        tracks = db.search_tracks(app.session, terms)
+    else:
+        tracks = None
+    return render_template("search_results.html", tracks=tracks, terms=terms)
 
 @app.route('/playlist/<date_str>')
 def show_playlist(date_str):
