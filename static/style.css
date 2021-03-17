@@ -40,18 +40,25 @@
  }
  
  .playlist-tiles {
-     flex-direction: row;
+     display: grid;
+     grid-gap: 15px;
+     grid-template-columns: repeat(auto-fit, 200px);
  }
  
  .playlist-tile {
-     display: flex;
      background-size: 200px;
      width: 200px;
-     height: 200px;
+     border: 0;
+     margin: 0;
+     padding: 0;
      cursor: pointer;
  }
  
+ .playlist-tile h2 {
+     font-size: .75rem;
+ }
+ 
  .playlist-tile img {
-     width: 100px;
-     height: 100px;
+     width: 200px;
+     height: 200px;
  }

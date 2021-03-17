@@ -6,19 +6,20 @@
 </head>
 
 <body>
-    <section class="playlist-tiles">
+    <section>
         <h1>Conference of the Birds</h1>
         <div class="search">
             <form action="{{ url_for('search')}}" method="GET">
                 <input type="text" id="q" name="q">
             </form>
         </div>
-        <div class="playlists">
+        <div class="playlist-tiles">
             {% for playlist in playlists %}
-            <button class='playlist-tile' data-internal-url="{{ url_for('show_playlist',date_str=playlist.date)}}" style="background-image: url({{playlist.image_url}})">
-                <div>
+            <button class='playlist-tile' data-internal-url="{{ url_for('show_playlist',date_str=playlist.date)}}">
+                <img src="{{ playlist.image_url }}">
+                <h2>
                     {{ playlist.date }}
-                </div>
+                </h2>
             </button> {% endfor %}
         </div>
     </section>
@@ -29,7 +30,7 @@
     }
     document.addEventListener('DOMContentLoaded', (e) => {
         document.querySelectorAll('button.playlist-tile').forEach(elem => {
-            elem.addEventListener('click', playlistTileClickHandler.bind(elem))
+            // elem.addEventListener('click', playlistTileClickHandler.bind(elem))
         })
     })
 </script>

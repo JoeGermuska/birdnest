@@ -240,7 +240,7 @@ class Track(Base):
     playlists = relationship('Playlist', secondary=playlist_track, back_populates='tracks')
 
     def artists_str(self) -> str:
-        return ','.join(a.name for a in self.artists)    
+        return ', '.join(a.name for a in self.artists)    
 
     def __repr__(self) -> str:
         return f"Track({self.spotify_id})"
