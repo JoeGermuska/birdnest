@@ -6,22 +6,15 @@
 </head>
 
 <body>
+    {% include "_nav.html" %}
     <section class="search-results">
         <h1>Conference of the Birds — Search Results</h1>
-        {% if tracks %}
-        <ul class="tracks">
-            {% for track in tracks %}
-            <li>
-                <h2>{{ track.artists_str() }} — {{ track.name }}</h2>
-                <ul>
-                    {% for playlist in track.playlists %}
-                    <li><a href="{{ url_for('show_playlist',date_str=playlist.date)}}">{{ playlist.date }}</a></li>
-                    {% endfor %}
-                </ul>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
+        {% if tracks %} {% for track in tracks %}
+        <h2 class="track-info">{{ track.artists_str() }} — {{ track.name }}</h2>
+        <div class="playlist-tiles">
+            {% for playlist in track.playlists %} {% include "_playlist_tile.html" %} {% endfor %}
+        </div>
+        {% endfor %} {% else %}
         <h2>No Results</h2>
         {% endif %}
     </section>

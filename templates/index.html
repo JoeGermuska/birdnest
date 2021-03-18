@@ -6,33 +6,12 @@
 </head>
 
 <body>
+    {% include "_nav.html" %}
     <section>
-        <h1>Conference of the Birds</h1>
-        <div class="search">
-            <form action="{{ url_for('search')}}" method="GET">
-                <input type="text" id="q" name="q">
-            </form>
-        </div>
         <div class="playlist-tiles">
-            {% for playlist in playlists %}
-            <button class='playlist-tile' data-internal-url="{{ url_for('show_playlist',date_str=playlist.date)}}">
-                <img src="{{ playlist.image_url }}">
-                <h2>
-                    {{ playlist.date }}
-                </h2>
-            </button> {% endfor %}
+            {% for playlist in playlists %} {% include "_playlist_tile.html" %} {% endfor %}
         </div>
     </section>
 </body>
-<script>
-    function playlistTileClickHandler(e) {
-        window.location = this.dataset['internalUrl']
-    }
-    document.addEventListener('DOMContentLoaded', (e) => {
-        document.querySelectorAll('button.playlist-tile').forEach(elem => {
-            // elem.addEventListener('click', playlistTileClickHandler.bind(elem))
-        })
-    })
-</script>
 
 </html>

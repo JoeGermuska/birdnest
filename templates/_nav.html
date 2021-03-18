@@ -1,0 +1,16 @@
+<nav id="topbar">
+    <h1><a href="/">Conference of the Birds</a></h1>
+    <form id="search" action="{{ url_for('search')}}" method="GET">
+        search: <input type="text" id="q" name="q">
+    </form>
+</nav>
+<script>
+    function playlistTileClickHandler(e) {
+        window.location.href = this.dataset['internalUrl'];
+    }
+    document.addEventListener('DOMContentLoaded', (e) => {
+        document.querySelectorAll('button.playlist-tile').forEach(elem => {
+            elem.addEventListener('click', playlistTileClickHandler.bind(elem))
+        })
+    })
+</script>

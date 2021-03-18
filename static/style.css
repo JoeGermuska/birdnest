@@ -1,12 +1,31 @@
- @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600&display=swap');
  @import url('https://fonts.googleapis.com/css2?family=David+Libre&display=swap');
- h1 {
-     font-size: 1.75rem;
-     font-family: 'Teko', sans-serif;
+ nav#topbar {
+     background-color: #333;
+     color: #ddd;
+     font-family: 'David Libre', serif;
+     margin-bottom: 5px;
+     display: flex;
+     justify-content: space-between;
+     align-items: center;
+     font-size: 1.25rem;
  }
  
- section.playlist .track {
-     font-family: 'Teko', sans-serif
+ nav#topbar form#search {
+     margin: 10px;
+ }
+ 
+ nav#topbar h1 {
+     margin: 10px;
+ }
+ 
+ nav#topbar a {
+     text-decoration: none;
+     color: inherit;
+ }
+ 
+ section.playlist img.playlist-image {
+     width: 200px;
+     height: 200px;
  }
  
  section.playlist ol {
@@ -46,8 +65,6 @@
  }
  
  .playlist-tile {
-     background-size: 200px;
-     width: 200px;
      border: 0;
      margin: 0;
      padding: 0;
@@ -61,4 +78,18 @@
  .playlist-tile img {
      width: 200px;
      height: 200px;
+ }
+ 
+ .search-results .playlist-tiles {
+     margin-left: 50px;
+     grid-template-columns: repeat(auto-fit, 100px);
+ }
+ 
+ .search-results .playlist-tile img {
+     width: 100px;
+     height: 100px;
+ }
+ 
+ .search-results h2.track-info {
+     font-family: 'David Libre', serif;
  }
