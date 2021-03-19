@@ -1,3 +1,4 @@
+# https://docs.sqlalchemy.org/en/13/orm/tutorial.html#querying
 from sqlalchemy import create_engine, text, ForeignKey, Column, Table
 from sqlalchemy import Integer, Float, Date, String, Boolean, JSON
 from sqlalchemy.orm import sessionmaker, relationship
@@ -91,6 +92,7 @@ class Database(object):
         track.isrc_id = t['external_ids'].get('isrc')
         track.spotify_url = t['external_urls'].get('spotify')
         track.preview_url = t['preview_url']
+
         for a in t['artists']: # what if they're already there?
             artist = self.insert_artist_from_json(session,a)
             if artist not in track.artists:
@@ -101,7 +103,7 @@ class Database(object):
         artist = Artist.get_or_create(session, a['id'])
         artist.name = a['name']
 
-        artist.spotify_url = t['external_urls'].get('spotify')
+        artist.spotify_url = a['external_urls'].get('spotify')
 
         try:
             artist.popularity = a['popularity']
@@ -152,6 +154,12 @@ artist_genre = Table('artist_genre',
                      Column("artist_id", Integer, ForeignKey("artist.artist_id")), 
                      Column("genre_id", Integer, ForeignKey("genre.genre_id"))
                 )
+
+album_track =  Table("album_track", Base.metadata, Column("album_id", Integer, ForeignKey("album.album_id")), Column("track_id", Integer, ForeignKey("track.track_id")))
+
+album_artist = Table("album_artist", Base.metadata, Column("album_id", Integer, ForeignKey("album.album_id")), Column("artist_id", Integer, ForeignKey("artist.artist_id")))
+
+
 
 class Playlist(Base):
     __tablename__ = 'playlist'
@@ -209,6 +217,8 @@ class Artist(Base):
         "Track", secondary=track_artist, back_populates="artists"
     )
 
+    albums = relationship('Album', secondary=album_artist, back_populates='artists')
+
     def __repr__(self) -> str:
         return f"Artist({self.spotify_id})"
     
@@ -222,7 +232,6 @@ class Artist(Base):
             o = Artist(spotify_id=spotify_id)
         return o
 
-
 class Track(Base):
 # https://developer.spotify.com/documentation/web-api/reference/#object-trackobject
     __tablename__ = 'track'
@@ -235,6 +244,8 @@ class Track(Base):
     isrc_id = Column(String)
     spotify_url = Column(String)
     preview_url = Column(String)
+    explicit = Column(Boolean)
+    album_id = Column(Integer, ForeignKey('album.album_id'))
     features = relationship('AudioFeatures', uselist=False, back_populates='track')
     artists = relationship('Artist', secondary=track_artist, back_populates='tracks')
     playlists = relationship('Playlist', secondary=playlist_track, back_populates='tracks')
@@ -268,6 +279,20 @@ class Genre(Base):
             o = Genre(name=name)
         return o
 
+PITCH_CLASSES = [
+    'C',
+    'C♯',
+    'D',
+    'E♭',
+    'E',
+    'F',
+    'F♯',
+    'G',
+    'A♭',
+    'A',
+    'B♭',
+    'B'
+]
 class AudioFeatures(Base):
     # https://developer.spotify.com/documentation/web-api/reference/#object-audiofeaturesobject
     __tablename__ = 'audio_features'
@@ -287,3 +312,63 @@ class AudioFeatures(Base):
     loudness = Column(Float)
     speechiness = Column(Float)
     valence = Column(Float)
+
+    @property
+    def key_str(self):
+        try:
+            return PITCH_CLASSES[self.key]
+        except:
+            return ''
+
+    @property
+    def mode_str(self):
+        if self.mode == 0:
+            return 'major'
+        elif self.mode == 1:
+            return 'minor'
+        else:
+            return ''
+
+class Album(Base):
+    # https://developer.spotify.com/documentation/web-api/reference/#object-simplifiedalbumobject
+    # https://developer.spotify.com/documentation/web-api/reference/#object-albumobject
+    __tablename__ = 'album'
+    album_id = Column(Integer, primary_key=True)
+    spotify_id = Column(String)
+    spotify_url = Column(String)
+    name = Column(String)
+    label = Column(String)
+    images = Column(JSON) # not in simplified
+    popularity = Column(Integer) # not in simplified
+    artists = relationship('Artist', secondary=album_artist, back_populates='albums')
+    tracks = relationship("Track", backref="album")
+
+    def image_url(self,pixels):
+        for i in self.images:
+            if i['width'] == pixels:
+                return i['url']
+        return None
+
+
+    @staticmethod
+    def get_or_create(session, spotify_id, init_data=None):
+        o = session.query(Album).filter_by(spotify_id=spotify_id).scalar()
+        if o is None:
+            o = Album(spotify_id=spotify_id)
+        if init_data is None:
+            return o
+        # treat init_data as a SpotifyAPI AlbumObject (or simplified, be careful)
+        o.spotify_url = f"https://open.spotify.com/album/{o.spotify_id}"
+        o.name = init_data['name']
+        o.images = init_data['images']
+        try:
+            # instead of init_data.get('label') which would overwrite a previous value
+            # which might not be intended if we're updating from a simplified
+            o.label = init_data['label']
+        except KeyError: pass
+        try:
+            o.popularity = init_data['popularity']
+        except KeyError: pass
+        for a in init_data.get('artists',[]):
+            o.artists.append(Artist.get_or_create(session, a['id']))
+        return o

@@ -80,8 +80,16 @@
      height: 200px;
  }
  
+ .search-result {
+     display: grid;
+     grid-template-columns: 300px auto;
+ }
+ 
+ .search-result .track-info h3 {}
+ 
  .search-results .playlist-tiles {
      margin-left: 50px;
+     grid-column-start: 2;
      grid-template-columns: repeat(auto-fit, 100px);
  }
  

@@ -73,7 +73,26 @@ class Client():
             ids = ids[50:]
         return artists
 
-        
+    def tracks(self, track_ids):
+        # max of 50
+        tracks = []
+        ids = list(track_ids)
+        while len(ids) > 0:
+            result = self._sp.tracks(ids[:50])
+            tracks.extend(result['tracks'])
+            ids = ids[50:]
+        return tracks
+
+    def albums(self, album_ids):
+        # max of 20
+        albums = []
+        ids = list(album_ids)
+        while len(ids) > 0:
+            result = self._sp.albums(ids[:20])
+            albums.extend(result['albums'])
+            ids = ids[20:]
+        return albums
+
     def audio_features(self, track_ids):
         # max 100
         features = []

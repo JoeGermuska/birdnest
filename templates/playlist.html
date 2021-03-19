@@ -3,6 +3,8 @@
 <head>
     <title>Conference of the Birds — {{ playlist.date }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sortable/0.8.0/js/sortable.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/sortable/0.8.0/css/sortable-theme-bootstrap.css" />
 </head>
 
 <body>
@@ -11,17 +13,47 @@
         <h1>Conference of the Birds — {{ playlist.date }}</h1>
         <img class='playlist-image' src="{{ playlist.image_url }}">
         <p><a href="{{playlist.spotify_url}}">listen on spotify</a></p>
-        <ol class="tracks">
-            {% for track in playlist.tracks %}
-            <li>
-                <div class='track'>
-                    <div class='title'><a href="{{ track.spotify_url}}">{{ track.name }}</a></div>
-                    <div class='artists'>{% for artist in track.artists%}{% if not loop.first %}, {% endif %}<a href="{{ artist.spotify_url}}">{{ artist.name }}</a>{% endfor %}</div>
-                </div>
-            </li>
-            {% endfor %}
+        <table class="sortable-theme-bootstrap" data-sortable>
+            <thead>
+                <tr>
+                    <th>Artist</th>
+                    <th>Track</th>
+                    <th>Popularity</th>
+                    <th>Valence</th>
+                    <th>Danceability</th>
+                    <th>Energy</th>
+                    <th>Acousticness</th>
+                    <th>Instrumentalness </th>
+                    <th>Liveness </th>
+                    <th>Loudness </th>
+                    <th>Speechiness</th>
+                    <th>Key </th>
+                    <th>Tempo </th>
+                    <th>Time Signature </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for track in playlist.tracks %}
+                <tr>
+                    <td>{% for artist in track.artists%}{% if not loop.first %}, {% endif %}<a href="{{ artist.spotify_url}}">{{ artist.name }}</a>{% endfor %}</td>
+                    <td><a href="{{ track.spotify_url}}">{{ track.name }}</a></td>
+                    <td>{{track.popularity}}</td>
+                    <td>{{track.features.valence}}</td>
+                    <td>{{track.features.danceability}}</td>
+                    <td>{{track.features.energy}}</td>
+                    <td>{{track.features.acousticness}}</td>
+                    <td>{{track.features.instrumentalness }}</td>
+                    <td>{{track.features.liveness }}</td>
+                    <td>{{track.features.loudness }}</td>
+                    <td>{{track.features.speechiness}}</td>
+                    <td>{{track.features.key_str }} {{track.features.mode_str }}</td>
+                    <td>{{track.features.tempo }}</td>
+                    <td>{{track.features.time_signature }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
 
-        </ol>
     </section>
 </body>
 
