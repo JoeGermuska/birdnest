@@ -13,6 +13,7 @@ sqlalchemy = "1.3.23"
 yolk3k = "0.9"
 spotipy = "2.17.1"
 flask = "1.1.2"
+gunicorn = "*"
 
 [requires]
 python_version = "3.8"
