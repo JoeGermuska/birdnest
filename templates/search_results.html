@@ -8,15 +8,19 @@
 <body>
     {% include "_nav.html" %}
     <section class="search-results">
-        <h1>Conference of the Birds — Search Results</h1>
+        <h1>Search Results</h1>
+        <p class='search-terms'>Search for <em>{{ terms }}</em></p>
         {% if tracks %} {% for track in tracks %}
         <div class="search-result">
-            <div class="track-info">
+            <div class='track-img'>
                 {% if track.album %}
                 <img src="{{ track.album.image_url(300) }}" width="100" height="100"> {% endif %}
+            </div>
+            <div class="track-info">
                 <h3>
-                    {{ track.artists_str() }} - {{ track.name }} - {{ track.album.name }}
+                    {{ track.name }}
                 </h3>
+                <h4>{{ track.artists_str() }}<br>{{ track.album.name }}</h4>
 
             </div>
             <div class="playlist-tiles" style="clear: both">
