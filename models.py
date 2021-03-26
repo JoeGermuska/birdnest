@@ -169,7 +169,7 @@ class Playlist(Base):
     name = Column(String)
     description = Column(String)
     date = Column(Date) # not a spotify property, we have to infer from name
-    tracks = relationship("Track", secondary=playlist_track, back_populates="playlists")
+    tracks = relationship("Track", secondary=playlist_track, back_populates="playlists", lazy='joined')
     images = Column(JSON)
     # external_urls = String[]
     # followers = FollowersObject
@@ -180,6 +180,36 @@ class Playlist(Base):
     
     def __str__(self) -> str:
         return f"{self.name} (Playlist)"
+
+# Index(['date', 'playlist_name', 'playlist_id', 'name', 
+# 'artist', 'duration_ms',
+#        'features_id', 'track_id', 'analysis_url', 'key', 'mode', 'tempo',
+#        'time_signature', 'acousticness', 'danceability', 'energy',
+#        'instrumentalness', 'liveness', 'loudness', 'speechiness', 'valence'],
+#       dtype='object')
+
+
+
+    def to_json(self):
+        j = []
+        cum_ms = 0
+        for t in self.tracks:
+
+            track_json = {
+                'date': f"{self.date.year}-{self.date.month:02}-{self.date.day:02}",
+                'year': self.date.year,
+                'month': self.date.month,
+                'day': self.date.day,
+                'name': t.name,
+                'artist': t.artists_str(),
+                'duration_ms': t.duration_ms,
+                'cumulative_ms': cum_ms,
+                # format times
+                # add more properties and features
+            } 
+            j.append(track_json)
+            cum_ms += t.duration_ms
+        return j
 
     @property
     def image_url(self):
@@ -247,7 +277,7 @@ class Track(Base):
     explicit = Column(Boolean)
     album_id = Column(Integer, ForeignKey('album.album_id'))
     features = relationship('AudioFeatures', uselist=False, back_populates='track')
-    artists = relationship('Artist', secondary=track_artist, back_populates='tracks')
+    artists = relationship('Artist', secondary=track_artist, back_populates='tracks', lazy='joined')
     playlists = relationship('Playlist', secondary=playlist_track, back_populates='tracks')
 
     def artists_str(self) -> str:
@@ -371,4 +401,5 @@ class Album(Base):
         except KeyError: pass
         for a in init_data.get('artists',[]):
             o.artists.append(Artist.get_or_create(session, a['id']))
+        session.add(o)
         return o
