@@ -23,7 +23,7 @@
                 <h4>{{ track.artists_str() }}<br>{{ track.album.name }}</h4>
 
             </div>
-            <div class="playlist-tiles" style="clear: both">
+            <div>
                 {% for playlist in track.playlists %} {% include "_playlist_tile.html" %} {% endfor %}
             </div>
         </div>
