@@ -1,14 +1,13 @@
-<html>
+{% extends "_base.html" %}
 
-<head>
-    <title>Conference of the Birds — {{ playlist.date }}</title>
-    {% include "_common_head.html" %}
+{% block title %}Playlist for {{ playlist.date }}{% endblock title %}
+
+{% block extra_head %}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sortable/0.8.0/js/sortable.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/sortable/0.8.0/css/sortable-theme-bootstrap.css" />
-</head>
+{% endblock extra_head %}
 
-<body>
-    {% include "_nav.html" %}
+{% block content %}
     <section class="playlist">
         <h1>Conference of the Birds — {{ playlist.date }}</h1>
         <img class='playlist-image' src="{{ playlist.image_url }}">
@@ -16,8 +15,8 @@
         <table class="sortable-theme-bootstrap" data-sortable>
             <thead>
                 <tr>
-                    <th></th>
-                    <th></th>
+                    <th data-sortable="false"><!--Play preview--></th>
+                    <th data-sortable="false"><!--View on Spotify--></th>
                     <th>Artist</th>
                     <th>Track</th>
                     <th>Popularity</th>
@@ -83,6 +82,4 @@
             )
         })
     </script>
-</body>
-
-</html>
+{% endblock content %}

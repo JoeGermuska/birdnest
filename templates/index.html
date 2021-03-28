@@ -1,17 +1,12 @@
-<html>
+{% extends "_base.html" %}
 
-<head>
-    <title>Conference of the Birds</title>
-    {% include "_common_head.html" %}
-</head>
+{% block title %}Home{% endblock title %}
+{% block content %}
 
-<body>
-    {% include "_nav.html" %}
     <section>
         <div class="playlist-tiles">
             {% for playlist in playlists %} {% include "_playlist_tile.html" %} {% endfor %}
         </div>
     </section>
-</body>
 
-</html>
+{% endblock content %}

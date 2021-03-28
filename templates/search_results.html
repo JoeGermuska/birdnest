@@ -1,12 +1,8 @@
-<html>
+{% extends "_base.html" %}
 
-<head>
-    <title>Conference of the Birds — search — {{ terms }}</title>
-    {% include "_common_head.html" %}
-</head>
+{% block title %}Search — {{ terms }}{% endblock title %}
+{% block content %}
 
-<body>
-    {% include "_nav.html" %}
     <section class="search-results">
         <h1>Search Results</h1>
         <p class='search-terms'>Search for <em>{{ terms }}</em></p>
@@ -31,6 +27,4 @@
         <h2>No Results</h2>
         {% endif %}
     </section>
-</body>
-
-</html>
+{% endblock content %}
