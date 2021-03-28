@@ -2,7 +2,7 @@
 
 <head>
     <title>Conference of the Birds — {{ playlist.date }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='/style.css') }}">
+    {% include "_common_head.html" %}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sortable/0.8.0/js/sortable.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/sortable/0.8.0/css/sortable-theme-bootstrap.css" />
 </head>
@@ -16,6 +16,8 @@
         <table class="sortable-theme-bootstrap" data-sortable>
             <thead>
                 <tr>
+                    <th></th>
+                    <th></th>
                     <th>Artist</th>
                     <th>Track</th>
                     <th>Popularity</th>
@@ -34,7 +36,13 @@
             </thead>
             <tbody>
                 {% for track in playlist.tracks %}
-                <tr>
+                <tr class='playlist-row'>
+                    <td>
+                        {% if track.preview_url %}
+                        <a class='preview-track' title='Play a preview clip' data-audio-id="audio-{{track.spotify_id}}"><i class="fas fa-play-circle" ></i></a>
+                        <audio class='preview' id='audio-{{track.spotify_id}}' src="{{track.preview_url}}"></audio> {% endif %}
+                    </td>
+                    <td><a class='spotify-link' title='View Track on Spotify' href="{{ track.spotify_url}}" target='_blank'><i class="fab fa-spotify"></i></a></td>
                     <td>{% for artist in track.artists%}{% if not loop.first %}, {% endif %}<a href="{{ artist.spotify_url}}">{{ artist.name }}</a>{% endfor %}</td>
                     <td><a href="{{ track.spotify_url}}">{{ track.name }}</a></td>
                     <td>{{track.popularity}}</td>
@@ -55,6 +63,26 @@
         </table>
 
     </section>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.preview-track').forEach(
+                (elem) => {
+                    elem.addEventListener('click', (evt) => {
+                        document.querySelectorAll('audio.preview').forEach(e => e.pause())
+                        let to_play = document.getElementById(evt.currentTarget.dataset['audioId'])
+                        if (to_play) {
+                            if (to_play.paused) {
+                                to_play.play()
+                            } else {
+                                // TODO: doesn't actually pause. Also the control appearance should change
+                                to_play.pause()
+                            }
+                        }
+                    })
+                }
+            )
+        })
+    </script>
 </body>
 
 </html>

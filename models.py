@@ -4,6 +4,7 @@ from sqlalchemy import Integer, Float, Date, String, Boolean, JSON
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
 import re
+import json
 from datetime import date
 
 from sqlalchemy.orm.base import attribute_str
@@ -100,28 +101,7 @@ class Database(object):
         return track
 
     def insert_artist_from_json(self, session, a):
-        artist = Artist.get_or_create(session, a['id'])
-        artist.name = a['name']
-
-        artist.spotify_url = a['external_urls'].get('spotify')
-
-        try:
-            artist.popularity = a['popularity']
-        except KeyError: pass
-        try:
-            artist.followers = a['followers'].get('total')
-        except KeyError: pass
-
-        try:
-            artist.images = a['images']
-        except KeyError: pass
-
-        try:
-            for g in a['genres']:
-                genre = Genre.get_or_create(session, g)
-                if genre not in artist.genres:
-                    artist.genres.append(genre)
-        except KeyError: pass
+        artist = Artist.get_or_create(session, a['id'],init_data=a)
         session.add(artist)
         return artist
         
@@ -190,26 +170,29 @@ class Playlist(Base):
 
 
 
-    def to_json(self):
+    def to_json(self, as_object=False):
+        """Produce a JSON representation (String) of the data in this playlist 
+        as an array of track-plus objects suitable for use with Vega or Altair.
+        Optionally, specify `as_object=True` to have the data returned before
+        being serialized to a String.
+        """
         j = []
         cum_ms = 0
+        playlist_json = {
+            'date': f"{self.date.year}-{self.date.month:02}-{self.date.day:02}",
+            'year': self.date.year,
+            'month': self.date.month,
+            'day': self.date.day,
+        }
         for t in self.tracks:
-
-            track_json = {
-                'date': f"{self.date.year}-{self.date.month:02}-{self.date.day:02}",
-                'year': self.date.year,
-                'month': self.date.month,
-                'day': self.date.day,
-                'name': t.name,
-                'artist': t.artists_str(),
-                'duration_ms': t.duration_ms,
-                'cumulative_ms': cum_ms,
-                # format times
-                # add more properties and features
-            } 
-            j.append(track_json)
+            track_json = t.to_json(True)
+            track_json.update(playlist_json)
+            track_json['start_time_ms'] = cum_ms
             cum_ms += t.duration_ms
-        return j
+            j.append(track_json)
+        if as_object:
+            return j
+        return json.dumps(j)
 
     @property
     def image_url(self):
@@ -256,11 +239,35 @@ class Artist(Base):
         return f"{self.name} (Artist)"
 
     @staticmethod
-    def get_or_create(session, spotify_id):
+    def get_or_create(session, spotify_id, init_data=None):
         o = session.query(Artist).filter_by(spotify_id=spotify_id).scalar()
         if o is None:
             o = Artist(spotify_id=spotify_id)
-        return o
+        if init_data is None:
+            return o
+        # treat init_data as a SpotifyAPI ArtistObject (or simplified, be careful)
+        o.name = init_data['name']
+
+        o.spotify_url = init_data['external_urls'].get('spotify')
+
+        try:
+            o.popularity = init_data['popularity']
+        except KeyError: pass
+        try:
+            o.followers = init_data['followers'].get('total')
+        except KeyError: pass
+
+        try:
+            o.images = init_data['images']
+        except KeyError: pass
+
+        try:
+            for g in init_data['genres']:
+                genre = Genre.get_or_create(session, g)
+                if genre not in o.genres:
+                    o.genres.append(genre)
+        except KeyError: pass
+
 
 class Track(Base):
 # https://developer.spotify.com/documentation/web-api/reference/#object-trackobject
@@ -279,6 +286,31 @@ class Track(Base):
     features = relationship('AudioFeatures', uselist=False, back_populates='track')
     artists = relationship('Artist', secondary=track_artist, back_populates='tracks', lazy='joined')
     playlists = relationship('Playlist', secondary=playlist_track, back_populates='tracks')
+
+    def to_json(self, as_object=False):
+        """Produce a JSON representation (String) of the data in this track 
+        as an object (dict) with scalar values, appropriate for use in aggregating
+        track info by playlist or other such.
+
+        Optionally, specify `as_object=True` to have the data returned before
+        being serialized to a String.
+        """
+        d = {
+            'track_id': self.spotify_id,
+            'name': self.name,
+            'duration_ms': self.duration_ms,
+            'explicit': self.explicit,
+            'popularity': self.popularity,
+            'explicit': self.explicit,
+            'album': self.album.name,
+            'artists': self.artists_str(),
+        }
+
+        d.update(self.features.to_json(True))
+
+        if as_object:
+            return d
+        return json.dumps(d)
 
     def artists_str(self) -> str:
         return ', '.join(a.name for a in self.artists)    
@@ -343,6 +375,36 @@ class AudioFeatures(Base):
     speechiness = Column(Float)
     valence = Column(Float)
 
+    def to_json(self, as_object=False):
+        """Produce a JSON representation (String) of the data in this AudioFeatures 
+        as an object (dict) with scalar values, appropriate for use in aggregating
+        track features by playlist or other such.
+
+        Optionally, specify `as_object=True` to have the data returned before
+        being serialized to a String.
+        """
+        d = {
+            'key': self.key,
+            'key_str': self.key_str,
+            'mode': self.mode,
+            'mode_str': self.mode_str,
+            'tempo': self.tempo,
+            'time_signature': self.time_signature,
+            'acousticness': self.acousticness,
+            'danceability': self.danceability,
+            'energy': self.energy,
+            'instrumentalness': self.instrumentalness,
+            'liveness': self.liveness,
+            'loudness': self.loudness,
+            'speechiness': self.speechiness,
+            'valence': self.valence,
+        }
+
+        if as_object:
+            return d
+        return json.dumps(d)
+
+
     @property
     def key_str(self):
         try:
@@ -385,10 +447,10 @@ class Album(Base):
         o = session.query(Album).filter_by(spotify_id=spotify_id).scalar()
         if o is None:
             o = Album(spotify_id=spotify_id)
+        o.spotify_url = f"https://open.spotify.com/album/{o.spotify_id}"
         if init_data is None:
             return o
         # treat init_data as a SpotifyAPI AlbumObject (or simplified, be careful)
-        o.spotify_url = f"https://open.spotify.com/album/{o.spotify_id}"
         o.name = init_data['name']
         o.images = init_data['images']
         try:
@@ -400,6 +462,6 @@ class Album(Base):
             o.popularity = init_data['popularity']
         except KeyError: pass
         for a in init_data.get('artists',[]):
-            o.artists.append(Artist.get_or_create(session, a['id']))
+            o.artists.append(Artist.get_or_create(session, a['id'], init_data=a))
         session.add(o)
         return o

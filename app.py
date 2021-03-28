@@ -1,8 +1,9 @@
 from flask import Flask, request, render_template, _app_ctx_stack
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from models import Database, Playlist
+from models import Artist, Database, Playlist
 from datetime import date
+from collections import Counter
 
 app = Flask(__name__,
     static_folder='static'
@@ -31,6 +32,14 @@ def search():
     else:
         tracks = None
     return render_template("search_results.html", tracks=tracks, terms=terms)
+
+@app.route('/artists')
+def artists():
+    artists = app.session.query(Artist).all()
+    from collections import Counter
+    artist_count = ((a.name,len(a.tracks)) for a in artists)
+    return render_template("artists.html",artist_count_json=json.dumps(artist_count))
+
 
 @app.route('/playlist/<date_str>')
 def show_playlist(date_str):
