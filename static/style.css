@@ -62,8 +62,8 @@
      font-size: 1rem;
  }
  
- section.playlist a.spotify-link,
- section.playlist a.preview-track {
+ table.tracks-table a.spotify-link,
+ table.tracks-table a.preview-track {
      color: inherit;
  }
  
@@ -131,4 +131,8 @@
  .search-terms {
      margin-left: 50px;
      font-size: larger;
+ }
+ 
+ #artist #artist-details img {
+     width: 300px;
  }

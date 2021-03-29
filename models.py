@@ -232,6 +232,34 @@ class Artist(Base):
 
     albums = relationship('Album', secondary=album_artist, back_populates='artists')
 
+    def image_url(self,pixels=None,max_size=None,min_size=None):
+        """Return an image URL from this object's set of images. If pixels
+        is not None, it should be an integer, and the returned image URL will be an exact match for 
+        that pixel size. If there is no exact match, None will be returned.  If pixels is not set but 
+        either max_size or min_size are set, then the URL for the largest image which fits the 
+        constraints will be returned.
+        If no kwargs are set, the first image URL found will be 
+        returned"""
+        images = [(i['width'],i['url']) for i in self.images]
+        if pixels:
+            if pixels in dict(images):
+                img_dict = dict(images)
+                return img_dict[pixels]
+            return None
+        if not max_size and not min_size:
+            return images[0][1]
+
+        for width, url in reversed(sorted(images)):
+            if max_size and min_size:
+                if width <= max_size and width >= min_size:
+                    return url
+            elif max_size and width <= max_size:
+                return url
+            elif min_size and width >= min_size:
+                return url
+
+        return None
+
     def __repr__(self) -> str:
         return f"Artist({self.spotify_id})"
     
@@ -435,12 +463,33 @@ class Album(Base):
     artists = relationship('Artist', secondary=album_artist, back_populates='albums')
     tracks = relationship("Track", backref="album")
 
-    def image_url(self,pixels):
-        for i in self.images:
-            if i['width'] == pixels:
-                return i['url']
-        return None
+    def image_url(self,pixels=None,max_size=None,min_size=None):
+        """Return an image URL from this object's set of images. If pixels
+        is not None, it should be an integer, and the returned image URL will be an exact match for 
+        that pixel size. If there is no exact match, None will be returned.  If pixels is not set but 
+        either max_size or min_size are set, then the URL for the largest image which fits the 
+        constraints will be returned.
+        If no kwargs are set, the first image URL found will be 
+        returned"""
+        images = [(i['width'],i['url']) for i in self.images]
+        if pixels:
+            if pixels in dict(images):
+                img_dict = dict(images)
+                return img_dict[pixels]
+            return None
+        if not max_size and not min_size:
+            return images[0][1]
 
+        for width, url in reversed(sorted(images)):
+            if max_size and min_size:
+                if width <= max_size and width >= min_size:
+                    return url
+            elif max_size and width <= max_size:
+                return url
+            elif min_size and width >= min_size:
+                return url
+
+        return None
 
     @staticmethod
     def get_or_create(session, spotify_id, init_data=None):

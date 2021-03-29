@@ -1,0 +1,31 @@
+{% extends "_base.html" %} {% block title %}Genre: {{ genre_name }}{% endblock title %} {% block extra_head %} {% include "_sortable_extra_head.html" %} {% endblock extra_head %} {% block content %}
+<section>
+    <h2>Genre: {{ genre_name }}</h2>
+    <table class="sortable-theme-bootstrap" data-sortable>
+        <thead>
+            <tr>
+                <th>
+                    Artist
+                </th>
+                <th>Popularity</th>
+                <th>Followers</th>
+                <th>Other Genres</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for artist in genre_obj.artists %}
+            <tr>
+                <td><a href="{{ url_for('artist',spotify_id=artist.spotify_id)}}">{{ artist.name }}</a></td>
+                <td>{{ artist.popularity }}</td>
+                <td>{{ "{:,}".format(artist.followers) }}</td>
+                <td>
+                    {% for genre in artist.genres|rejectattr('name', 'eq', genre_obj.name) %} <a href="{{ url_for('genre',genre_name=genre.name)}}">{{ genre.name }}</a> {% if not loop.last %}; {% endif %} {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+
+        </tbody>
+    </table>
+
+</section>
+{% endblock content %}

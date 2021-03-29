@@ -2,8 +2,48 @@
 <head>
     <title>{% block title %}{% endblock %} - Conference of the Birds</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='/style.css') }}">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script src="https://kit.fontawesome.com/65d0c7afaa.js" crossorigin="anonymous"></script>
     {% block extra_head %}<!-- no extra head -->{% endblock %}
+
+    <script>
+        function togglePlaying(audio) {
+            let control = document.querySelector(`#control-${audio.dataset['spotifyId']}`)
+            if( audio.paused || audio.ended ) {
+                audio.play();
+                if (control) {
+                    control.classList.remove('fa-play')
+                    control.classList.add('fa-pause')
+                }
+            } else {
+                audio.pause();
+                if (control) {
+                    control.classList.remove('fa-pause')
+                    control.classList.add('fa-play')
+                }
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.preview-track').forEach(
+                (elem) => {
+                    elem.addEventListener('click', (evt) => {
+                        let clicked_audio = document.getElementById(evt.currentTarget.dataset['audioId'])
+                        window.stash = clicked_audio
+                        document.querySelectorAll('audio.preview').forEach(e => {
+                            if (e == clicked_audio) {
+                                togglePlaying(clicked_audio)
+                            } else {
+                                e.pause()
+                            }
+                        })
+                    })
+                }
+            )
+        })
+    </script>
+
 </head>
 
 <body>

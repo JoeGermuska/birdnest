@@ -1,0 +1,49 @@
+{# Expects `tracks` to be in context #}
+        <table class="tracks-table sortable-theme-bootstrap" data-sortable>
+            <thead>
+                <tr>
+                    <th data-sortable="false"><!--Play preview--></th>
+                    <th data-sortable="false"><!--View on Spotify--></th>
+                    <th>Artist</th>
+                    <th>Track</th>
+                    <th>Popularity</th>
+                    <th>Valence</th>
+                    <th>Danceability</th>
+                    <th>Energy</th>
+                    <th>Acousticness</th>
+                    <th>Instrumentalness </th>
+                    <th>Liveness </th>
+                    <th>Loudness </th>
+                    <th>Speechiness</th>
+                    <th>Key </th>
+                    <th>Tempo </th>
+                    <th>Time Signature </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for track in tracks %}
+                <tr class='playlist-row'>
+                    <td>
+                        {% if track.preview_url %}
+                        <a class='preview-track' title='Play a preview clip' data-audio-id="audio-{{track.spotify_id}}"><i id="control-{{track.spotify_id}}" class="fas fa-play" ></i></a>
+                        <audio class='preview' id='audio-{{track.spotify_id}}' src="{{track.preview_url}}" data-spotify-id="{{track.spotify_id}}"></audio> {% endif %}
+                    </td>
+                    <td><a class='spotify-link' title='View Track on Spotify' href="{{ track.spotify_url}}" target='_blank'><i class="fab fa-spotify"></i></a></td>
+                    <td>{% for artist in track.artists%}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist',spotify_id=artist.spotify_id)}}">{{ artist.name }}</a>{% endfor %}</td>
+                    <td><a href="{{ track.spotify_url}}">{{ track.name }}</a></td>
+                    <td>{{track.popularity}}</td>
+                    <td>{{track.features.valence}}</td>
+                    <td>{{track.features.danceability}}</td>
+                    <td>{{track.features.energy}}</td>
+                    <td>{{track.features.acousticness}}</td>
+                    <td>{{track.features.instrumentalness }}</td>
+                    <td>{{track.features.liveness }}</td>
+                    <td>{{track.features.loudness }}</td>
+                    <td>{{track.features.speechiness}}</td>
+                    <td>{{track.features.key_str }} {{track.features.mode_str }}</td>
+                    <td>{{track.features.tempo }}</td>
+                    <td>{{track.features.time_signature }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>

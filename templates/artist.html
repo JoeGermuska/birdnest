@@ -1,0 +1,21 @@
+{% extends "_base.html" %} {% block title %}Genre: {{ genre_name }}{% endblock title %} {% block extra_head %} {% include "_sortable_extra_head.html" %} {% endblock extra_head %} {% block content %}
+<section id='artist'>
+    <section id='artist-details'>
+        <h2>{{ artist.name }}</h2>  
+        {% with image=artist.image_url(640) %}
+        {% if image %}<img src="{{ image }}" alt="Image of {{ artist.name }}" />{% endif %}
+        {% endwith %}
+        <p><strong>Popularity:</strong> {{ artist.popularity }}</p>
+        <p><strong>Followers:</strong> {{ "{:,}".format(artist.followers) }}</p>
+        <p><strong>Genres:</strong>
+        {% for g in artist.genres  %}
+        <li><a href="{{ url_for('genre',genre_name=g.name) }}">{{ g.name }}</a></li>
+        {% endfor %}
+        </ul>
+        
+    </section>
+    {% with tracks=artist.tracks %}
+    {% include "_tracks_table.html" %}
+    {% endwith %}
+</section>
+{% endblock content %}

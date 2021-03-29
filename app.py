@@ -1,7 +1,7 @@
-from flask import Flask, request, render_template, _app_ctx_stack
+from flask import Flask, request, render_template, _app_ctx_stack, abort
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from models import Artist, Database, Playlist
+from models import Artist, Database, Genre, Playlist
 from datetime import date
 from collections import Counter
 
@@ -32,6 +32,21 @@ def search():
     else:
         tracks = None
     return render_template("search_results.html", tracks=tracks, terms=terms)
+
+@app.route('/genre/<genre_name>')
+def genre(genre_name):
+    genre_obj = app.session.query(Genre).filter(Genre.name == genre_name).first()
+    if not genre_obj:
+        abort(404)
+    genre_obj.artists.sort(key=lambda a: -1 * a.popularity) # reverse popularity sort
+    return render_template('genre.html',genre_name=genre_name,genre_obj=genre_obj)
+
+@app.route('/artist/<spotify_id>')
+def artist(spotify_id):
+    artist = app.session.query(Artist).filter(Artist.spotify_id == spotify_id).first()
+    if not artist:
+        abort(404)
+    return render_template('artist.html',artist=artist)
 
 @app.route('/artists')
 def artists():
