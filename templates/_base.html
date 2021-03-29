@@ -8,20 +8,31 @@
     {% block extra_head %}<!-- no extra head -->{% endblock %}
 
     <script>
-        function togglePlaying(audio) {
+
+
+        function pauseAudio(audio) {
             let control = document.querySelector(`#control-${audio.dataset['spotifyId']}`)
+            audio.pause();
+            if (control) {
+                control.classList.remove('fa-pause')
+                control.classList.add('fa-play')
+            }
+        }
+
+        function playAudio(audio) {
+            let control = document.querySelector(`#control-${audio.dataset['spotifyId']}`)
+            audio.play();
+            if (control) {
+                control.classList.remove('fa-play')
+                control.classList.add('fa-pause')
+            }
+        }
+
+        function togglePlaying(audio) {
             if( audio.paused || audio.ended ) {
-                audio.play();
-                if (control) {
-                    control.classList.remove('fa-play')
-                    control.classList.add('fa-pause')
-                }
+                playAudio(audio)
             } else {
-                audio.pause();
-                if (control) {
-                    control.classList.remove('fa-pause')
-                    control.classList.add('fa-play')
-                }
+                pauseAudio(audio)
             }
         }
 
@@ -35,7 +46,7 @@
                             if (e == clicked_audio) {
                                 togglePlaying(clicked_audio)
                             } else {
-                                e.pause()
+                                pauseAudio(e)
                             }
                         })
                     })
