@@ -14,8 +14,24 @@
         </ul>
         
     </section>
+    <section id='artist-tracks'>
+    <h3>Tracks played</h3>
     {% with tracks=artist.tracks %}
     {% include "_tracks_table.html" %}
     {% endwith %}
+    </section>
+    <section id='artist-albums'>
+    <h3>Albums</h3>
+    {% for album in artist.albums %}
+    <div id='album-{{album.spotify_id}}' class='artist-album'>
+        {% with image=album.image_url(640) %}
+        {% if image %}<a title="Spotify Album Page" href="{{ album.spotify_url }}"><img src="{{ image }}" alt="Image for {{ album.name }}" /></a>{% endif %}
+        {% endwith %}
+        <p><a title="Spotify Album Page" href="{{ album.spotify_url }}">{{ album.name }}</a></p>
+    </div>
+    
+    {% endfor %}
+    </section>
+    
 </section>
 {% endblock content %}

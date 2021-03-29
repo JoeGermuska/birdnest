@@ -136,3 +136,17 @@
  #artist #artist-details img {
      width: 300px;
  }
+ 
+ #artist #artist-albums h3 {
+     grid-column: 1 / -1;
+ }
+ 
+ #artist #artist-albums {
+     display: grid;
+     grid-gap: 15px;
+     grid-template-columns: repeat(auto-fit, 200px);
+ }
+ 
+ #artist #artist-albums img {
+     width: 150px;
+ }
