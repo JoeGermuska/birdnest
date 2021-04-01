@@ -21,7 +21,7 @@
     {% endwith %}
     </section>
     <section id='artist-albums'>
-    <h3>Albums</h3>
+    <h3>Albums played from</h3>
     {% for album in artist.albums %}
     <div id='album-{{album.spotify_id}}' class='artist-album'>
         {% with image=album.image_url(640) %}

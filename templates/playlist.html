@@ -10,6 +10,10 @@
     <section class="playlist">
         <h1>Conference of the Birds — {{ playlist.date }}</h1>
         <img class='playlist-image' src="{{ playlist.image_url }}">
+        {% if playlist.description %}
+        <p>{{ playlist.description|safe }}</p>
+        {% else %}
+        {% endif %}
         <p><a href="{{playlist.spotify_url}}">listen on spotify</a></p>
         {% with tracks=playlist.tracks %}
         {% include "_tracks_table.html" %}
