@@ -296,6 +296,7 @@ class Artist(Base):
                     o.genres.append(genre)
         except KeyError: pass
 
+        return o
 
 class Track(Base):
 # https://developer.spotify.com/documentation/web-api/reference/#object-trackobject
