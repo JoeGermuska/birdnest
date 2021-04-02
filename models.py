@@ -151,7 +151,7 @@ class Playlist(Base):
     name = Column(String)
     description = Column(String)
     date = Column(Date) # not a spotify property, we have to infer from name
-    playlist_tracks = relationship('PlaylistTrack', back_populates='playlist', lazy='joined')
+    playlist_tracks = relationship('PlaylistTrack', order_by='PlaylistTrack.sequence', back_populates='playlist', lazy='joined')
     tracks = association_proxy('playlist_tracks','track')
 
     images = Column(JSON)
@@ -367,7 +367,7 @@ class PlaylistTrack(Base):
     __tablename__ = 'playlist_track'
     playlist_id = Column(Integer, ForeignKey("playlist.playlist_id"),primary_key=True)
     track_id = Column("track_id", Integer, ForeignKey("track.track_id"),primary_key=True)
-    sequence = Column(Integer)
+    sequence = Column(Integer,primary_key=True) # allow for a track being played twice in a playlist
     playlist = relationship("Playlist", back_populates="playlist_tracks")
     track = relationship("Track", back_populates="track_playlists")
 
