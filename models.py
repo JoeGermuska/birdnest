@@ -48,8 +48,9 @@ class Database(object):
         if match := PLAYLIST_DATE_PATTERN.match(playlist.name): # := walrus requires Python 3.8
             playlist.date = date(*(map(int,match.groups())))
 
-        for t in self.api_client.playlist_tracks(j['id'],full=True):
-            playlist.tracks.append(self.insert_track_from_json(session,t))
+        for i,t in enumerate(self.api_client.playlist_tracks(j['id'],full=True)):
+            track_obj = self.insert_track_from_json(session,t)
+            playlist.playlist_tracks.append(PlaylistTrack(playlist=playlist,track=track_obj,sequence=i))
 
         session.add(playlist)
 
@@ -128,8 +129,6 @@ Base = declarative_base()
 #         return o    
 
 
-playlist_track = Table( "playlist_track", Base.metadata, Column("playlist_id", Integer, ForeignKey("playlist.playlist_id")), Column("track_id", Integer, ForeignKey("track.track_id")))
-
 track_artist = Table("track_artist", Base.metadata, Column("track_id", Integer, ForeignKey("track.track_id")), Column("artist_id", Integer, ForeignKey("artist.artist_id")))
 
 artist_genre = Table('artist_genre', 
@@ -152,7 +151,9 @@ class Playlist(Base):
     name = Column(String)
     description = Column(String)
     date = Column(Date) # not a spotify property, we have to infer from name
-    tracks = relationship("Track", secondary=playlist_track, back_populates="playlists", lazy='joined')
+    playlist_tracks = relationship('PlaylistTrack', back_populates='playlist', lazy='joined')
+    tracks = association_proxy('playlist_tracks','track')
+
     images = Column(JSON)
     # external_urls = String[]
     # followers = FollowersObject
@@ -295,9 +296,8 @@ class Artist(Base):
 
         try:
             for g in init_data['genres']:
-                genre = Genre.get_or_create(session, g)
-                if genre not in o.genres:
-                    o.genres.append(genre)
+                if g not in o.genres:
+                    o.genres.append(g)
         except KeyError: pass
 
         return o
@@ -318,7 +318,8 @@ class Track(Base):
     album_id = Column(Integer, ForeignKey('album.album_id'))
     features = relationship('AudioFeatures', uselist=False, back_populates='track')
     artists = relationship('Artist', secondary=track_artist, back_populates='tracks', lazy='joined')
-    playlists = relationship('Playlist', secondary=playlist_track, back_populates='tracks')
+    track_playlists = relationship('PlaylistTrack', back_populates='track')
+    playlists = association_proxy('track_playlists','playlist')
 
     def to_json(self, as_object=False):
         """Produce a JSON representation (String) of the data in this track 
@@ -360,6 +361,16 @@ class Track(Base):
         if o is None:
             o = Track(spotify_id=spotify_id)
         return o
+
+# playlist_track = Table( "playlist_track", Base.metadata, Column("playlist_id", Integer, ForeignKey("playlist.playlist_id")), Column("track_id", Integer, ForeignKey("track.track_id")))
+class PlaylistTrack(Base):
+    __tablename__ = 'playlist_track'
+    playlist_id = Column(Integer, ForeignKey("playlist.playlist_id"),primary_key=True)
+    track_id = Column("track_id", Integer, ForeignKey("track.track_id"),primary_key=True)
+    sequence = Column(Integer)
+    playlist = relationship("Playlist", back_populates="playlist_tracks")
+    track = relationship("Track", back_populates="track_playlists")
+
 
 class Genre(Base):
     __tablename__ = 'genre'
