@@ -106,6 +106,7 @@ class Database(object):
         return artist
         
     def search_tracks(self, session, query):
+        query = ' '.join(map(lambda x: f'"{x}"',query.split())) # esca
         sql = """select t.* from 
         track t, track_search ts 
         where t.track_id = ts.track_id
