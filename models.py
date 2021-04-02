@@ -3,6 +3,8 @@ from sqlalchemy import create_engine, text, ForeignKey, Column, Table
 from sqlalchemy import Integer, Float, Date, String, Boolean, JSON
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.associationproxy import association_proxy
+
 import re
 import json
 from datetime import date
@@ -222,7 +224,8 @@ class Artist(Base):
     # followers is in a struct with a nullable URL (when is it not null?)
     followers = Column(Integer) # changes over time
 
-    genres = relationship('Genre', secondary=artist_genre, back_populates='artists')
+    genre_objs = relationship('Genre', secondary=artist_genre, back_populates='artists')
+    genres = association_proxy('genre_objs','name')
     # external_urls: String[] - spotify among others. 
     # Spotify can be computed: https://open.spotify.com/artist/${spotify_id}
     # images: {url,w,h}[]
@@ -362,7 +365,11 @@ class Genre(Base):
     __tablename__ = 'genre'
     genre_id = Column(Integer, primary_key=True)
     name = Column(String)
-    artists = relationship('Artist', secondary=artist_genre, back_populates='genres')
+    artists = relationship('Artist', secondary=artist_genre, back_populates='genre_objs')
+
+    def __init__(self,genre) -> None:
+        super().__init__()
+        self.name = genre
 
     @staticmethod
     def get_or_create(session, name):

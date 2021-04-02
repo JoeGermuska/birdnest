@@ -19,7 +19,7 @@
                 <td>{{ artist.popularity }}</td>
                 <td>{{ "{:,}".format(artist.followers) }}</td>
                 <td>
-                    {% for genre in artist.genres|rejectattr('name', 'eq', genre_obj.name) %} <a href="{{ url_for('genre',genre_name=genre.name)}}">{{ genre.name }}</a> {% if not loop.last %}; {% endif %} {% endfor %}
+                    {% for genre in artist.genres|reject('eq',genre_obj.name) %} <a href="{{ url_for('genre',genre_name=genre)}}">{{ genre }}</a> {% if not loop.last %}; {% endif %} {% endfor %}
                 </td>
             </tr>
             {% endfor %}

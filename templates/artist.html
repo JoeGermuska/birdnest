@@ -9,7 +9,7 @@
         <p><strong>Followers:</strong> {{ "{:,}".format(artist.followers) }}</p>
         <p><strong>Genres:</strong>
         {% for g in artist.genres  %}
-        <li><a href="{{ url_for('genre',genre_name=g.name) }}">{{ g.name }}</a></li>
+        <li><a href="{{ url_for('genre',genre_name=g) }}">{{ g }}</a></li>
         {% endfor %}
         </ul>
         
