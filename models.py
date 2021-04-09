@@ -26,7 +26,7 @@ class Database(object):
     engine = None
     api_client = None
 
-    def __init__(self,sqlite_filepath='birdnest.db',create_all=True):
+    def __init__(self,sqlite_filepath='birdnest.db'):
         self.api_client = Client()
 
     def insert_playlist_from_json(self,session, j):
@@ -59,9 +59,12 @@ class Database(object):
         for t in playlist.tracks:
             for a in t.artists:
                 artist_ids.add(a.spotify_id)
+
         self.fill_in_artists(session,artist_ids)
 
         self.fill_in_audio_features(session, playlist.tracks)
+
+        self.fill_in_albums(session)
 
         return playlist
 
@@ -116,6 +119,51 @@ class Database(object):
         and track_search match :terms"""
         return session.query(Track).from_statement(text(sql)).params(terms=query).all()
 
+    def fill_in_albums(self, session):
+        """find all tracks that don't have albums, and look them up from spotify
+           and add the album data. In the normal flow, we don't have the album IDs, so 
+           it's about as easy to find tracks that need them and look them up.
+        Don't forget to commit the session yourself..."""
+        track_ids = [t.spotify_id for t in session.query(Track).filter(Track.album == None)]
+
+        # figure out their albums
+        api_tracks = self.api_client.tracks(track_ids)
+        track_album_ids = dict((t['id'], t['album']['id']) for t in api_tracks)
+        album_ids = track_album_ids.values()
+
+        # and get the API data for those albums
+        api_albums = self.api_client.albums(album_ids)
+        api_album_dict = dict((a['id'], a) for a in api_albums)
+
+        # and then create those album objects and attach them
+        for k,v in track_album_ids.items():
+            track = session.query(Track).filter(Track.spotify_id == k).first()
+            track.album = Album.get_or_create(session, v, api_album_dict[v])
+
+    def rebuild_fts(self, session):
+        "rn easier to just rebuild every time than worry about inconsistencies."
+        session.execute("drop table if exists track_search")
+        session.execute("create virtual table track_search using fts5(artist, track, album, track_id unindexed)")
+
+        UPDATE_FTS_SQL = '''insert into track_search (track_id, track, artist, album) 
+    select t.track_id,
+           t.name track,
+           GROUP_CONCAT(a.name,';') artist,
+           album.name album
+    from 
+        playlist p,
+        playlist_track pt,
+        track t,
+        track_artist ta,
+        artist a,
+        album 
+    where t.track_id = ta.track_id 
+         and ta.artist_id = a.artist_id
+         and p.playlist_id = pt.playlist_id
+         and pt.track_id = t.track_id
+         and t.album_id = album.album_id
+    group by t.track_id, t.name'''
+        session.execute(UPDATE_FTS_SQL)
 
 Base = declarative_base()
 
