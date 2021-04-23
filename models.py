@@ -401,7 +401,7 @@ class Track(Base):
         return f"Track({self.spotify_id})"
     
     def __str__(self) -> str:
-        return f"{self.name} by {self.artists_str}"
+        return f"{self.name} by {self.artists_str()}"
 
     @staticmethod
     def get_or_create(session, spotify_id):
