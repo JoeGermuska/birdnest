@@ -16,8 +16,7 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={
 })
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-app.session = scoped_session(SessionLocal,
-scopefunc=_app_ctx_stack.__ident_func__)
+app.session = scoped_session(SessionLocal)
 @app.route('/')
 def index():
     playlists = app.session.query(Playlist).order_by(Playlist.date.desc()).all()
