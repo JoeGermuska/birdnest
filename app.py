@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
 from datetime import date
 from collections import Counter
+import os 
 
 app = Flask(__name__,
     static_folder='static'
@@ -66,3 +67,10 @@ def show_playlist(date_str):
     if playlist is None:
         return f"No playlist for {date_str}", 404
     return render_template("playlist.html", playlist=playlist)
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    debug = bool(os.environ.get('FLASK_DEBUG', False))
+    app.run(debug=debug, host='0.0.0.0', port=port)
+
+    
