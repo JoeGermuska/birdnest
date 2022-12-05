@@ -78,10 +78,15 @@
      margin: 0;
      padding: 0;
      cursor: pointer;
+     border-radius: 25px;
+     overflow: hidden;
+     background-color: #eee;
+     border: 1px solid #eee;
  }
  
  .playlist-tile h2 {
      font-size: .75rem;
+     font-family: 'Courier New';
  }
  
  .playlist-tile img {

@@ -1,0 +1,8 @@
+version: '3'
+services:
+  birdnest:
+    image: birdnest
+    ports: 
+      - "5000:5000"
+    volumes:
+      - .:/app
