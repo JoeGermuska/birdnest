@@ -53,6 +53,14 @@
                     })
                 }
             )
+            window.addEventListener('keydown', (evt) => {
+                let searchbox = document.getElementById('q');
+                if (evt.target != searchbox && evt.key == '/') {
+                    searchbox.focus()
+                    evt.preventDefault()
+                    return false
+                }
+            })
         })
     </script>
 
