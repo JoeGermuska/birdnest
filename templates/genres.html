@@ -1,0 +1,21 @@
+{% extends "_base.html" %} {% block title %}Genre: {{ genre_name }}{% endblock title %} {% block extra_head %} {%
+include "_sortable_extra_head.html" %} {% endblock extra_head %} {% block content %}
+    <section class="playlist">
+        <table class="genres-table sortable-theme-bootstrap" data-sortable>
+            <thead>
+                <tr>
+                    <th>Genre</th>
+                    </tr>
+            </thead>
+            <tbody>
+                {% for genre in genres %}
+                <tr class=''>
+        <td>
+            <a href="{{ url_for('genre',genre_name=genre) }}">{{ genre }}</a>
+        </td>
+
+    {% endfor %}
+    </tbody>
+    </table>
+    </section>
+{% endblock %}

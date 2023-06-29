@@ -41,6 +41,11 @@ def genre(genre_name):
     genre_obj.artists.sort(key=lambda a: -1 * a.popularity) # reverse popularity sort
     return render_template('genre.html',genre_name=genre_name,genre_obj=genre_obj)
 
+@app.route('/genres')
+def genres():
+    genres = sorted(set(x.name for x in app.session.query(Genre).order_by(Genre.name)))
+    return render_template('genres.html', genres=genres)
+
 @app.route('/artist/<spotify_id>')
 def artist(spotify_id):
     artist = app.session.query(Artist).filter(Artist.spotify_id == spotify_id).first()
