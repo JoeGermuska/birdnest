@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, _app_ctx_stack, abort
+from flask import Flask, request, render_template, abort
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
