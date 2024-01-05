@@ -10,10 +10,12 @@ export function getDB() {
 }
 
 export async function getPlaylists() {
+    console.log('getPlaylists()')
     const db = getDB()
     /** @type {any[]} */
     let playlists = []
-        db.all('select name from playlist order by date desc', (err, rows) => { 
+    let sql = 'select name from playlist order by date desc'
+    db.all(sql, (err, rows) => { 
         if (err) {
             console.error(`Error fetching playlists ${err}`, err)
         } else {
@@ -21,8 +23,6 @@ export async function getPlaylists() {
         }
     }) 
     db.close()
-    if (playlists.length == 0) {
-        console.log('foordy')
-    }
+    console.log(`playlists length: ${playlists.length}`)
     return playlists
 }
