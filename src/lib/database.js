@@ -14,15 +14,22 @@ export async function getPlaylists() {
     const db = getDB()
     /** @type {any[]} */
     let playlists = []
-    let sql = 'select name from playlist order by date desc'
+    let sql = 'select name, date, images from playlist order by date desc'
     db.all(sql, (err, rows) => { 
         if (err) {
             console.error(`Error fetching playlists ${err}`, err)
         } else {
-            rows.forEach(row => playlists.push(row))
+            rows.forEach(row => {
+                let images = JSON.parse(row.images)
+                // for now always use the first and assume it exists
+                row['image_url']    = images[0]['url']
+                row['image_width']  = images[0]['width']
+                row['image_height'] = images[0]['height']
+                playlists.push(row)
+            })
         }
     }) 
     db.close()
-    console.log(`playlists length: ${playlists.length}`)
+    console.log(`getPlaylists() playlists length: ${playlists.length}`)
     return playlists
 }

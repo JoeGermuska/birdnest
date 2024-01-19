@@ -1,11 +1,15 @@
 <script>
     export let image_url = 'https://placekitten.com/300/300'
-    export let date = '2023-12-31'
-    export let playlist = { date: '2024-01-01'}
+    export let playlist = { 
+        date: '2024-01-01',
+        image_url: 'https://placekitten.com/300/300',
+        image_width: 300,
+        image_height: 300
+    }
 </script>
 
 <button class='playlist-tile' data-internal-url="">
-    <img src="{ image_url }" alt="a bird">
+    <img src="{ playlist.image_url }" width="{ playlist.image_width }" height="{ playlist.image_height }" alt="a bird">
     <h2>
         { playlist.date }
     </h2>

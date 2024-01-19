@@ -14,7 +14,7 @@ count: {data.playlists.length}
 <section>
     <div class="playlist-tiles">
         {#each data.playlists as playlist}
-        <PlaylistTile {moopy} />
+        <PlaylistTile {playlist} />
         {/each}
     </div>
 </section>
