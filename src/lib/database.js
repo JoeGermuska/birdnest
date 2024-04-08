@@ -1,10 +1,18 @@
 import sqlite3 from "sqlite3";
+import { fileURLToPath } from 'url';
+import { join } from 'path';
+// Get the directory of the current module file
+const __dirname = fileURLToPath(import.meta.url);
+// Define the path to the database file relative to the current module file
+const dbPath = join(process.cwd(), 'birdnest.db');
+
 export function getDB() {
-    let db = new sqlite3.Database('birdnest.db', sqlite3.OPEN_READONLY, (err) => {
+
+    let db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
         if (err) {
-            return console.error(err.message);
+            return console.error(`${err.message}\ndbPath: ${dbPath}`);
         }
-        console.log('Connected to the birdnest.db SQlite database.');
+        console.log(`Connected to the birdnest.db SQlite database. [${dbPath}]`);
     });
     return db
 }
@@ -29,7 +37,6 @@ export async function getPlaylists() {
             })
         }
     }) 
-    db.close()
     console.log(`getPlaylists() playlists length: ${playlists.length}`)
     return playlists
 }
