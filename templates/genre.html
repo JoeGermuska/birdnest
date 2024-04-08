@@ -1,6 +1,7 @@
 {% extends "_base.html" %} {% block title %}Genre: {{ genre_name }}{% endblock title %} {% block extra_head %} {% include "_sortable_extra_head.html" %} {% endblock extra_head %} {% block content %}
 <section>
     <h2>Genre: {{ genre_name }}</h2>
+    <a href="https://everynoise.com/research.cgi?mode=genre&name={{genre_name}}">Every Noise</a> | <a href="https://www.google.com/search?q={{genre_name}}">Google</a>
     <table class="sortable-theme-bootstrap" data-sortable>
         <thead>
             <tr>
