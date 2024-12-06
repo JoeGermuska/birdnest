@@ -76,19 +76,21 @@ class Database(object):
         return artists
 
     def fill_in_audio_features(self, session, tracks):
-        d = dict((t.spotify_id, t) for t in tracks if t.features is None)
-        features = self.api_client.audio_features(d.keys())
-        for f in features:
-            track = d[f['id']]
-            f['spotify_id'] = f['id']
+        """This endpoint deprecated and disabled 2024-11-24"""
+        return
+        # d = dict((t.spotify_id, t) for t in tracks if t.features is None)
+        # features = self.api_client.audio_features(d.keys())
+        # for f in features:
+        #     track = d[f['id']]
+        #     f['spotify_id'] = f['id']
 
-            # get rid of the stuff that doesnt' map to a property of AudioFeatures
-            for k in ['id', 'spotify_id', 'type', 'uri', 'track_href', 'duration_ms']:
-                del f[k]
+        #     # get rid of the stuff that doesnt' map to a property of AudioFeatures
+        #     for k in ['id', 'spotify_id', 'type', 'uri', 'track_href', 'duration_ms']:
+        #         del f[k]
 
-            af = AudioFeatures(**f)
-            track.features = af
-            session.add(track)
+        #     af = AudioFeatures(**f)
+        #     track.features = af
+        #     session.add(track)
 
     def insert_track_from_json(self, session, t):
         track = Track.get_or_create(session,t['id'])
