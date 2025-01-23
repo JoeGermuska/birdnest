@@ -1,3 +1,5 @@
+*.ipynb*
+.cache
 .envrc
 .vscode
 .DS_Store
