@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, abort, send_from_directory, redirect
+from flask import Flask, request, render_template, abort, send_from_directory, redirect, make_response
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
@@ -86,7 +86,18 @@ def playlist_image(date_str):
     
     playlist = app.session.query(Playlist).filter(Playlist.date == playlist_date).scalar()
     
-    # First, try the original Spotify image
+
+    # First, try date-based local file (YYYY-MM-DD format)
+    for ext in ['.jpg', '.png', '.jpeg', '.webp']:
+        filename = f"{date_str}{ext}"
+        file_path = os.path.join(app.static_folder, 'images', filename)
+        if os.path.exists(file_path):
+            response = make_response(send_from_directory(os.path.join(app.static_folder, 'images'), filename))
+            response.cache_control.max_age = 86400 * 30  # Cache for 30 days
+            return response
+    
+
+    # Second, try the original Spotify image
     if playlist and playlist.image_url:
         try:
             response = requests.head(playlist.image_url, timeout=5)
@@ -95,17 +106,13 @@ def playlist_image(date_str):
         except:
             pass
     
-    # Second, try date-based local file (YYYY-MM-DD format)
-    for ext in ['.jpg', '.png', '.jpeg', '.webp']:
-        filename = f"{date_str}{ext}"
-        file_path = os.path.join(app.static_folder, 'images', filename)
-        if os.path.exists(file_path):
-            return send_from_directory(os.path.join(app.static_folder, 'images'), filename)
-    
+
     # Finally, serve the generic placeholder
     placeholder_path = os.path.join(app.static_folder, 'images', 'vinyl-placeholder.png')
     if os.path.exists(placeholder_path):
-        return send_from_directory(os.path.join(app.static_folder, 'images'), 'vinyl-placeholder.png')
+        response = make_response(send_from_directory(os.path.join(app.static_folder, 'images'), 'vinyl-placeholder.png'))
+        response.cache_control.max_age = 86400 * 30  # Cache for 30 days
+        return response
     
     # If no placeholder exists, return a 404
     abort(404)
