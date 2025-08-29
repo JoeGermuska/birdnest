@@ -1,10 +1,13 @@
-from flask import Flask, request, render_template, abort
+from flask import Flask, request, render_template, abort, send_from_directory, redirect
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
 from datetime import date
 from collections import Counter
-import os 
+import os
+import json
+import requests
+from urllib.parse import urlparse 
 
 app = Flask(__name__,
     static_folder='static'
@@ -72,6 +75,40 @@ def show_playlist(date_str):
     if playlist is None:
         return f"No playlist for {date_str}", 404
     return render_template("playlist.html", playlist=playlist)
+
+@app.route('/image/<date_str>')
+def playlist_image(date_str):
+    try:
+        (year,month,day) = map(int,date_str.split('-',3))
+        playlist_date = date(year,month,day)
+    except Exception:
+        return "Invalid date format", 400
+    
+    playlist = app.session.query(Playlist).filter(Playlist.date == playlist_date).scalar()
+    
+    # First, try the original Spotify image
+    if playlist and playlist.image_url:
+        try:
+            response = requests.head(playlist.image_url, timeout=5)
+            if response.status_code == 200:
+                return redirect(playlist.image_url)
+        except:
+            pass
+    
+    # Second, try date-based local file (YYYY-MM-DD format)
+    for ext in ['.jpg', '.png', '.jpeg', '.webp']:
+        filename = f"{date_str}{ext}"
+        file_path = os.path.join(app.static_folder, 'images', filename)
+        if os.path.exists(file_path):
+            return send_from_directory(os.path.join(app.static_folder, 'images'), filename)
+    
+    # Finally, serve the generic placeholder
+    placeholder_path = os.path.join(app.static_folder, 'images', 'vinyl-placeholder.png')
+    if os.path.exists(placeholder_path):
+        return send_from_directory(os.path.join(app.static_folder, 'images'), 'vinyl-placeholder.png')
+    
+    # If no placeholder exists, return a 404
+    abort(404)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

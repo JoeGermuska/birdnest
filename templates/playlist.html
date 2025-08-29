@@ -9,7 +9,7 @@
 {% block content %}
     <section class="playlist">
         <h1>Conference of the Birds — {{ playlist.date }}</h1>
-        <img class='playlist-image' src="{{ playlist.image_url }}">
+        <img class='playlist-image' src="{{ url_for('playlist_image', date_str=playlist.date) }}">
         {% if playlist.description %}
         <p>{{ playlist.description|safe }}</p>
         {% else %}

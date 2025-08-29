@@ -1,5 +1,5 @@
 <button class='playlist-tile' data-internal-url="{{ url_for('show_playlist',date_str=playlist.date)}}">
-    <img src="{{ playlist.image_url }}">
+    <img src="{{ url_for('playlist_image', date_str=playlist.date) }}">
     <h2>
         {{ playlist.date }}
     </h2>
