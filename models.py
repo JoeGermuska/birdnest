@@ -26,8 +26,9 @@ class Database(object):
     engine = None
     api_client = None
 
-    def __init__(self,sqlite_filepath='birdnest.db'):
-        self.api_client = Client()
+    def __init__(self,sqlite_filepath='birdnest.db', init_client=True):
+        if init_client:
+            self.api_client = Client()
 
     def insert_playlist_from_json(self,session, j):
         """Given JSON matching Spotify's PlaylistObject, fully update the database.
@@ -115,11 +116,42 @@ class Database(object):
         
     def search_tracks(self, session, query):
         query = ' '.join(map(lambda x: f'"{x}"',query.split())) # esca
-        sql = """select t.* from 
-        track t, track_search ts 
+        sql = """select t.* from
+        track t, track_search ts
         where t.track_id = ts.track_id
         and track_search match :terms"""
         return session.query(Track).from_statement(text(sql)).params(terms=query).all()
+
+    def get_autocomplete_suggestions(self, session, query, limit=10):
+        """Get autocomplete suggestions from the full text index"""
+        if len(query.strip()) < 2:
+            return []
+
+        # Use FTS5's prefix matching
+        prefix_query = f"{query}*"
+
+        sql = """
+        SELECT DISTINCT
+            CASE
+                WHEN artist LIKE :like_query THEN artist
+                WHEN track LIKE :like_query THEN track
+                WHEN album LIKE :like_query THEN album
+                ELSE NULL
+            END as suggestion
+        FROM track_search
+        WHERE track_search MATCH :prefix_query
+        AND suggestion IS NOT NULL
+        ORDER BY suggestion
+        LIMIT :limit
+        """
+
+        result = session.execute(text(sql), {
+            'prefix_query': prefix_query,
+            'like_query': f'%{query}%',
+            'limit': limit
+        })
+
+        return [row[0] for row in result.fetchall()]
 
     def fill_in_albums(self, session):
         """find all tracks that don't have albums, and look them up from spotify

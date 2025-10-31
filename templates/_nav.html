@@ -1,16 +1,131 @@
 <nav id="topbar">
     <h1><a href="/">Conference of the Birds</a></h1>
     <form id="search" action="{{ url_for('search')}}" method="GET">
-        search: <input type="text" id="q" name="q">
+        search:
+        <div class="autocomplete-container">
+            <input type="text" id="q" name="q" autocomplete="off">
+            <div id="autocomplete-dropdown" class="autocomplete-dropdown"></div>
+        </div>
     </form>
 </nav>
 <script>
     function playlistTileClickHandler(e) {
         window.location.href = this.dataset['internalUrl'];
     }
+
+    // Autocomplete functionality
+    let autocompleteTimer = null;
+    let selectedIndex = -1;
+
+    function initAutocomplete() {
+        const searchInput = document.getElementById('q');
+        const dropdown = document.getElementById('autocomplete-dropdown');
+
+        if (!searchInput || !dropdown) return;
+
+        searchInput.addEventListener('input', function() {
+            const query = this.value.trim();
+
+            if (autocompleteTimer) {
+                clearTimeout(autocompleteTimer);
+            }
+
+            if (query.length < 2) {
+                hideDropdown();
+                return;
+            }
+
+            autocompleteTimer = setTimeout(() => {
+                fetchSuggestions(query);
+            }, 300);
+        });
+
+        searchInput.addEventListener('keydown', function(e) {
+            const items = dropdown.querySelectorAll('.autocomplete-item');
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                updateSelection(items);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                updateSelection(items);
+            } else if (e.key === 'Enter' && selectedIndex >= 0) {
+                e.preventDefault();
+                items[selectedIndex].click();
+            } else if (e.key === 'Escape') {
+                hideDropdown();
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                hideDropdown();
+            }
+        });
+    }
+
+    async function fetchSuggestions(query) {
+        try {
+            const response = await fetch(`/autocomplete?q=${encodeURIComponent(query)}`);
+            const suggestions = await response.json();
+            showSuggestions(suggestions);
+        } catch (error) {
+            console.error('Autocomplete error:', error);
+            hideDropdown();
+        }
+    }
+
+    function showSuggestions(suggestions) {
+        const dropdown = document.getElementById('autocomplete-dropdown');
+        const searchInput = document.getElementById('q');
+
+        if (suggestions.length === 0) {
+            hideDropdown();
+            return;
+        }
+
+        dropdown.innerHTML = suggestions
+            .map((suggestion, index) =>
+                `<div class="autocomplete-item" data-index="${index}">${escapeHtml(suggestion)}</div>`)
+            .join('');
+
+        dropdown.style.display = 'block';
+        selectedIndex = -1;
+
+        dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+            item.addEventListener('click', function() {
+                searchInput.value = this.textContent;
+                hideDropdown();
+                searchInput.form.submit();
+            });
+        });
+    }
+
+    function hideDropdown() {
+        const dropdown = document.getElementById('autocomplete-dropdown');
+        dropdown.style.display = 'none';
+        selectedIndex = -1;
+    }
+
+    function updateSelection(items) {
+        items.forEach((item, index) => {
+            item.classList.toggle('selected', index === selectedIndex);
+        });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     document.addEventListener('DOMContentLoaded', (e) => {
         document.querySelectorAll('button.playlist-tile').forEach(elem => {
             elem.addEventListener('click', playlistTileClickHandler.bind(elem))
-        })
+        });
+
+        initAutocomplete();
     })
 </script>

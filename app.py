@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, abort, send_from_directory, redirect, make_response
+from flask import Flask, request, render_template, abort, send_from_directory, redirect, make_response, jsonify
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
@@ -35,6 +35,16 @@ def search():
     else:
         tracks = None
     return render_template("search_results.html", tracks=tracks, terms=terms)
+
+@app.route('/autocomplete')
+def autocomplete():
+    db = Database(init_client=False)
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify([])
+
+    suggestions = db.get_autocomplete_suggestions(app.session, query)
+    return jsonify(suggestions)
 
 @app.route('/genre/<genre_name>')
 def genre(genre_name):
