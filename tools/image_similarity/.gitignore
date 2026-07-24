@@ -1,0 +1,5 @@
+.phash_cache.json
+.clip_cache.npz
+report.html
+phash_query_report.html
+clip_report.html
