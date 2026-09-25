@@ -22,13 +22,8 @@
 </section>
 <script>
 const TREE = {{ tree|tojson }};
-// categorical slots in family order (validated default palette); ink chosen for contrast on each fill
-const COLORS = {
-    'Jazz': ['#2a78d6', '#fff'], 'Rock': ['#eb6834', '#fff'], 'Soul, funk & blues': ['#1baf7a', '#0b0b0b'],
-    'Folk & country': ['#eda100', '#0b0b0b'], 'Pop': ['#e87ba4', '#0b0b0b'], 'Global': ['#008300', '#fff'],
-    'Electronic & hip hop': ['#4a3aa7', '#fff'], 'Experimental & classical': ['#e34948', '#fff'],
-    'Other': ['#9a9994', '#0b0b0b'],
-};
+// [fill, ink] per family, from genre_families.COLORS
+const COLORS = {{ colors|tojson }};
 const genreUrl = g => '/genre/' + encodeURIComponent(g);
 const fmt = v => v >= 10 ? Math.round(v).toLocaleString() : v.toFixed(1);
 const tip = document.getElementById('tip');

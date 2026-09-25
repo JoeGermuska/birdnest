@@ -3,6 +3,7 @@ from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
 import factoids
+import genre_families
 from datetime import date
 from collections import Counter
 import os
@@ -64,7 +65,8 @@ def genre(genre_name):
 
 @app.route('/genres/map')
 def genre_map():
-    return render_template('genre_map.html', tree=factoids.get_history().genre_tree())
+    return render_template('genre_map.html', tree=factoids.get_history().genre_tree(),
+                           colors=genre_families.COLORS)
 
 @app.route('/genres')
 def genres():
@@ -116,6 +118,7 @@ def show_playlist(date_str):
     next_show = app.session.query(Playlist).filter(Playlist.date > playlist_date).order_by(Playlist.date).first()
     return render_template("playlist.html", playlist=playlist,
                            stats=history.show_stats(playlist.playlist_id),
+                           mix=history.show_mix(playlist.playlist_id),
                            facts=history.show_factoids(playlist.playlist_id),
                            notes=history.track_notes(playlist.playlist_id),
                            prev_show=prev_show, next_show=next_show)

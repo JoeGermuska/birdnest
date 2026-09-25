@@ -490,3 +490,13 @@ a.more:hover { color: #222 !important; }
 nav#topbar .nav-links { display: flex; gap: 18px; font-size: 1rem; margin-right: auto; margin-left: 24px; }
 nav#topbar .nav-links a { color: #ccc; }
 nav#topbar .nav-links a:hover { color: #fff; }
+
+/* Show page genre-family mix */
+.mix { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.9rem; color: #555; }
+.mix-bars { display: flex; flex-direction: column; gap: 3px; width: 200px; }
+.mix-bar { display: flex; height: 12px; gap: 1px; border-radius: 3px; overflow: hidden; }
+.mix-bar.usual { height: 6px; opacity: 0.45; }
+.mix-seg { display: block; height: 100%; min-width: 1px; }
+.mix-seg.untagged { background: repeating-linear-gradient(135deg, #ddd 0 3px, #f4f4f4 3px 6px) !important; }
+a.mix-seg:hover { filter: brightness(0.85); }
+.mix-key { font-size: 0.7rem; line-height: 1.2; color: #555; }

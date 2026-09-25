@@ -33,6 +33,20 @@
                     </span>
                     <a class="more" href="{{ url_for('novelty', h=playlist.date) }}">ranking →</a>
                 </div>
+                <div class="mix">
+                    <span class="novelty-label">Mix</span>
+                    <div class="mix-bars">
+                        <div class="mix-bar" aria-label="Share of this show's runtime by genre family">
+                            {% for seg in mix.show %}<a href="{{ url_for('genre_map') }}" class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}"
+                               title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}% of runtime{{ '\n' }}{{ seg.tracks|join('\n') }}"></a>{% endfor %}
+                        </div>
+                        <div class="mix-bar usual" aria-label="Usual mix across nearby shows">
+                            {% for seg in mix.usual %}<span class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}"
+                               title="Usual {{ seg.family or 'no genre data' }}: {{ (seg.share * 100)|round|int }}%"></span>{% endfor %}
+                        </div>
+                    </div>
+                    <span class="mix-key">this show<br><span class="muted">usual</span></span>
+                </div>
             </div>
         </header>
         {{ factoids(facts) }}

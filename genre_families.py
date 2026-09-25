@@ -45,6 +45,14 @@ OVERRIDES = {'fourth world': 'Experimental & classical', 'lovers rock': 'Global'
 OTHER = 'Other'
 FAMILY_NAMES = [f for f, _ in FAMILIES] + [OTHER]
 
+# fill and ink per family: the validated default categorical palette, in family order
+COLORS = {
+    'Jazz': ('#2a78d6', '#fff'), 'Rock': ('#eb6834', '#fff'), 'Soul, funk & blues': ('#1baf7a', '#0b0b0b'),
+    'Folk & country': ('#eda100', '#0b0b0b'), 'Pop': ('#e87ba4', '#0b0b0b'), 'Global': ('#008300', '#fff'),
+    'Electronic & hip hop': ('#4a3aa7', '#fff'), 'Experimental & classical': ('#e34948', '#fff'),
+    OTHER: ('#9a9994', '#0b0b0b'),
+}
+
 
 def by_keyword(genre):
     if genre in OVERRIDES:

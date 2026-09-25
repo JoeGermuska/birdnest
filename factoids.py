@@ -171,6 +171,9 @@ class History:
         self.artist_rank = {a: 1 + sum(1 for a2 in self.artist_shows if len(self.artist_shows[a2]) > len(v))
                             for a, v in self.artist_shows.items()}
 
+        self.family_of = genre_families.assign(self.artist_genres)
+        self.mix = {pid: self._family_mix(pid) for pid in self.show_tracks}
+
         # Novelty: share of a show's artists who had never been played before.
         # It trends down as the pool of already-played artists grows, so rank
         # each show against a sliding window of neighboring shows.
@@ -211,6 +214,37 @@ class History:
                     n.returning.append((self.artists[aid]['name'], a_dates[i - 1], (d - a_dates[i - 1]).days))
             notes[tid] = n
         return notes
+
+    def _family_mix(self, pid):
+        """Share of a show's runtime per genre family (each track split evenly across the
+        families of its artists' genres), plus the tracks behind each family."""
+        total = sum(self.tracks[t]['duration_ms'] or 0 for t in self.show_tracks[pid]) or 1
+        shares, tracks = Counter(), defaultdict(list)
+        for t in self.show_tracks[pid]:
+            ms = self.tracks[t]['duration_ms'] or 0
+            fams = {self.family_of[g] for a in self.track_artists[t] for g in self.artist_genres[a]}
+            for f in fams or {None}:  # None = no genre data
+                shares[f] += ms / len(fams or {None}) / total
+                tracks[f].append(self.tracks[t]['name'])
+        return shares, tracks
+
+    def show_mix(self, playlist_id):
+        """This show's family mix and the average mix of the shows around it."""
+        ordered = sorted(self.show_tracks, key=self.show_dates.get)
+        i = ordered.index(playlist_id)
+        lo = max(0, min(i - NOVELTY_WINDOW, len(ordered) - 2 * NOVELTY_WINDOW - 1))
+        peers = ordered[lo:lo + 2 * NOVELTY_WINDOW + 1]
+        usual = Counter()
+        for p in peers:
+            usual.update({f: v / len(peers) for f, v in self.mix[p][0].items()})
+        shares, tracks = self.mix[playlist_id]
+        order = genre_families.FAMILY_NAMES + [None]
+
+        def segments(values, with_tracks):
+            return [{'family': f, 'share': values[f], 'color': genre_families.COLORS.get(f, ('#ddd', '#222'))[0],
+                     'tracks': tracks[f] if with_tracks else []}
+                    for f in order if values.get(f, 0) > 0.001]
+        return {'show': segments(shares, True), 'usual': segments(usual, False)}
 
     def show_stats(self, playlist_id):
         """Plain playlist-level metadata."""
@@ -304,27 +338,6 @@ class History:
                       *_join([[self._artist_part(a), f" (went on to {total} shows)"] for _, total, a in firsts[:3]]),
                       more={'ranking': 'artists', 'anchor': self.artists[firsts[0][2]]['spotify_id'],
                             'text': 'most played artists'})
-
-        # Genre lean: which genres are most over-represented tonight vs. other shows
-        tonight = Counter()
-        for t in tids:
-            genres = set()
-            for aid in self.track_artists[t]:
-                genres |= self.artist_genres[aid]
-            tonight.update(genres)
-        leans = []
-        for g, n in tonight.items():
-            # baseline is every *other* show, so a theme night doesn't define its own normal
-            elsewhere = self.genre_track_counts[g] - n
-            if n < 3 or elsewhere < GENRE_MIN_TRACKS:
-                continue
-            lift = (n / len(tids)) / (elsewhere / (self.total_track_plays - len(tids)))
-            if lift > 1.5:
-                leans.append((n * math.log(lift), g, lift))
-        if leans:
-            leans.sort(reverse=True)
-            facts.add('genre', 'Leaning', *_join([[{'genre': g, 'text': g}, f" ({lift:.1f}×)"]
-                                                  for _, g, lift in leans[:3]]))
 
         # Label concentration
         labels = Counter(self.tracks[t]['label'] for t in tids if self.tracks[t]['label'])
