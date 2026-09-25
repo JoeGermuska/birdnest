@@ -10,7 +10,7 @@ from collections import Counter
 # (family, keywords) -- family order is also the chart color order
 FAMILIES = [
     ('Jazz', ['jazz', 'bop', 'swing', 'big band', 'dixieland', 'stride', 'free improvisation', 'hammond organ',
-              'tzadik', 'spiritual jazz']),
+              'tzadik', 'spiritual jazz', 'ragtime']),
     ('Rock', ['rock', 'metal', 'punk', 'hardcore', 'grunge', 'emo', 'shoegaze', 'psych', 'garage', 'surf',
               'new wave', 'post-punk', 'mellow gold', 'british invasion', 'jam band', 'no wave', 'krautrock',
               'math', 'noise', 'slowcore', 'madchester', 'new romantic', 'darkwave', 'zolo', 'permanent wave']),
@@ -28,7 +28,9 @@ FAMILIES = [
                 'malian', 'nigerian', 'ghana', 'zambian', 'kenyan', 'arab', 'turkish', 'indian', 'bollywood',
                 'japanese', 'korean', 'thai', 'anatolian', 'balkan', 'celtic', 'world', 'cambodian', 'greek',
                 'iranian', 'persian', 'kora', 'gnawa', 'sega', 'wassoulou', 'fado', 'tuareg', 'chanson', 'french',
-                'brass band', 'street band', 'tanzanian', 'angolan', 'semba', 'kizomba', 'moombahton']),
+                'brass band', 'street band', 'tanzanian', 'angolan', 'semba', 'kizomba', 'moombahton', 'amapiano',
+                'gqom', 'singeli', 'bongo', 'ndombolo', 'rumba', 'iskelm', 'qawwali', 'ghazal', 'desi', 'hindi',
+                'malayalam', 'mollywood', 'arabesk', 'baglama']),
     ('Electronic & hip hop', ['hip hop', 'rap', 'drill', 'grime', 'boom bap', 'trap', 'turntablism', 'bboy',
                               'electronic', 'house', 'techno', 'ambient', 'idm', 'electronica', 'trip hop',
                               'downtempo', 'edm', 'dance', 'drum and bass', 'breakbeat', 'synth', 'chillwave',

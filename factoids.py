@@ -12,7 +12,7 @@ import sqlite3
 import genre_families
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from functools import lru_cache
 
 DB_PATH = 'birdnest.db'
@@ -116,6 +116,13 @@ class History:
         for r in con.execute(
                 "select ag.artist_id, g.name from artist_genre ag join genre g using(genre_id)"):
             self.artist_genres[r['artist_id']].add(r['name'])
+
+        # follower counts over time (see refresh_artists.py), oldest first
+        self.snapshots = defaultdict(list)
+        if con.execute("select 1 from sqlite_master where name='artist_snapshot'").fetchone():
+            for r in con.execute("select artist_id, fetched_at, followers from artist_snapshot "
+                                 "where followers is not null order by fetched_at"):
+                self.snapshots[r['artist_id']].append((date.fromisoformat(r['fetched_at']), r['followers']))
 
         self.artist_links = defaultdict(dict)  # artist_id -> {source: url}; see enrich_wikidata.py
         if con.execute("select 1 from sqlite_master where name='artist_link'").fetchone():
@@ -258,6 +265,18 @@ class History:
             'novelty_peers': self.novelty_peers.get(playlist_id, []),
         }
 
+    def followers_at(self, aid, d):
+        """Followers as of date d: the latest snapshot on or shortly after d (it's taken
+        when the show is loaded), else the nearest earlier one, else the stored value."""
+        snaps = self.snapshots.get(aid)
+        if not snaps:
+            return self.artists[aid]['followers']
+        after = [f for when, f in snaps if d <= when <= d + timedelta(days=14)]
+        if after:
+            return after[0]
+        before = [f for when, f in snaps if when <= d]
+        return before[-1] if before else snaps[0][1]
+
     def _artist_part(self, aid):
         return {'artist': self.artists[aid]['spotify_id'], 'text': self.artists[aid]['name']}
 
@@ -346,14 +365,15 @@ class History:
                 facts.add('label', 'Label of the night', f"{label} ({n} tracks)",
                           more={'ranking': 'labels', 'anchor': _slug(label), 'text': 'top labels'})
 
-        # Obscure-to-famous range
-        known = [a for a in distinct if self.artists[a]['followers'] is not None]
+        # Obscure-to-famous range, using follower counts from around the show
+        followers = {a: self.followers_at(a, d) for a in distinct}
+        known = [a for a in distinct if followers[a] is not None]
         if len(known) > 1:
-            lo = min(known, key=lambda a: self.artists[a]['followers'])
-            hi = max(known, key=lambda a: self.artists[a]['followers'])
+            lo = min(known, key=followers.get)
+            hi = max(known, key=followers.get)
             facts.add('range', 'Range', "from ", self._artist_part(lo),
-                      f" ({_compact(self.artists[lo]['followers'])} followers) to ", self._artist_part(hi),
-                      f" ({_compact(self.artists[hi]['followers'])})")
+                      f" ({_compact(followers[lo])} followers) to ", self._artist_part(hi),
+                      f" ({_compact(followers[hi])})")
 
         return facts
 

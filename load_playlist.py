@@ -1,6 +1,7 @@
 from spotclient import Client
 import models
 import enrich_musicbrainz
+import refresh_artists
 import enrich_wikidata
 
 db = models.Database()
@@ -19,6 +20,10 @@ print(f"saved playlist: {playlist.name}")
 
 db.rebuild_fts(session)
 session.commit()
+
+# snapshot tonight's artists (so each show keeps its own follower counts) plus
+# whichever artists are due for their roughly monthly refresh
+refresh_artists.main(force_ids={a.artist_id for t in playlist.tracks for a in t.artists})
 
 # look up new artists on MusicBrainz, then refresh links to other
 # representations of artists (Wikipedia, Discogs, ...)
