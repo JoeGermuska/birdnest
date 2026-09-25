@@ -80,12 +80,21 @@ def artist(spotify_id):
 def artists():
     return redirect(url_for('ranking', kind='artists'))
 
+@app.route('/rankings/novelty')
+def novelty():
+    history = factoids.get_history()
+    return render_template('novelty.html', series=history.novelty_series(), history=history,
+                           highlight=request.args.get('h'), rankings=factoids.RANKINGS + ['novelty'], kind='novelty')
+
 @app.route('/rankings/<kind>')
 def ranking(kind):
-    table = factoids.get_history().ranking(kind) if kind in factoids.RANKINGS else None
+    highlight = request.args.get('h')
+    history = factoids.get_history()
+    table = history.ranking(kind, highlight=highlight) if kind in factoids.RANKINGS else None
     if not table:
         abort(404)
-    return render_template('ranking.html', kind=kind, table=table, rankings=factoids.RANKINGS)
+    return render_template('ranking.html', kind=kind, table=table, highlight=highlight, history=history,
+                           rankings=factoids.RANKINGS + ['novelty'])
 
 
 @app.route('/playlist/<date_str>')

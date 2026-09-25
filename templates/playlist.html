@@ -31,7 +31,7 @@
                         {%- elif stats.novelty_rank <= 0.2 %}more familiar than most nearby shows
                         {%- else %}typical for its time{% endif -%}
                     </span>
-                    <a class="more" href="{{ url_for('ranking', kind='novelty') }}#{{ playlist.date }}">ranking →</a>
+                    <a class="more" href="{{ url_for('novelty', h=playlist.date) }}">ranking →</a>
                 </div>
             </div>
         </header>

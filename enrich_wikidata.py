@@ -1,5 +1,9 @@
-"""Look up artists on Wikidata by Spotify artist ID and store links to other
-representations of them (Wikipedia, MusicBrainz, Discogs, ...) in artist_link.
+"""Look up artists on Wikidata and store links to other representations of
+them (Wikipedia, MusicBrainz, Discogs, ...) in artist_link.
+
+Artists are found by Spotify artist ID, or by the Wikidata id MusicBrainz has
+for them (see enrich_musicbrainz.py); links MusicBrainz knows about fill in
+anything Wikidata lacks.
 
 Rebuilds the table from scratch each run; it's a few dozen batched queries.
     python enrich_wikidata.py [path/to/birdnest.db]
@@ -17,12 +21,11 @@ BATCH = 200
 
 # source name -> (SPARQL variable expression, URL template for the raw value)
 QUERY = """
-SELECT ?sp ?item (SAMPLE(?article) AS ?wikipedia) (SAMPLE(?mbid) AS ?musicbrainz)
+SELECT ?key ?item (SAMPLE(?article) AS ?wikipedia) (SAMPLE(?mbid) AS ?musicbrainz)
        (SAMPLE(?discogs) AS ?discogs_id) (SAMPLE(?bandcamp) AS ?bandcamp_id)
        (SAMPLE(?allmusic) AS ?allmusic_id) (SAMPLE(?website) AS ?official)
 WHERE {
-  VALUES ?sp { %s }
-  ?item wdt:P1902 ?sp .
+  %s
   OPTIONAL { ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> }
   OPTIONAL { ?item wdt:P434 ?mbid }
   OPTIONAL { ?item wdt:P1953 ?discogs }
@@ -30,7 +33,7 @@ WHERE {
   OPTIONAL { ?item wdt:P1728 ?allmusic }
   OPTIONAL { ?item wdt:P856 ?website }
 }
-GROUP BY ?sp ?item
+GROUP BY ?key ?item
 """
 
 LINKS = {
@@ -46,9 +49,18 @@ COLUMNS = {'wikipedia': 'wikipedia', 'wikidata': 'item', 'musicbrainz': 'musicbr
            'discogs': 'discogs_id', 'bandcamp': 'bandcamp_id', 'allmusic': 'allmusic_id', 'website': 'official'}
 
 
-def run_query(spotify_ids):
-    values = ' '.join(f'"{s}"' for s in spotify_ids)
-    body = urllib.parse.urlencode({'query': QUERY % values}).encode()
+# (binding clause, how to write one key in its VALUES list)
+BY_SPOTIFY = ('VALUES ?key { %s } ?item wdt:P1902 ?key .', '"{}"'.format)
+BY_QID = ('VALUES ?item { %s } BIND(STRAFTER(STR(?item), "/entity/") AS ?key)', 'wd:{}'.format)
+
+# MusicBrainz relationship type -> our source name
+MB_SOURCES = {'discogs': 'discogs', 'bandcamp': 'bandcamp', 'allmusic': 'allmusic', 'official homepage': 'website'}
+
+
+def run_query(binding, keys):
+    clause, fmt = binding
+    values = ' '.join(fmt(k) for k in keys)
+    body = urllib.parse.urlencode({'query': QUERY % (clause % values)}).encode()
     req = urllib.request.Request(ENDPOINT, data=body, headers={
         'User-Agent': USER_AGENT, 'Accept': 'application/sparql-results+json'})
     for attempt in range(4):
@@ -61,31 +73,45 @@ def run_query(spotify_ids):
     raise RuntimeError('Wikidata query failed')
 
 
+def fetch(binding, key_to_artist, links):
+    keys = list(key_to_artist)
+    for i in range(0, len(keys), BATCH):
+        for b in run_query(binding, keys[i:i + BATCH]):
+            artist_id = key_to_artist[b['key']['value']]
+            if artist_id in links:  # one key mapped to several items; keep the first
+                continue
+            links[artist_id] = {source: LINKS[source](b[column]['value'])
+                                for source, column in COLUMNS.items() if column in b}
+        print(f"  {min(i + BATCH, len(keys))}/{len(keys)}, {len(links)} artists linked")
+        time.sleep(1)
+
+
 def main(db_path='birdnest.db'):
     con = sqlite3.connect(db_path)
     con.execute("""create table if not exists artist_link (
         artist_id integer references artist(artist_id), source varchar, url varchar)""")
-    ids = dict(con.execute("select spotify_id, artist_id from artist where spotify_id is not null"))
-    rows = []
-    spotify_ids = list(ids)
-    for i in range(0, len(spotify_ids), BATCH):
-        batch = spotify_ids[i:i + BATCH]
-        seen = set()
-        for b in run_query(batch):
-            artist_id = ids[b['sp']['value']]
-            if artist_id in seen:  # one Spotify id mapped to several items; keep the first
-                continue
-            seen.add(artist_id)
-            for source, column in COLUMNS.items():
-                if column in b:
-                    rows.append((artist_id, source, LINKS[source](b[column]['value'])))
-        print(f"{min(i + BATCH, len(spotify_ids))}/{len(spotify_ids)} artists, {len(rows)} links")
-        time.sleep(1)
+    has_mb = con.execute("select 1 from sqlite_master where name='mb_artist'").fetchone()
+    links = {}  # artist_id -> {source: url}
+
+    print("Wikidata by Spotify id")
+    fetch(BY_SPOTIFY, dict(con.execute("select spotify_id, artist_id from artist where spotify_id is not null")), links)
+
+    if has_mb:
+        qids = {q: a for a, q in con.execute("select artist_id, wikidata from mb_artist where wikidata is not null")
+                if a not in links}
+        print("Wikidata by MusicBrainz's Wikidata id")
+        fetch(BY_QID, qids, links)
+        for artist_id, mbid in con.execute("select artist_id, mbid from mb_artist where mbid is not null"):
+            links.setdefault(artist_id, {}).setdefault('musicbrainz', LINKS['musicbrainz'](mbid))
+        for artist_id, mb_type, url in con.execute("select artist_id, type, url from mb_artist_url"):
+            if mb_type in MB_SOURCES:
+                links.setdefault(artist_id, {}).setdefault(MB_SOURCES[mb_type], url)
+
+    rows = [(a, source, url) for a, sources in links.items() for source, url in sources.items()]
     with con:
         con.execute("delete from artist_link")
         con.executemany("insert into artist_link values (?, ?, ?)", rows)
-    matched = con.execute("select count(distinct artist_id) from artist_link").fetchone()[0]
-    print(f"matched {matched} of {len(ids)} artists")
+    print(f"{len(rows)} links for {len(links)} artists")
 
 
 if __name__ == '__main__':

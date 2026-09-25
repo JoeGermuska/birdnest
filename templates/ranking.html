@@ -1,29 +1,38 @@
 {% extends "_base.html" %}
 {% from "_macros.html" import parts %}
 {% block title %}{{ table.title }}{% endblock title %}
+
+{% macro row(r) %}
+<div class="rank-row{% if r.anchor == highlight %} is-highlight{% endif %}" id="{{ r.anchor }}" title="{{ r.tip }}">
+    <span class="rank-num">{{ r.rank }}</span>
+    <span class="rank-label">{{ parts(r.label) }}</span>
+    <svg class="rank-strip" viewBox="0 0 808 18" preserveAspectRatio="none" aria-hidden="true">
+        {% for y in range(history.first_date.year + 1, history.last_date.year + 1) %}{% set x = 4 + history.year_x(y, 800) %}<line class="year-rule" x1="{{ x }}" x2="{{ x }}" y1="0" y2="18" />{% endfor %}
+        {% if r.span %}{% set x1 = 4 + history.timeline_x(r.span[0], 800) %}{% set x2 = 4 + history.timeline_x(r.span[1], 800) %}
+        <rect class="gap" x="{{ x1 }}" y="6" width="{{ x2 - x1 }}" height="6" rx="2" />{% endif %}
+        {% for d in r.marks %}{% set x = 4 + history.timeline_x(d, 800) %}
+        <a href="{{ url_for('show_playlist', date_str=d) }}"><title>{{ d }}</title><rect class="hit" x="{{ x - 3 }}" y="0" width="6" height="18" /><line class="mark" x1="{{ x }}" x2="{{ x }}" y1="3" y2="15" /></a>
+        {% endfor %}
+    </svg>
+    <span class="rank-value">{{ r.value }}</span>
+</div>
+{% endmacro %}
+
 {% block content %}
 <section class="detail ranking">
-    <nav class="ranking-tabs">
-        {% for k in rankings %}<a href="{{ url_for('ranking', kind=k) }}"{% if k == kind %} aria-current="page"{% endif %}>{{ k|capitalize }}</a>{% endfor %}
-    </nav>
+    {% include "_ranking_tabs.html" %}
     <h1>{{ table.title }}</h1>
-    <p class="detail-meta">{{ table.blurb }}</p>
-    <table class="show-tracks ranking-table">
-        <thead><tr><th class="num">#</th>{% for c in table.columns %}<th{% if loop.index0 in table.numeric %} class="num"{% endif %}>{{ c }}</th>{% endfor %}</tr></thead>
-        <tbody>
-            {% for row in table.rows %}
-            <tr id="{{ row.anchor }}">
-                <td class="num seq">{% if loop.first or row.rank != table.rows[loop.index0 - 1].rank %}{{ row.rank }}{% endif %}</td>
-                {% for cell in row.cells %}<td{% if loop.index0 in table.numeric %} class="num"{% endif %}>{{ parts(cell) }}</td>{% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <p class="detail-meta">{{ table.blurb }}{% if table.total > table.rows|length %} Top {{ table.rows|length }} of {{ table.total }}.{% endif %}</p>
+    <div class="rank-rows">
+        <div class="rank-row rank-head"><span></span><span></span>{% include "_year_axis.html" %}<span class="rank-value">{{ table.unit }}</span></div>
+        {% for r in table.rows %}{{ row(r) }}{% endfor %}
+        {% if table.extra %}<div class="rank-gap">…</div>{% for r in table.extra %}{{ row(r) }}{% endfor %}{% endif %}
+    </div>
 </section>
 <script>
-    // scroll the highlighted row to the middle of the screen rather than the top
     window.addEventListener('DOMContentLoaded', () => {
-        const row = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+        const row = document.querySelector('.is-highlight') ||
+            (location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1))));
         if (row) row.scrollIntoView({block: 'center'});
     });
 </script>

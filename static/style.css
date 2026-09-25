@@ -414,9 +414,44 @@ a.more:hover { color: #222 !important; }
 .ranking-tabs { display: flex; gap: 16px; margin: 16px 0 0; font-size: 0.9rem; }
 .ranking-tabs a { color: #555; text-decoration: none; padding-bottom: 2px; }
 .ranking-tabs a[aria-current] { color: #222; border-bottom: 2px solid #c0392b; }
-.ranking-table tr:target td { background: #fbeee6; }
-.ranking-table td:nth-child(n+2) { font-size: 0.95rem; }
-.ranking-table { width: auto; min-width: 70%; }
 
-.external-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.9rem; margin: 4px 0 10px; }
-.external-links a { color: #444; }
+.year-axis { position: relative; height: 1.2em; font-size: 0.72rem; color: #777; }
+.year-axis span { position: absolute; }
+
+.rank-rows { margin-top: 16px; }
+.rank-row { display: grid; grid-template-columns: 3ch minmax(160px, 280px) 1fr 7ch; gap: 10px; align-items: center; padding: 1px 4px; border-radius: 3px; }
+.rank-row:hover { background: #f6f4f0; }
+.rank-row:target, .rank-row.is-highlight { background: #fbeee6; }
+.rank-head { position: sticky; top: 0; background: #fff; padding-bottom: 4px; z-index: 1; }
+.rank-head:hover { background: #fff; }
+.rank-num { text-align: right; color: #999; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.rank-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+.rank-label a { color: #222; text-decoration: none; }
+.rank-label a:hover { text-decoration: underline dotted; }
+.rank-strip { width: 100%; height: 18px; display: block; }
+.rank-strip .year-rule { stroke: #eee; vector-effect: non-scaling-stroke; }
+.rank-strip .mark { stroke: #c0392b; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.rank-strip a:hover .mark { stroke: #222; stroke-width: 2.5; }
+.rank-strip .hit { fill: transparent; }
+.rank-strip .gap { fill: #8e44ad; fill-opacity: 0.35; }
+.rank-value { text-align: right; font-size: 0.8rem; color: #555; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rank-gap { text-align: center; color: #999; }
+
+.novelty-chart { margin: 16px 0; }
+.novelty-chart svg { width: 100%; height: auto; display: block; }
+.novelty-chart .grid { stroke: #eee; }
+.novelty-chart .year-rule { stroke: #f2f2f2; }
+.novelty-chart .tick { font-size: 10px; fill: #888; }
+.novelty-chart .median { fill: none; stroke: #555; stroke-width: 2; }
+.novelty-chart circle { fill: #999; fill-opacity: 0.55; stroke: #fff; stroke-width: 1; }
+.novelty-chart a:hover circle { fill: #222; fill-opacity: 1; }
+.novelty-chart a.is-highlight circle { fill: #c0392b; fill-opacity: 1; stroke-width: 2; }
+.novelty-extremes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+.novelty-extremes ol { padding-left: 1.5em; margin: 0; }
+.novelty-extremes li { padding: 2px 0; }
+
+@media (max-width: 700px) {
+    .rank-row { grid-template-columns: 3ch 1fr 6ch; }
+    .rank-strip { grid-column: 2 / 4; grid-row: 2; }
+    .rank-head { display: none; }
+}

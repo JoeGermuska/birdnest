@@ -14,7 +14,7 @@
     {% for f in facts %}
     <div class="factoid factoid-{{ f.kind }}">
         <dt>{{ f.label }}</dt>
-        <dd>{{ parts(f.parts) }}{% if f.more %} <a class="more" href="{{ url_for('ranking', kind=f.more.ranking) }}#{{ f.more.anchor }}">{{ f.more.text }} →</a>{% endif %}</dd>
+        <dd>{{ parts(f.parts) }}{% if f.more %} <a class="more" href="{{ url_for('ranking', kind=f.more.ranking, h=f.more.anchor) }}#{{ f.more.anchor }}">{{ f.more.text }} →</a>{% endif %}</dd>
     </div>
     {% endfor %}
 </dl>

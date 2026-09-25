@@ -451,43 +451,37 @@ class History:
                 'related': [(g, k) for score, g, k in related[:12] if score > 0]}
 
 
-    def ranking(self, kind):
-        """Return {'title', 'blurb', 'columns', 'rows'} for a ranking page, or None.
-        Each row has 'anchor', 'rank' and 'cells' (lists of parts, like factoids)."""
+    def ranking(self, kind, highlight=None, limit=100):
+        """Return a ranking for a visual page: {'title', 'blurb', 'unit', 'rows'} where
+        each row has 'anchor', 'rank', 'label' (parts), 'value', 'tip', and either
+        'marks' (dates to tick) or 'span' (a date range). Rows past `limit` are
+        dropped, except the highlighted one."""
         builder = getattr(self, f"_rank_{kind}", None)
-        return builder() if builder else None
+        if not builder:
+            return None
+        table = builder()
+        rows = table['rows']
+        kept = rows[:limit]
+        for r in rows:
+            if highlight in r.get('also', ()):
+                r['anchor'] = highlight
+        extra = [r for r in rows[limit:] if r['anchor'] == highlight]
+        table.update(rows=kept, extra=extra, total=len(rows))
+        return table
+
+    def _dated_rows(self, items, anchor, label, tip):
+        """items: list of (key, sorted dates) ordered best-first."""
+        ranks = _competition_ranks([len(d) for _, d in items])
+        return [{'anchor': anchor(k), 'rank': r, 'label': label(k), 'value': len(dates),
+                 'marks': dates, 'tip': tip(k, dates)} for r, (k, dates) in zip(ranks, items)]
 
     def _rank_artists(self):
-        items = sorted(self.artist_shows.items(), key=lambda kv: (-len(kv[1]), self.artists[kv[0]]['name']))
-        items = [kv for kv in items if len(kv[1]) >= 3]
-        ranks = _competition_ranks([len(v) for _, v in items])
-        rows = []
-        for rank, (aid, pids) in zip(ranks, items):
-            dates = sorted(self.show_dates[p] for p in pids)
-            rows.append({'anchor': self.artists[aid]['spotify_id'], 'rank': rank, 'cells': [
-                [self._artist_part(aid)], [str(len(pids))],
-                [{'show': dates[0], 'text': str(dates[0])}], [{'show': dates[-1], 'text': str(dates[-1])}]]})
-        return {'title': 'Most played artists', 'blurb': 'Ranked by the number of shows they appeared in (3 or more).',
-                'columns': ['Artist', 'Shows', 'First', 'Latest'], 'numeric': [1], 'rows': rows}
-
-    def _rank_novelty(self):
-        scored = []
-        for pid, share in self.novelty.items():
-            peers = self.novelty_peers[pid]
-            median = peers[len(peers) // 2]
-            scored.append((round((share - median) * 100), pid, share, median))
-        scored.sort(key=lambda x: (-x[0], self.show_dates[x[1]]))
-        ranks = _competition_ranks([x[0] for x in scored])
-        rows = []
-        for rank, (diff, pid, share, median) in zip(ranks, scored):
-            d = self.show_dates[pid]
-            rows.append({'anchor': str(d), 'rank': rank, 'cells': [
-                [{'show': d, 'text': str(d)}], [str(round(share * 100))], [str(round(median * 100))],
-                [f"{diff:+d}"]]})
-        return {'title': 'Novelty', 'blurb': "Novelty is the share of a show's artists who had never been played before. "
-                "Since that naturally falls over time, shows are ranked by how far they sit above or below "
-                f"the median of the {2 * NOVELTY_WINDOW} shows around them.",
-                'columns': ['Show', 'Novelty', 'Neighbors', 'Difference'], 'numeric': [1, 2, 3], 'rows': rows}
+        items = sorted(((a, sorted(self.show_dates[p] for p in pids)) for a, pids in self.artist_shows.items()
+                        if len(pids) >= 3), key=lambda kv: (-len(kv[1]), self.artists[kv[0]]['name']))
+        rows = self._dated_rows(items, lambda a: self.artists[a]['spotify_id'], lambda a: [self._artist_part(a)],
+                                lambda a, d: f"{self.artists[a]['name']}: {len(d)} shows, {d[0]} to {d[-1]}")
+        return {'title': 'Most played artists', 'unit': 'shows', 'rows': rows,
+                'blurb': 'Artists by the number of shows they appeared in; each tick is a show.'}
 
     def _rank_tracks(self):
         names = {}
@@ -495,56 +489,65 @@ class History:
             names.setdefault(self.recording_key(t), t)
         items = sorted(((k, v) for k, v in self.recording_dates.items() if len(v) > 1),
                        key=lambda kv: (-len(kv[1]), self.tracks[names[kv[0]]]['name']))
-        ranks = _competition_ranks([len(v) for _, v in items])
-        rows = []
-        for rank, (key, dates) in zip(ranks, items):
-            t = names[key]
-            rows.append({'anchor': _slug(key), 'rank': rank, 'cells': [
-                [self.tracks[t]['name']], _join([self._artist_part(a) for a in self.track_artists[t]]),
-                [str(len(dates))], _join([{'show': d, 'text': str(d)} for d in dates])]})
-        return {'title': 'Most repeated tracks', 'blurb': 'Recordings played at more than one show, grouped by ISRC '
-                'so the same recording on different releases counts together.',
-                'columns': ['Track', 'Artist', 'Plays', 'Shows'], 'numeric': [2], 'rows': rows}
+
+        def label(k):
+            t = names[k]
+            return [f"“{self.tracks[t]['name']}” · "] + _join([self._artist_part(a) for a in self.track_artists[t]])
+        rows = self._dated_rows(items, _slug, label,
+                                lambda k, d: f"{self.tracks[names[k]]['name']}: " + ', '.join(map(str, d)))
+        return {'title': 'Most repeated tracks', 'unit': 'plays', 'rows': rows,
+                'blurb': 'Recordings played at more than one show (the same recording on different releases '
+                         'counts together); each tick is a play.'}
 
     def _rank_labels(self):
-        plays, shows, artists = Counter(), defaultdict(set), defaultdict(Counter)
+        dates, artists = defaultdict(list), defaultdict(Counter)
         for pid, tids in self.show_tracks.items():
             for t in tids:
                 label = self.tracks[t]['label']
                 if label:
-                    plays[label] += 1
-                    shows[label].add(pid)
+                    dates[label].append(self.show_dates[pid])
                     artists[label].update(self.track_artists[t])
-        items = [(l, n) for l, n in plays.most_common() if n >= 5]
-        ranks = _competition_ranks([n for _, n in items])
-        rows = []
-        for rank, (label, n) in zip(ranks, items):
-            rows.append({'anchor': _slug(label), 'rank': rank, 'cells': [
-                [label], [str(n)], [str(len(shows[label]))],
-                _join([self._artist_part(a) for a, _ in artists[label].most_common(3)])]})
-        return {'title': 'Top labels', 'blurb': "Labels as Spotify reports them (so reissue imprints like Rhino and "
-                "Legacy aren't merged with their parents), with 5 or more plays.",
-                'columns': ['Label', 'Plays', 'Shows', 'Most played artists'], 'numeric': [1, 2], 'rows': rows}
+        items = sorted(((l, sorted(d)) for l, d in dates.items() if len(d) >= 5), key=lambda kv: (-len(kv[1]), kv[0]))
+        rows = self._dated_rows(items, _slug, lambda l: [l], lambda l, d: f"{l}: {len(d)} plays. Most played: " +
+                                ', '.join(self.artists[a]['name'] for a, _ in artists[l].most_common(3)))
+        return {'title': 'Top labels', 'unit': 'plays', 'rows': rows,
+                'blurb': "Labels as Spotify reports them (reissue imprints like Rhino and Legacy aren't merged "
+                         "with their parents); each tick is a play."}
 
     def _rank_returns(self):
-        gaps = []
+        # co-credited artists returning together on the same track share one row
+        groups = defaultdict(list)
         for aid, dates in self.artist_dates.items():
             for a, b in zip(dates, dates[1:]):
-                days = (b - a).days
-                if days >= 365:
-                    gaps.append((days, aid, a, b))
-        gaps.sort(key=lambda g: (-g[0], g[3]))
-        ranks = _competition_ranks([g[0] for g in gaps])
+                if (b - a).days >= 365:
+                    track = next(t for t in self.show_tracks[self.pid_by_date[b]] if aid in self.track_artists[t])
+                    groups[(a, b, track)].append(aid)
+        gaps = sorted(groups.items(), key=lambda g: (-(g[0][1] - g[0][0]).days, g[0][1]))
+        ranks = _competition_ranks([(b - a).days for (a, b, _), _ in gaps])
         rows = []
-        for rank, (days, aid, a, b) in zip(ranks, gaps):
-            rows.append({'anchor': f"{self.artists[aid]['spotify_id']}-{b}", 'rank': rank, 'cells': [
-                [self._artist_part(aid)], [_years_months(days)],
-                [{'show': a, 'text': str(a)}], [{'show': b, 'text': str(b)}]]})
-        return {'title': 'Longest absences', 'blurb': 'Artists who came back after a year or more away.',
-                'columns': ['Artist', 'Gap', 'Last played', 'Back'], 'numeric': [], 'rows': rows}
+        for r, ((a, b, track), aids) in zip(ranks, gaps):
+            aids.sort(key=lambda x: self.track_artists[track].index(x))
+            names = ', '.join(self.artists[x]['name'] for x in aids)
+            rows.append({'anchor': f"{self.artists[aids[0]]['spotify_id']}-{b}", 'rank': r,
+                         'label': _join([self._artist_part(x) for x in aids]),
+                         'value': _years_months((b - a).days), 'span': (a, b), 'marks': self.artist_dates[aids[0]],
+                         'tip': f"{names}: last played {a}, back {b} with “{self.tracks[track]['name']}”",
+                         'also': [f"{self.artists[x]['spotify_id']}-{b}" for x in aids[1:]]})
+        return {'title': 'Longest absences', 'unit': '', 'rows': rows,
+                'blurb': "Artists who came back after a year or more away. The bar is the gap; "
+                         "ticks are the artist's other shows."}
+
+    def novelty_series(self):
+        """Every show's novelty and its neighborhood median, in date order, for the novelty chart."""
+        out = []
+        for pid in sorted(self.novelty, key=self.show_dates.get):
+            peers = self.novelty_peers[pid]
+            out.append({'date': self.show_dates[pid], 'novelty': self.novelty[pid],
+                        'median': peers[len(peers) // 2], 'rank': self.novelty_rank[pid]})
+        return out
 
 
-RANKINGS = ['artists', 'tracks', 'novelty', 'returns', 'labels']
+RANKINGS = ['artists', 'tracks', 'returns', 'labels']  # novelty has its own chart page
 
 
 @lru_cache(maxsize=1)

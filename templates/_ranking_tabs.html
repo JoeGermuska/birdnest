@@ -1,0 +1,3 @@
+<nav class="ranking-tabs">
+    {% for k in rankings %}<a href="{{ url_for('novelty') if k == 'novelty' else url_for('ranking', kind=k) }}"{% if k == kind %} aria-current="page"{% endif %}>{{ k|capitalize }}</a>{% endfor %}
+</nav>

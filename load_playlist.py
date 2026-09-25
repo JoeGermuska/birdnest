@@ -1,5 +1,6 @@
 from spotclient import Client
 import models
+import enrich_musicbrainz
 import enrich_wikidata
 
 db = models.Database()
@@ -19,5 +20,7 @@ print(f"saved playlist: {playlist.name}")
 db.rebuild_fts(session)
 session.commit()
 
-# refresh links to other representations of artists (Wikipedia, MusicBrainz, ...)
+# look up new artists on MusicBrainz, then refresh links to other
+# representations of artists (Wikipedia, Discogs, ...)
+enrich_musicbrainz.main()
 enrich_wikidata.main()

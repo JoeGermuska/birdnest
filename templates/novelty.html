@@ -1,0 +1,34 @@
+{% extends "_base.html" %}
+{% block title %}Novelty{% endblock title %}
+{% block content %}
+{% set W, H = 800, 220 %}
+{% macro y(v) %}{{ (16 + (1 - v) * H)|round(1) }}{% endmacro %}
+<section class="detail ranking">
+    {% include "_ranking_tabs.html" %}
+    <h1>Novelty</h1>
+    <p class="detail-meta">The share of each show's artists who had never been played before. It falls naturally as more
+        artists have already been played; the line is the median of the 40 shows around each one. Click a dot to open the show.</p>
+    <figure class="novelty-chart">
+        <svg viewBox="0 0 808 {{ H + 24 }}" role="img" aria-label="Novelty of every show over time">
+            {% for v in [0, 0.25, 0.5, 0.75, 1] %}
+            <line class="grid" x1="4" x2="804" y1="{{ y(v) }}" y2="{{ y(v) }}" />
+            <text class="tick" x="6" y="{{ y(v)|float - 3 }}">{{ (v * 100)|int }}%</text>
+            {% endfor %}
+            {% for yr in range(history.first_date.year + 1, history.last_date.year + 1) %}{% set x = 4 + history.year_x(yr, 800) %}<line class="year-rule" x1="{{ x }}" x2="{{ x }}" y1="16" y2="{{ H + 16 }}" />{% endfor %}
+            <polyline class="median" points="{% for p in series %}{{ 4 + history.timeline_x(p.date, W) }},{{ y(p.median) }} {% endfor %}" />
+            {% for p in series %}{% set hl = (p.date|string) == highlight %}
+            <a href="{{ url_for('show_playlist', date_str=p.date) }}"{% if hl %} class="is-highlight"{% endif %}>
+                <title>{{ p.date }}: {{ (p.novelty * 100)|round|int }}% new artists (neighbors {{ (p.median * 100)|round|int }}%)</title>
+                <circle cx="{{ 4 + history.timeline_x(p.date, W) }}" cy="{{ y(p.novelty) }}" r="{{ 6 if hl else 3.5 }}" />
+            </a>
+            {% endfor %}
+        </svg>
+        {% include "_year_axis.html" %}
+    </figure>
+    {% set ranked = series|sort(attribute='rank', reverse=True) %}
+    <div class="novelty-extremes">
+        <div><h2>Most novel for their time</h2><ol>{% for p in (series|sort(attribute='novelty', reverse=True)|sort(attribute='rank', reverse=True))[:8] %}<li><a href="{{ url_for('show_playlist', date_str=p.date) }}">{{ p.date }}</a> <span class="muted">{{ (p.novelty * 100)|round|int }}% vs {{ (p.median * 100)|round|int }}%</span></li>{% endfor %}</ol></div>
+        <div><h2>Most familiar for their time</h2><ol>{% for p in (series|sort(attribute='novelty')|sort(attribute='rank'))[:8] %}<li><a href="{{ url_for('show_playlist', date_str=p.date) }}">{{ p.date }}</a> <span class="muted">{{ (p.novelty * 100)|round|int }}% vs {{ (p.median * 100)|round|int }}%</span></li>{% endfor %}</ol></div>
+    </div>
+</section>
+{% endblock content %}
