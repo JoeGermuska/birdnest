@@ -37,7 +37,9 @@ class Client():
                     playlists = None                  
         return self._allbirds
 
-                  
+    def playlist(self, playlist_id):
+        return self._sp.playlist(playlist_id)
+
     def playlist_tracks(self, playlist_id, full=False):
         the_tracks = []
         tracks = self._sp.playlist_tracks(playlist_id)
