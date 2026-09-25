@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids %}
+{% from "_macros.html" import factoids, spotify_link %}
 {% block title %}{{ artist.name }}{% endblock title %}
 {% block content %}
 <section class="detail artist">
@@ -38,7 +38,7 @@
             {% for t in s.tracks %}
             <tr>
                 <td>{% if loop.first %}<a href="{{ url_for('show_playlist', date_str=s.date) }}">{{ s.date }}</a>{% endif %}</td>
-                <td>{{ t.name }}{% if t.others %}<div class="album">with {% for a in t.others %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
+                <td>{{ t.name }} {{ spotify_link(t.spotify_url, t.name) }}{% if t.others %}<div class="album">with {% for a in t.others %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
                 <td class="label">{{ t.album }}</td>
             </tr>
             {% endfor %}

@@ -500,3 +500,9 @@ nav#topbar .nav-links a:hover { color: #fff; }
 .mix-seg.untagged { background: repeating-linear-gradient(135deg, #ddd 0 3px, #f4f4f4 3px 6px) !important; }
 a.mix-seg:hover { filter: brightness(0.85); }
 .mix-key { font-size: 0.7rem; line-height: 1.2; color: #555; }
+
+/* Per-track Spotify link: faint until the row is hovered (always visible without hover) */
+table a.spotify-link, a.spotify-link { display: inline-block; vertical-align: -1px; margin-left: 4px; color: #1db954; opacity: 0.3; transition: opacity 0.15s; line-height: 0; }
+tr:hover a.spotify-link, a.spotify-link:focus-visible { opacity: 1; }
+table a.spotify-link:hover, a.spotify-link:hover { color: #169c46; }
+@media (hover: none) { a.spotify-link { opacity: 0.8; } }
