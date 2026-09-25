@@ -1,22 +1,22 @@
 {% extends "_base.html" %}
 {% from "_macros.html" import factoids %}
 
-{% block title %}Playlist for {{ playlist.date }}{% endblock title %}
+{% block title %}Playlist for {{ date }}{% endblock title %}
 
 {% block content %}
     <section class="playlist show">
         <nav class="show-nav">
-            {% if prev_show %}<a href="{{ url_for('show_playlist', date_str=prev_show.date) }}">&larr; {{ prev_show.date }}</a>{% else %}<span></span>{% endif %}
-            {% if next_show %}<a href="{{ url_for('show_playlist', date_str=next_show.date) }}">{{ next_show.date }} &rarr;</a>{% endif %}
+            {% if prev_date %}<a href="{{ url_for('show_playlist', date_str=prev_date) }}">&larr; {{ prev_date }}</a>{% else %}<span></span>{% endif %}
+            {% if next_date %}<a href="{{ url_for('show_playlist', date_str=next_date) }}">{{ next_date }} &rarr;</a>{% endif %}
         </nav>
         <header class="show-header">
-            <img class='playlist-image' src="{{ url_for('playlist_image', date_str=playlist.date) }}" alt="">
+            <img class='playlist-image' src="{{ url_for('playlist_image', date_str=date) }}" alt="" onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/vinyl-placeholder.png') }}'">
             <div>
-                <h1>Conference of the Birds — {{ playlist.date.strftime('%B %-d, %Y') }}</h1>
-                {% if playlist.description %}<p class="show-description">{{ playlist.description|safe }}</p>{% endif %}
+                <h1>Conference of the Birds — {{ date.strftime('%B %-d, %Y') }}</h1>
+                {% if show.description %}<p class="show-description">{{ show.description|safe }}</p>{% endif %}
                 <p class="show-meta">
                     {{ stats.tracks }} tracks · {{ stats.runtime_min // 60 }}h {{ '%02d' % (stats.runtime_min % 60) }}m · {{ stats.artists }} artists ·
-                    <a href="{{playlist.spotify_url}}"><i class="fab fa-spotify"></i> Spotify</a>
+                    <a href="{{ show.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a>
                 </p>
                 <div class="novelty" title="Share of this show's artists who had never been played before. Dots are the {{ stats.novelty_peers|length }} shows around this one.">
                     <span class="novelty-label">Novelty</span>
@@ -31,7 +31,7 @@
                         {%- elif stats.novelty_rank <= 0.2 %}more familiar than most nearby shows
                         {%- else %}typical for its time{% endif -%}
                     </span>
-                    <a class="more" href="{{ url_for('novelty', h=playlist.date) }}">ranking →</a>
+                    <a class="more" href="{{ url_for('novelty', h=date) }}">ranking →</a>
                 </div>
                 <div class="mix">
                     <span class="novelty-label">Mix</span>
@@ -56,17 +56,16 @@
                 <tr><th>#</th><th>Track</th><th>Artist</th><th>Label</th><th class="num">Time</th><th>Notes</th></tr>
             </thead>
             <tbody>
-                {% for pt in playlist.playlist_tracks %}
-                {% set track = pt.track %}
-                {% set n = notes.get(track.track_id) %}
+                {% for track in rows %}
+                {% set n = track.notes %}
                 <tr>
                     <td class="num seq">{{ loop.index }}</td>
                     <td>
                         <a class="track-name" href="{{ track.spotify_url }}" target="_blank">{{ track.name }}</a>
-                        {% if track.album %}<div class="album">{{ track.album.name }}</div>{% endif %}
+                        {% if track.album %}<div class="album">{{ track.album }}</div>{% endif %}
                     </td>
                     <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>
-                    <td class="label">{{ track.album.label if track.album }}</td>
+                    <td class="label">{{ track.label or '' }}</td>
                     <td class="num">{% if track.duration_ms %}{{ track.duration_ms // 60000 }}:{{ '%02d' % (track.duration_ms // 1000 % 60) }}{% endif %}</td>
                     <td class="notes">
                         {% if n %}

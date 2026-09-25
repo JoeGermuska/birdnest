@@ -4,9 +4,12 @@ Everything here is derived from the whole play history, so we load the
 (small) history once into memory and answer questions from that. The
 database only changes on deploy, so the cache is keyed on the file's mtime.
 """
+import hashlib
+import json
 import math
 import re
 import os
+import pickle
 import sqlite3
 
 import genre_families
@@ -97,8 +100,14 @@ class History:
         con.row_factory = sqlite3.Row
 
         self.show_dates = {}  # playlist_id -> date
-        for r in con.execute("select playlist_id, date from playlist where date is not null"):
+        self.shows = {}  # playlist_id -> description, spotify_url
+        for r in con.execute("select playlist_id, date, description, spotify_url, images from playlist "
+                             "where date is not null"):
             self.show_dates[r['playlist_id']] = date.fromisoformat(r['date'])
+            images = json.loads(r['images']) if r['images'] else []
+            self.shows[r['playlist_id']] = {'date': self.show_dates[r['playlist_id']], 'description': r['description'],
+                                            'spotify_url': r['spotify_url'],
+                                            'image_url': images[0]['url'] if images else None}
 
         self.artists = {r['artist_id']: dict(r) for r in con.execute(
             "select artist_id, name, spotify_id, followers, popularity from artist")}
@@ -108,7 +117,8 @@ class History:
             self.track_artists[r['track_id']].append(r['artist_id'])
 
         self.tracks = {r['track_id']: dict(r) for r in con.execute(
-            """select t.track_id, t.name, t.duration_ms, t.isrc_id, t.album_id, al.name album, al.label
+            """select t.track_id, t.name, t.duration_ms, t.isrc_id, t.album_id, t.spotify_url,
+                      al.name album, al.label
                from track t left join album al using(album_id)""")}
 
         # genres by *name* -- the genre table has duplicate rows per name
@@ -137,9 +147,6 @@ class History:
 
         # Recordings can appear under several Spotify track ids (single vs. album,
         # compilations); ISRC groups them so repeat counts are honest.
-        def recording_key(track_id):
-            return self.tracks[track_id]['isrc_id'] or f"t{track_id}"
-        self.recording_key = recording_key
 
         self.recording_dates = defaultdict(list)
         self.artist_dates = defaultdict(list)
@@ -148,7 +155,7 @@ class History:
         for pid in sorted(self.show_tracks, key=self.show_dates.get):
             d = self.show_dates[pid]
             for tid in self.show_tracks[pid]:
-                self.recording_dates[recording_key(tid)].append(d)
+                self.recording_dates[self.recording_key(tid)].append(d)
                 total_track_plays += 1
                 genres = set()
                 for aid in self.track_artists[tid]:
@@ -195,12 +202,30 @@ class History:
             self.novelty_peers[pid] = sorted(peers)
             self.novelty_rank[pid] = below / (len(peers) - 1) if len(peers) > 1 else 0.5
 
+    def recording_key(self, track_id):
+        # Recordings can appear under several Spotify track ids (single vs. album,
+        # compilations); ISRC groups them so repeat counts are honest.
+        return self.tracks[track_id]['isrc_id'] or f"t{track_id}"
+
     def _debut_share(self, pid):
         d = self.show_dates[pid]
         aids = {a for t in self.show_tracks[pid] for a in self.track_artists[t]}
         if not aids:
             return 0
         return sum(1 for a in aids if self.artist_dates[a][0] == d) / len(aids)
+
+    def show_rows(self, playlist_id):
+        """Everything the show page's track table needs, without touching the ORM."""
+        notes = self.track_notes(playlist_id)
+        return [{**self.tracks[t], 'artists': [self.artists[a] for a in self.track_artists[t]], 'notes': notes[t]}
+                for t in self.show_tracks[playlist_id]]
+
+    def neighbors(self, playlist_id):
+        """(previous, next) show dates."""
+        ordered = sorted(self.show_tracks, key=self.show_dates.get)
+        i = ordered.index(playlist_id)
+        return (self.show_dates[ordered[i - 1]] if i else None,
+                self.show_dates[ordered[i + 1]] if i + 1 < len(ordered) else None)
 
     def track_notes(self, playlist_id):
         """Return {track_id: TrackNotes} for one show."""
@@ -614,10 +639,54 @@ class History:
 RANKINGS = ['artists', 'tracks', 'returns', 'labels']  # novelty has its own chart page
 
 
+def _signature(db_path):
+    """Hash of the database file: mtimes change on git checkout and Docker COPY, content doesn't."""
+    h = hashlib.sha1()
+    with open(db_path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _cache_path(db_path):
+    return db_path + '.history.pickle'
+
+
+def build_cache(db_path=DB_PATH):
+    """Build the History and pickle it next to the database, so the web app can start
+    without rebuilding it. Run after loading data (load_playlist.py does) and at image build."""
+    history = History(db_path)
+    with open(_cache_path(db_path), 'wb') as f:
+        pickle.dump((_signature(db_path), history), f, protocol=pickle.HIGHEST_PROTOCOL)
+    return history
+
+
+def _load(db_path):
+    try:
+        with open(_cache_path(db_path), 'rb') as f:
+            signature, history = pickle.load(f)
+        if signature == _signature(db_path):
+            return history
+    except (OSError, pickle.UnpicklingError, EOFError, AttributeError):
+        pass
+    try:
+        return build_cache(db_path)
+    except OSError:  # read-only filesystem: just build in memory
+        return History(db_path)
+
+
 @lru_cache(maxsize=1)
-def _history_for(db_path, mtime):
-    return History(db_path)
+def _history_for(db_path, stat_key):
+    return _load(db_path)
 
 
 def get_history(db_path=DB_PATH):
-    return _history_for(db_path, os.path.getmtime(db_path))
+    st = os.stat(db_path)
+    return _history_for(db_path, (st.st_size, st.st_mtime_ns))
+
+
+if __name__ == '__main__':
+    import time
+    start = time.time()
+    build_cache()
+    print(f"built {_cache_path(DB_PATH)} in {time.time() - start:.1f}s")

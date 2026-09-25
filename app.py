@@ -8,7 +8,6 @@ from datetime import date
 from collections import Counter
 import os
 import json
-import requests
 from urllib.parse import urlparse 
 
 app = Flask(__name__,
@@ -23,9 +22,13 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 app.session = scoped_session(SessionLocal)
+
+# load the (pre-built) analysis cache at startup rather than on the first request
+factoids.get_history()
 @app.route('/')
 def index():
-    playlists = app.session.query(Playlist).order_by(Playlist.date.desc()).all()
+    history = factoids.get_history()
+    playlists = sorted(history.shows.values(), key=lambda s: s['date'], reverse=True)
     return render_template("index.html", playlists=playlists)
 
 @app.route('/search')
@@ -106,62 +109,48 @@ def ranking(kind):
 @app.route('/playlist/<date_str>')
 def show_playlist(date_str):
     try:
-        (year,month,day) = map(int,date_str.split('-',3))
-        playlist_date = date(year,month,day)
-    except Exception:
-        return "Invalid playlist URL", 400 
-    playlist = app.session.query(Playlist).filter(Playlist.date == playlist_date).scalar()
-    if playlist is None:
-        return f"No playlist for {date_str}", 404
+        playlist_date = date.fromisoformat(date_str)
+    except ValueError:
+        return "Invalid playlist URL", 400
     history = factoids.get_history()
-    prev_show = app.session.query(Playlist).filter(Playlist.date < playlist_date).order_by(Playlist.date.desc()).first()
-    next_show = app.session.query(Playlist).filter(Playlist.date > playlist_date).order_by(Playlist.date).first()
-    return render_template("playlist.html", playlist=playlist,
-                           stats=history.show_stats(playlist.playlist_id),
-                           mix=history.show_mix(playlist.playlist_id),
-                           facts=history.show_factoids(playlist.playlist_id),
-                           notes=history.track_notes(playlist.playlist_id),
-                           prev_show=prev_show, next_show=next_show)
+    pid = history.pid_by_date.get(playlist_date)
+    if pid is None:
+        return f"No playlist for {date_str}", 404
+    prev_date, next_date = history.neighbors(pid)
+    return render_template("playlist.html", date=playlist_date, show=history.shows[pid],
+                           rows=history.show_rows(pid),
+                           stats=history.show_stats(pid),
+                           mix=history.show_mix(pid),
+                           facts=history.show_factoids(pid),
+                           prev_date=prev_date, next_date=next_date)
 
 @app.route('/image/<date_str>')
 def playlist_image(date_str):
     try:
-        (year,month,day) = map(int,date_str.split('-',3))
-        playlist_date = date(year,month,day)
-    except Exception:
+        playlist_date = date.fromisoformat(date_str)
+    except ValueError:
         return "Invalid date format", 400
-    
-    playlist = app.session.query(Playlist).filter(Playlist.date == playlist_date).scalar()
-    
+    images_dir = os.path.join(app.static_folder, 'images')
 
-    # First, try date-based local file (YYYY-MM-DD format)
+    # First, a local file named for the date
     for ext in ['.jpg', '.png', '.jpeg', '.webp']:
         filename = f"{date_str}{ext}"
-        file_path = os.path.join(app.static_folder, 'images', filename)
-        if os.path.exists(file_path):
-            response = make_response(send_from_directory(os.path.join(app.static_folder, 'images'), filename))
+        if os.path.exists(os.path.join(images_dir, filename)):
+            response = make_response(send_from_directory(images_dir, filename))
             response.cache_control.max_age = 86400 * 30  # Cache for 30 days
             return response
-    
 
-    # Second, try the original Spotify image
-    if playlist and playlist.image_url:
-        try:
-            response = requests.head(playlist.image_url, timeout=5)
-            if response.status_code == 200:
-                return redirect(playlist.image_url)
-        except:
-            pass
-    
+    # Second, the original Spotify image; the page falls back to the placeholder if it's gone
+    history = factoids.get_history()
+    pid = history.pid_by_date.get(playlist_date)
+    if pid is not None and history.shows[pid]['image_url']:
+        return redirect(history.shows[pid]['image_url'])
 
-    # Finally, serve the generic placeholder
-    placeholder_path = os.path.join(app.static_folder, 'images', 'vinyl-placeholder.png')
-    if os.path.exists(placeholder_path):
-        response = make_response(send_from_directory(os.path.join(app.static_folder, 'images'), 'vinyl-placeholder.png'))
-        response.cache_control.max_age = 86400 * 30  # Cache for 30 days
+    # Finally, the generic placeholder
+    if os.path.exists(os.path.join(images_dir, 'vinyl-placeholder.png')):
+        response = make_response(send_from_directory(images_dir, 'vinyl-placeholder.png'))
+        response.cache_control.max_age = 86400 * 30
         return response
-    
-    # If no placeholder exists, return a 404
     abort(404)
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ import models
 import enrich_musicbrainz
 import refresh_artists
 import enrich_wikidata
+import factoids
 
 db = models.Database()
 session = models.get_session(create_all=True)
@@ -29,3 +30,6 @@ refresh_artists.main(force_ids={a.artist_id for t in playlist.tracks for a in t.
 # representations of artists (Wikipedia, Discogs, ...)
 enrich_musicbrainz.main()
 enrich_wikidata.main()
+
+# pre-build the web app's analysis cache for the updated database
+factoids.build_cache()

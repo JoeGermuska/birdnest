@@ -131,3 +131,4 @@ site
 
 # Pyre type checker
 **/.pyre
+**/*.history.pickle
