@@ -107,68 +107,6 @@
   line-height: 1.2;
 }
  
- .search-result {
-     display: grid;
-     grid-template-columns: 200px 200px auto;
-     margin: 6px 0;
-     padding: 6px 0;
- }
- 
- .search-result:nth-of-type(odd) {
-     background: #e0e0e0;
- }
- 
- .search-results .playlist-tiles {
-     margin-left: 50px;
-     grid-column-start: 3;
-     grid-template-columns: repeat(auto-fit, 100px);
- }
- 
- .search-results .playlist-tile img {
-     width: 100px;
-     height: 100px;
- }
- 
- .search-results .track-info {
-     grid-column-start: 2;
- }
- 
- .search-results .track-info h3,
- .search-results .track-info h4 {
-     margin: 2px;
- }
- 
- .search-results .track-img {
-     grid-column-start: 1;
-     /* align-self - column */
-     align-self: top;
-     /* justify-self - row */
-     justify-self: center;
- }
- 
- .search-terms {
-     margin-left: 50px;
-     font-size: larger;
- }
- 
- #artist #artist-details img {
-     width: 300px;
- }
- 
- #artist #artist-albums h3 {
-     grid-column: 1 / -1;
- }
- 
- #artist #artist-albums {
-     display: grid;
-     grid-gap: 15px;
-     grid-template-columns: repeat(auto-fit, 200px);
- }
- 
- #artist #artist-albums img {
-     width: 150px;
- }
-
 /* Autocomplete styles */
 .autocomplete-container {
     position: relative;
@@ -452,3 +390,17 @@ section.detail h2 {
 @media (max-width: 700px) {
     .detail-header { flex-direction: column; }
 }
+
+/* Search */
+.muted { color: #777; font-size: 0.85rem; }
+.artist-results { list-style: none; padding: 0; columns: 3 220px; margin: 0; }
+.artist-results li { padding: 3px 0; break-inside: avoid; }
+.artist-results a { color: #222; text-decoration: none; }
+.artist-results a:hover { text-decoration: underline dotted; }
+.search-tracks .thumb { width: 40px; padding-right: 0; }
+.search-tracks .thumb img { display: block; background: #eee; }
+.search-tracks .played { font-size: 0.85rem; white-space: nowrap; }
+@media (max-width: 700px) {
+    .search-tracks .played { white-space: normal; }
+}
+.more-artists summary { cursor: pointer; margin: 6px 0; }

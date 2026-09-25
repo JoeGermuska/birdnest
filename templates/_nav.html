@@ -3,7 +3,7 @@
     <form id="search" action="{{ url_for('search')}}" method="GET">
         search:
         <div class="autocomplete-container">
-            <input type="text" id="q" name="q" autocomplete="off">
+            <input type="search" id="q" name="q" autocomplete="off" value="{{ terms or '' }}" placeholder="artist, track, album, genre">
             <div id="autocomplete-dropdown" class="autocomplete-dropdown"></div>
         </div>
     </form>

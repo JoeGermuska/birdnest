@@ -29,13 +29,20 @@ def index():
 
 @app.route('/search')
 def search():
-    db = Database()
-    terms = request.args.get('q')
+    terms = (request.args.get('q') or '').strip()
+    tracks, artists, genres = [], [], []
     if terms:
+        db = Database(init_client=False)
+        history = factoids.get_history()
+        words = terms.lower().split()
         tracks = db.search_tracks(app.session, terms)
-    else:
-        tracks = None
-    return render_template("search_results.html", tracks=tracks, terms=terms)
+        artists = sorted((a for a in history.artists.values()
+                          if all(w in (a['name'] or '').lower() for w in words) and history.artist_shows.get(a['artist_id'])),
+                         key=lambda a: -len(history.artist_shows[a['artist_id']]))
+        for a in artists:
+            a['shows'] = len(history.artist_shows[a['artist_id']])
+        genres = sorted(g for g in history.genre_artists if all(w in g for w in words))
+    return render_template("search_results.html", tracks=tracks, artists=artists, genres=genres, terms=terms)
 
 @app.route('/autocomplete')
 def autocomplete():

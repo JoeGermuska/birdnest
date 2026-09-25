@@ -115,11 +115,13 @@ class Database(object):
         return artist
         
     def search_tracks(self, session, query):
-        query = ' '.join(map(lambda x: f'"{x}"',query.split())) # esca
+        # quote each term so FTS syntax characters are treated literally
+        query = ' '.join('"{}"'.format(x.replace('"', '""')) for x in query.split())
         sql = """select t.* from
         track t, track_search ts
         where t.track_id = ts.track_id
-        and track_search match :terms"""
+        and track_search match :terms
+        order by ts.rank"""
         return session.query(Track).from_statement(text(sql)).params(terms=query).all()
 
     def get_autocomplete_suggestions(self, session, query, limit=10):

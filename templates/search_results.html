@@ -2,35 +2,58 @@
 
 {% block title %}Search — {{ terms }}{% endblock title %}
 {% block content %}
+<section class="detail search">
+    <h1>{% if terms %}Results for “{{ terms }}”{% else %}Search{% endif %}</h1>
+    {% if terms %}
+    <p class="detail-meta">
+        {{ tracks|length }} track{{ 's' if tracks|length != 1 }}{% if artists %} · {{ artists|length }} artist{{ 's' if artists|length != 1 }}{% endif %}{% if genres %} · {{ genres|length }} genre{{ 's' if genres|length != 1 }}{% endif %}
+    </p>
+    {% endif %}
 
-    <section class="search-results">
-        <h1>Search Results</h1>
-        <p class='search-terms'>Search for <em>{{ terms }}</em></p>
-        {% if tracks %} {% for track in tracks %}
-        <div class="search-result">
-            <div class='track-img'>
-                {% if track.album %}
-                <img src="{{ track.album.image_url(300) }}" width="100" height="100"> {% endif %}
-            </div>
-            <div class="track-info">
-                <h3>
-                    {% if track.preview_url %}
-                        <a class='preview-track' title='Play a preview clip' data-audio-id="audio-{{track.spotify_id}}"><i class="fas fa-play" ></i></a>
-                        <audio class='preview' id='audio-{{track.spotify_id}}' src="{{track.preview_url}}"></audio> {% endif %}
-                    {{ track.name }}
-                </h3>
-                <h4>{% for artist in track.artists %}{% if not loop.first %}; {% endif %}
-                <a href="{{ url_for('artist',spotify_id=artist.spotify_id)}}">{{ artist.name }}</a>
-                {% endfor %}
-                <br>{{ track.album.name }}</h4>
+    {% if artists %}
+    <h2>Artists</h2>
+    <ul class="artist-results">
+        {% for a in artists[:12] %}
+        <li><a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a> <span class="muted">{{ a.shows }} show{{ 's' if a.shows != 1 }}</span></li>
+        {% endfor %}
+    </ul>
+    {% if artists|length > 12 %}
+    <details class="more-artists">
+        <summary class="muted">{{ artists|length - 12 }} more</summary>
+        <ul class="artist-results">
+            {% for a in artists[12:] %}
+            <li><a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a> <span class="muted">{{ a.shows }} show{{ 's' if a.shows != 1 }}</span></li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+    {% endif %}
 
-            </div>
-            <div>
-                {% for playlist in track.playlists %} {% include "_playlist_tile.html" %} {% endfor %}
-            </div>
-        </div>
-        {% endfor %} {% else %}
-        <h2>No Results</h2>
-        {% endif %}
-    </section>
+    {% if genres %}
+    <h2>Genres</h2>
+    <p class="chips">{% for g in genres %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}">{{ g }}</a>{% endfor %}</p>
+    {% endif %}
+
+    {% if tracks %}
+    <h2>Tracks</h2>
+    <table class="show-tracks search-tracks">
+        <thead><tr><th></th><th>Track</th><th>Artist</th><th>Played</th></tr></thead>
+        <tbody>
+            {% for track in tracks %}
+            <tr>
+                <td class="thumb">{% if track.album and track.album.images %}{% with img = track.album.image_url(max_size=64) %}{% if img %}<img src="{{ img }}" alt="" width="40" height="40" loading="lazy">{% endif %}{% endwith %}{% endif %}</td>
+                <td>
+                    <a class="track-name" href="{{ track.spotify_url }}" target="_blank">{{ track.name }}</a>
+                    {% if track.album %}<div class="album">{{ track.album.name }}</div>{% endif %}
+                </td>
+                <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>
+                <td class="played">{% for pl in track.playlists|sort(attribute='date', reverse=True) %}<a href="{{ url_for('show_playlist', date_str=pl.date) }}">{{ pl.date }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% elif terms and not artists and not genres %}
+    <p>Nothing matched. Try fewer words, or part of a name.</p>
+    {% endif %}
+</section>
 {% endblock content %}
