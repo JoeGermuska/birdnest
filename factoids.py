@@ -139,6 +139,15 @@ class History:
             for r in con.execute("select artist_id, source, url from artist_link"):
                 self.artist_links[r['artist_id']][r['source']] = r['url']
 
+        # who was in the room, in join order (see load_djs.py)
+        self.djs = {}  # dj_id -> {'dj_id', 'name', 'slug'}
+        self.show_djs = defaultdict(list)  # playlist_id -> [(dj_id, note)]
+        if con.execute("select 1 from sqlite_master where name='show_dj'").fetchone():
+            self.djs = {r['dj_id']: dict(r) for r in con.execute("select dj_id, name, slug from dj")}
+            for r in con.execute("select playlist_id, dj_id, note from show_dj order by playlist_id, sequence"):
+                if r['playlist_id'] in self.show_dates:
+                    self.show_djs[r['playlist_id']].append((r['dj_id'], r['note']))
+
         self.show_tracks = defaultdict(list)  # playlist_id -> [track_id] in order
         for r in con.execute("select playlist_id, track_id from playlist_track order by playlist_id, sequence"):
             if r['playlist_id'] in self.show_dates:
@@ -184,6 +193,13 @@ class History:
         # rank artists by number of shows (1 = most shows; ties share a rank)
         self.artist_rank = {a: 1 + sum(1 for a2 in self.artist_shows if len(self.artist_shows[a2]) > len(v))
                             for a, v in self.artist_shows.items()}
+
+        self.dj_by_slug = {dj['slug']: i for i, dj in self.djs.items()}
+        self.dj_shows = defaultdict(set)
+        for pid, room in self.show_djs.items():
+            for i, _ in room:
+                self.dj_shows[i].add(pid)
+        self.dj_first = {i: min(self.show_dates[p] for p in pids) for i, pids in self.dj_shows.items()}
 
         self.family_of = genre_families.assign(self.artist_genres)
         self.mix = {pid: self._family_mix(pid) for pid in self.show_tracks}
@@ -277,6 +293,83 @@ class History:
                      'tracks': tracks[f] if with_tracks else []}
                     for f in order if values.get(f, 0) > 0.001]
         return {'show': segments(shares, True), 'usual': segments(usual, False)}
+
+    def _dj_part(self, dj_id):
+        return {'dj': self.djs[dj_id]['slug'], 'text': self.djs[dj_id]['name']}
+
+    def show_room(self, playlist_id):
+        """Who was in the room for a show, in the order they joined."""
+        d = self.show_dates[playlist_id]
+        return [{**self.djs[i], 'note': note, 'first_show': self.dj_first[i] == d}
+                for i, note in self.show_djs.get(playlist_id, ())]
+
+    def _over_represented(self, pids, universe, min_k=3, limit=8):
+        """Keys of `universe` (key -> set of playlist_ids) that turn up in `pids` more than
+        chance would suggest, as [(key, k)] best first."""
+        n, total = len(pids), len(self.show_tracks)
+        together = Counter(key for key, shows in universe.items() for p in shows if p in pids)
+        scored = []
+        for key, k in together.items():
+            lift = k / (n * len(universe[key]) / total)
+            if k >= min_k and lift > 1.5:
+                scored.append((k * math.log(lift), key, k))
+        scored.sort(reverse=True)
+        return [(key, k) for _, key, k in scored[:limit]]
+
+    def dj_profile(self, slug):
+        dj_id = self.dj_by_slug.get(slug)
+        if dj_id is None:
+            return None
+        pids = sorted(self.dj_shows[dj_id], key=self.show_dates.get)
+        dates = [self.show_dates[p] for p in pids]
+        n = len(pids)
+        facts = Facts()
+
+        ordered = sorted(self.show_tracks, key=self.show_dates.get)
+        streak = best = 0
+        best_end = None
+        for p in ordered:
+            streak = streak + 1 if p in self.dj_shows[dj_id] else 0
+            if streak > best:
+                best, best_end = streak, self.show_dates[p]
+        if best >= 3:
+            start = self.show_dates[ordered[ordered.index(self.pid_by_date[best_end]) - best + 1]]
+            facts.add('regular', 'Longest run', f"{best} shows in a row, ", {'show': start, 'text': str(start)},
+                      " to ", {'show': best_end, 'text': str(best_end)})
+        if n > 1:
+            gaps = [((b - a).days, a, b) for a, b in zip(dates, dates[1:])]
+            days, a, b = max(gaps)
+            if days >= 180:
+                facts.add('return', 'Longest absence', f"{_years_months(days)}, between ", {'show': a, 'text': str(a)},
+                          " and ", {'show': b, 'text': str(b)})
+        opened = sum(1 for p in pids if self.show_djs[p][0][0] == dj_id)
+        if opened and n > 1:
+            facts.add('stat', 'First in the room', f"{opened} of {n} shows")
+
+        crew = Counter(i for p in pids for i, _ in self.show_djs[p] if i != dj_id)
+        regulars = [{**self.djs[i], 'shows': k, 'share': k / n} for i, k in crew.most_common()]
+
+        # what this person's shows lean toward (we can't know who picked what)
+        artists = self._over_represented(set(pids), self.artist_shows) if n >= 4 else []
+        families = Counter()
+        for p in pids:
+            families.update({f: v / n for f, v in self.mix[p][0].items()})
+        overall = Counter()
+        for p in self.show_tracks:
+            overall.update({f: v / len(self.show_tracks) for f, v in self.mix[p][0].items()})
+        order = genre_families.FAMILY_NAMES + [None]
+
+        def segments(values):
+            return [{'family': f, 'share': values[f], 'color': genre_families.COLORS.get(f, ('#ddd', '#222'))[0],
+                     'tracks': []} for f in order if values.get(f, 0) > 0.001]
+
+        return {'dj': self.djs[dj_id], 'n_shows': n, 'share': n / len(self.show_tracks),
+                'first': dates[0], 'last': dates[-1], 'facts': facts, 'regulars': regulars,
+                'notes': [(self.show_dates[p], note) for p in pids for i, note in self.show_djs[p]
+                          if i == dj_id and note],
+                'artists': [{**self.artists[a], 'shows': k, 'of': len(self.artist_shows[a])} for a, k in artists],
+                'mix': {'show': segments(families), 'usual': segments(overall)},
+                'shows': [{**self.shows[p], 'room': self.show_room(p)} for p in reversed(pids)]}
 
     def show_stats(self, playlist_id):
         """Plain playlist-level metadata."""
@@ -468,6 +561,12 @@ class History:
                 facts.add('genre', 'Often shares a show with',
                           *_join([[self._artist_part(a), f" ({k}×)"] for _, a, k in scored[:4]]))
 
+        if n >= 4 and self.dj_shows:
+            room = self._over_represented(set(pids), self.dj_shows, limit=3)
+            if room:
+                facts.add('stat', 'Often in the room',
+                          *_join([[self._dj_part(i), f" ({k} of {n})"] for i, k in room]))
+
         return {'shows': shows, 'n_shows': n, 'n_plays': sum(len(s['tracks']) for s in shows),
                 'first': dates[0], 'last': dates[-1], 'facts': facts,
                 'genres': sorted(self.artist_genres.get(artist_id, ())),
@@ -548,6 +647,14 @@ class History:
                                 lambda a, d: f"{self.artists[a]['name']}: {len(d)} shows, {d[0]} to {d[-1]}")
         return {'title': 'Most played artists', 'unit': 'shows', 'rows': rows,
                 'blurb': 'Artists by the number of shows they appeared in; each tick is a show.'}
+
+    def _rank_djs(self):
+        items = sorted(((i, sorted(self.show_dates[p] for p in pids)) for i, pids in self.dj_shows.items()),
+                       key=lambda kv: (-len(kv[1]), self.djs[kv[0]]['name']))
+        rows = self._dated_rows(items, lambda i: self.djs[i]['slug'], lambda i: [self._dj_part(i)],
+                                lambda i, d: f"{self.djs[i]['name']}: {len(d)} shows, {d[0]} to {d[-1]}")
+        return {'title': 'DJs', 'unit': 'shows', 'rows': rows,
+                'blurb': 'Everyone who has joined the room, by the number of shows; each tick is a show.'}
 
     def _rank_tracks(self):
         names = {}
@@ -637,7 +744,7 @@ class History:
         return out
 
 
-RANKINGS = ['artists', 'tracks', 'returns', 'labels']  # novelty has its own chart page
+RANKINGS = ['artists', 'tracks', 'returns', 'labels', 'djs']  # novelty has its own chart page
 
 
 def _signature(db_path):

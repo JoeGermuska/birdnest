@@ -4,6 +4,8 @@ import enrich_musicbrainz
 import refresh_artists
 import enrich_wikidata
 import factoids
+import load_djs
+import sys
 
 db = models.Database()
 session = models.get_session(create_all=True)
@@ -21,6 +23,12 @@ print(f"saved playlist: {playlist.name}")
 
 db.rebuild_fts(session)
 session.commit()
+
+# who was in the room: Spotify doesn't know, so ask (paste the show-log line)
+if not playlist.show_djs and sys.stdin.isatty():
+    line = input(f"DJs for {playlist.date}, e.g. 'Thursday, October 1st (DJs: Heath, Joe)' (blank to skip): ").strip()
+    if line and not load_djs.add(line, commit=True, session=session):
+        print("DJs not saved; add them later with: python load_djs.py add \"LINE\" --commit")
 
 # snapshot tonight's artists (so each show keeps its own follower counts) plus
 # whichever artists are due for their roughly monthly refresh

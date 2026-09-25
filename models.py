@@ -237,6 +237,8 @@ class Playlist(Base):
     date = Column(Date) # not a spotify property, we have to infer from name
     playlist_tracks = relationship('PlaylistTrack', order_by='PlaylistTrack.sequence', back_populates='playlist', lazy='joined')
     tracks = association_proxy('playlist_tracks','track')
+    show_djs = relationship('ShowDJ', order_by='ShowDJ.sequence', back_populates='playlist')
+    djs = association_proxy('show_djs','dj')
 
     images = Column(JSON)
     # external_urls = String[]
@@ -454,6 +456,33 @@ class PlaylistTrack(Base):
     sequence = Column(Integer,primary_key=True) # allow for a track being played twice in a playlist
     playlist = relationship("Playlist", back_populates="playlist_tracks")
     track = relationship("Track", back_populates="track_playlists")
+
+
+def slugify(text):
+    return re.sub(r'[^a-z0-9]+', '-', (text or '').lower()).strip('-')
+
+class DJ(Base):
+    """A person who joined the room for a show. Not a Spotify object; see load_djs.py."""
+    __tablename__ = 'dj'
+    dj_id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    slug = Column(String, unique=True)
+    show_djs = relationship('ShowDJ', back_populates='dj')
+    playlists = association_proxy('show_djs','playlist')
+
+    def __repr__(self) -> str:
+        return f"DJ({self.name})"
+
+class ShowDJ(Base):
+    """Who was in the room for a show, in the order they joined. We don't know who
+    picked which track."""
+    __tablename__ = 'show_dj'
+    playlist_id = Column(Integer, ForeignKey("playlist.playlist_id"), primary_key=True)
+    dj_id = Column(Integer, ForeignKey("dj.dj_id"), primary_key=True)
+    sequence = Column(Integer) # join order, 0-based
+    note = Column(String) # e.g. "Ezra's first time!"
+    playlist = relationship("Playlist", back_populates="show_djs")
+    dj = relationship("DJ", back_populates="show_djs")
 
 
 class Genre(Base):
