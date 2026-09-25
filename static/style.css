@@ -417,3 +417,6 @@ a.more:hover { color: #222 !important; }
 .ranking-table tr:target td { background: #fbeee6; }
 .ranking-table td:nth-child(n+2) { font-size: 0.95rem; }
 .ranking-table { width: auto; min-width: 70%; }
+
+.external-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.9rem; margin: 4px 0 10px; }
+.external-links a { color: #444; }

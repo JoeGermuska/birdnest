@@ -15,6 +15,9 @@
                 {% if artist.followers is not none %}{{ "{:,}".format(artist.followers) }} followers ·{% endif %}
                 <a href="{{ artist.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a>
             </p>
+            {% if profile and profile.links %}
+            <p class="external-links">{% for label, url in profile.links %}<a href="{{ url }}" rel="noopener">{{ label }}</a>{% endfor %}</p>
+            {% endif %}
             {% if profile and profile.genres %}
             <p class="chips">{% for g in profile.genres %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}">{{ g }}</a>{% endfor %}</p>
             {% endif %}

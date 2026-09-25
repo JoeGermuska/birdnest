@@ -19,7 +19,9 @@ THEME_NIGHT_MIN_TRACKS = 4
 LONG_ABSENCE_DAYS = 365 * 2
 REGULAR_MIN_SHOWS = 10
 NOVELTY_WINDOW = 20  # shows on each side to compare novelty against
-GENRE_MIN_TRACKS = 20  # ignore very rare genres, whose lift is noisy
+GENRE_MIN_TRACKS = 20
+LINK_LABELS = [('wikipedia', 'Wikipedia'), ('musicbrainz', 'MusicBrainz'), ('discogs', 'Discogs'),
+               ('bandcamp', 'Bandcamp'), ('allmusic', 'AllMusic'), ('website', 'Website'), ('wikidata', 'Wikidata')]  # ignore very rare genres, whose lift is noisy
 
 
 @dataclass
@@ -112,6 +114,11 @@ class History:
         for r in con.execute(
                 "select ag.artist_id, g.name from artist_genre ag join genre g using(genre_id)"):
             self.artist_genres[r['artist_id']].add(r['name'])
+
+        self.artist_links = defaultdict(dict)  # artist_id -> {source: url}; see enrich_wikidata.py
+        if con.execute("select 1 from sqlite_master where name='artist_link'").fetchone():
+            for r in con.execute("select artist_id, source, url from artist_link"):
+                self.artist_links[r['artist_id']][r['source']] = r['url']
 
         self.show_tracks = defaultdict(list)  # playlist_id -> [track_id] in order
         for r in con.execute("select playlist_id, track_id from playlist_track order by playlist_id, sequence"):
@@ -402,7 +409,9 @@ class History:
 
         return {'shows': shows, 'n_shows': n, 'n_plays': sum(len(s['tracks']) for s in shows),
                 'first': dates[0], 'last': dates[-1], 'facts': facts,
-                'genres': sorted(self.artist_genres.get(artist_id, ()))}
+                'genres': sorted(self.artist_genres.get(artist_id, ())),
+                'links': [(label, self.artist_links[artist_id][source]) for source, label in LINK_LABELS
+                          if source in self.artist_links.get(artist_id, {})]}
 
     def genre_profile(self, name):
         aids = self.genre_artists.get(name)
