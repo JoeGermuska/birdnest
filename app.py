@@ -89,6 +89,7 @@ def show_playlist(date_str):
     prev_show = app.session.query(Playlist).filter(Playlist.date < playlist_date).order_by(Playlist.date.desc()).first()
     next_show = app.session.query(Playlist).filter(Playlist.date > playlist_date).order_by(Playlist.date).first()
     return render_template("playlist.html", playlist=playlist,
+                           stats=history.show_stats(playlist.playlist_id),
                            facts=history.show_factoids(playlist.playlist_id),
                            notes=history.track_notes(playlist.playlist_id),
                            prev_show=prev_show, next_show=next_show)

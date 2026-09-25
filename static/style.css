@@ -241,17 +241,53 @@ section.show {
     color: #555;
 }
 
+.show-meta {
+    color: #444;
+}
+
+.show-meta a {
+    color: inherit;
+}
+
+.novelty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.novelty-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.novelty-value {
+    font-weight: bold;
+    color: #222;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.novelty-strip line { stroke: #ddd; }
+.novelty-strip .peer { fill: #999; fill-opacity: 0.35; }
+.novelty-strip .this { fill: #c0392b; stroke: #fff; stroke-width: 1.5; }
+
 .factoids {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 10px;
-    margin: 20px 0;
+    grid-template-columns: max-content 1fr;
+    column-gap: 16px;
+    row-gap: 6px;
+    margin: 24px 0;
+    padding: 12px 0;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
 }
 
 .factoid {
-    background: #f4f2ee;
-    border-left: 4px solid #bbb;
-    padding: 8px 12px;
+    display: contents;
 }
 
 .factoid dt {
@@ -259,17 +295,33 @@ section.show {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #666;
+    padding-top: 3px;
+}
+
+.factoid dt::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    background: #bbb;
 }
 
 .factoid dd {
-    margin: 4px 0 0;
+    margin: 0;
 }
 
-.factoid-theme { border-color: #c0392b; }
-.factoid-repeat { border-color: #2e86c1; }
-.factoid-return { border-color: #8e44ad; }
-.factoid-regular { border-color: #d68910; }
-.factoid-genre { border-color: #229954; }
+.factoid-theme dt::before { background: #c0392b; }
+.factoid-repeat dt::before { background: #2e86c1; }
+.factoid-return dt::before { background: #8e44ad; }
+.factoid-regular dt::before { background: #d68910; }
+.factoid-genre dt::before { background: #229954; }
+
+@media (max-width: 700px) {
+    .factoids { grid-template-columns: 1fr; }
+    .factoid dd { margin-bottom: 8px; }
+}
 
 table.show-tracks {
     width: 100%;

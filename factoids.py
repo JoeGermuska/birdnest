@@ -41,6 +41,13 @@ def _years_months(days):
     return ' '.join(parts) or f"{days} days"
 
 
+def _compact(n):
+    for size, suffix in ((1_000_000, 'M'), (1_000, 'k')):
+        if n >= size:
+            return f"{n / size:.1f}".rstrip('0').rstrip('.') + suffix
+    return str(n)
+
+
 def _ordinal(n):
     suffix = 'th' if 11 <= n % 100 <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
     return f"{n}{suffix}"
@@ -103,8 +110,18 @@ class History:
         self.genre_track_counts = genre_track_counts
         self.total_track_plays = total_track_plays
 
-        new_shares = [self._debut_share(pid) for pid in self.show_tracks]
-        self.avg_debut_share = sum(new_shares) / len(new_shares) if new_shares else 0
+        # Novelty: share of a show's artists who had never been played before.
+        # It trends down as the pool of already-played artists grows, so rank
+        # each show against others from the same year to make it comparable.
+        self.novelty = {pid: self._debut_share(pid) for pid in self.show_tracks}
+        by_year = defaultdict(list)
+        for pid, share in self.novelty.items():
+            by_year[self.show_dates[pid].year].append(share)
+        self.novelty_rank = {}
+        for pid, share in self.novelty.items():
+            peers = by_year[self.show_dates[pid].year]
+            below = sum(1 for x in peers if x < share) + 0.5 * (sum(1 for x in peers if x == share) - 1)
+            self.novelty_rank[pid] = below / (len(peers) - 1) if len(peers) > 1 else 0.5
 
     def _debut_share(self, pid):
         d = self.show_dates[pid]
@@ -133,6 +150,20 @@ class History:
             notes[tid] = n
         return notes
 
+    def show_stats(self, playlist_id):
+        """Plain playlist-level metadata."""
+        tids = self.show_tracks[playlist_id]
+        return {
+            'tracks': len(tids),
+            'runtime_min': sum(self.tracks[t]['duration_ms'] or 0 for t in tids) // 60000,
+            'artists': len({a for t in tids for a in self.track_artists[t]}),
+            'novelty': self.novelty.get(playlist_id, 0),
+            'novelty_rank': self.novelty_rank.get(playlist_id, 0.5),
+            'year': self.show_dates[playlist_id].year,
+            'year_novelty': sorted(v for p, v in self.novelty.items()
+                                   if self.show_dates[p].year == self.show_dates[playlist_id].year),
+        }
+
     def show_factoids(self, playlist_id):
         """Return a list of {'label', 'text', 'kind'} dicts for one show."""
         d = self.show_dates[playlist_id]
@@ -144,18 +175,8 @@ class History:
         def add(kind, label, text):
             facts.append({'kind': kind, 'label': label, 'text': text})
 
-        runtime_min = sum(self.tracks[t]['duration_ms'] or 0 for t in tids) // 60000
         aids = [a for t in tids for a in self.track_artists[t]]
         distinct = set(aids)
-        add('stat', 'The night', f"{len(tids)} tracks, {runtime_min // 60}h {runtime_min % 60:02}m, "
-                                 f"{len(distinct)} artists")
-
-        share = self._debut_share(playlist_id)
-        debuts = sum(1 for a in distinct if self.artist_dates[a][0] == d)
-        rel = 'more than' if share > self.avg_debut_share * 1.15 else (
-            'fewer than' if share < self.avg_debut_share * 0.85 else 'about')
-        add('stat', 'New to the nest', f"{debuts} of {len(distinct)} artists appeared for the first time "
-                                       f"({share:.0%}; {rel} the usual {self.avg_debut_share:.0%})")
 
         # Album session: a run of consecutive tracks from one album
         best_run, run, run_start = 0, 0, 0
@@ -201,15 +222,19 @@ class History:
             days, name = max(gaps)
             add('return', 'Welcome back', f"{name}, first time in {_years_months(days)}")
 
-        # Regulars, with their running tally
-        regulars = []
+        # Regulars, with their running tally, and first sightings of future regulars
+        regulars, firsts = [], []
         for aid in distinct:
             a_dates = self.artist_dates[aid]
             if len(a_dates) >= REGULAR_MIN_SHOWS:
-                regulars.append((a_dates.index(d) + 1, self.artists[aid]['name']))
+                k = a_dates.index(d) + 1
+                (firsts if k == 1 else regulars).append((k, len(a_dates), self.artists[aid]['name']))
         if regulars:
             regulars.sort(reverse=True)
-            add('regular', 'Regulars', ', '.join(f"{name} ({_ordinal(k)} show)" for k, name in regulars[:4]))
+            add('regular', 'Regulars', ', '.join(f"{name} ({_ordinal(k)} show)" for k, _, name in regulars[:4]))
+        if firsts:
+            firsts.sort(key=lambda x: -x[1])
+            add('regular', 'First sighting', ', '.join(f"{name} (went on to {total} shows)" for _, total, name in firsts[:3]))
 
         # Genre lean: which genres are most over-represented tonight vs. all time
         tonight = Counter()
@@ -231,23 +256,19 @@ class History:
             leans.sort(reverse=True)
             add('genre', 'Leaning', ', '.join(f"{g} ({lift:.1f}×)" for _, g, lift in leans[:3]))
 
-        # Obscure and mainstream bookends
-        known = [a for a in distinct if self.artists[a]['followers'] is not None]
-        if known:
-            lo = min(known, key=lambda a: self.artists[a]['followers'])
-            hi = max(known, key=lambda a: self.artists[a]['followers'])
-            add('stat', 'Deepest cut', f"{self.artists[lo]['name']} ({self.artists[lo]['followers']:,} followers)")
-            add('stat', 'Most famous', f"{self.artists[hi]['name']} ({self.artists[hi]['followers']:,} followers)")
-
         # Label concentration
         labels = Counter(self.tracks[t]['label'] for t in tids if self.tracks[t]['label'])
         for label, n in labels.most_common(1):
             if n >= 3:
-                add('stat', 'Label of the night', f"{label} ({n} tracks)")
+                add('label', 'Label of the night', f"{label} ({n} tracks)")
 
-        longest = max(tids, key=lambda t: self.tracks[t]['duration_ms'] or 0)
-        ms = self.tracks[longest]['duration_ms'] or 0
-        add('stat', 'Longest', f"“{self.tracks[longest]['name']}” ({ms // 60000}:{ms // 1000 % 60:02})")
+        # Obscure-to-famous range
+        known = [a for a in distinct if self.artists[a]['followers'] is not None]
+        if len(known) > 1:
+            lo = min(known, key=lambda a: self.artists[a]['followers'])
+            hi = max(known, key=lambda a: self.artists[a]['followers'])
+            add('range', 'Range', f"from {self.artists[lo]['name']} ({_compact(self.artists[lo]['followers'])} followers) "
+                                  f"to {self.artists[hi]['name']} ({_compact(self.artists[hi]['followers'])})")
 
         return facts
 
