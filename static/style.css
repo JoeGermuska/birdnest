@@ -406,8 +406,8 @@ section.detail h2 {
 .more-artists summary { cursor: pointer; margin: 6px 0; }
 
 /* Links inside factoids and rankings */
-.factoid dd a, .ranking-table a { color: #222; text-decoration: underline dotted #aaa; }
-.factoid dd a:hover, .ranking-table a:hover { text-decoration-color: #222; }
+.factoid dd a { color: #222; text-decoration: underline dotted #aaa; }
+.factoid dd a:hover { text-decoration-color: #222; }
 a.more { font-size: 0.8rem; color: #777 !important; text-decoration: none !important; white-space: nowrap; margin-left: 6px; }
 a.more:hover { color: #222 !important; }
 
@@ -455,3 +455,6 @@ a.more:hover { color: #222 !important; }
     .rank-strip { grid-column: 2 / 4; grid-row: 2; }
     .rank-head { display: none; }
 }
+
+.external-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.9rem; margin: 4px 0 10px; }
+.external-links a { color: #444; }
