@@ -380,3 +380,75 @@ table.show-tracks a:hover {
     table.show-tracks .label,
     table.show-tracks th:nth-child(4) { display: none; }
 }
+
+/* Artist and genre pages */
+section.detail {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 16px 40px;
+}
+
+section.detail h1 {
+    font-family: 'David Libre', serif;
+    margin: 16px 0 4px;
+}
+
+section.detail h2 {
+    font-size: 1.1rem;
+    margin: 28px 0 8px;
+}
+
+.detail-header {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 16px;
+}
+
+.detail-header h1 { margin-top: 0; }
+
+.detail-image {
+    width: 160px;
+    height: 160px;
+    object-fit: cover;
+}
+
+.detail-meta { color: #444; }
+.detail-meta a { color: inherit; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+    font-size: 0.8rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #f0eee9;
+    color: #333;
+    text-decoration: none;
+}
+
+.chip:hover { background: #e2dfd7; }
+
+.timeline { margin: 20px 0 8px; }
+.timeline svg { width: 100%; height: 28px; display: block; }
+.timeline .baseline { stroke: #bbb; }
+.timeline .year-rule { stroke: #e5e5e5; }
+.timeline .mark { stroke: #c0392b; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.timeline .hit { fill: transparent; }
+.timeline a:hover .mark { stroke: #222; }
+.timeline figcaption { position: relative; height: 1.2em; font-size: 0.75rem; color: #777; }
+.timeline figcaption span { position: absolute; }
+
+.year-bars { margin: 20px 0; }
+.year-bars figcaption { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #666; margin-bottom: 6px; }
+.year-bars .bars { display: flex; gap: 2px; height: 140px; align-items: stretch; max-width: 480px; }
+.year-bars .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; text-align: center; }
+.year-bars .bar-track { flex: 1; position: relative; }
+.year-bars .bar-fill { position: absolute; bottom: 0; left: 0; right: 0; background: #229954; border-radius: 4px 4px 0 0; min-height: 1px; }
+.year-bars .bar:hover .bar-fill { background: #1a7340; }
+.year-bars .bar-value { font-size: 0.7rem; color: #555; font-variant-numeric: tabular-nums; }
+.year-bars .bar-label { font-size: 0.75rem; color: #777; border-top: 1px solid #bbb; padding-top: 2px; }
+
+@media (max-width: 700px) {
+    .detail-header { flex-direction: column; }
+}

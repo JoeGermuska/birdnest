@@ -17,18 +17,18 @@
                     {{ stats.tracks }} tracks · {{ stats.runtime_min // 60 }}h {{ '%02d' % (stats.runtime_min % 60) }}m · {{ stats.artists }} artists ·
                     <a href="{{playlist.spotify_url}}"><i class="fab fa-spotify"></i> Spotify</a>
                 </p>
-                <div class="novelty" title="Share of this show's artists who had never been played before. Dots are every show in {{ stats.year }}.">
+                <div class="novelty" title="Share of this show's artists who had never been played before. Dots are the {{ stats.novelty_peers|length }} shows around this one.">
                     <span class="novelty-label">Novelty</span>
                     <span class="novelty-value">{{ (stats.novelty * 100)|round|int }}</span>
                     <svg class="novelty-strip" viewBox="0 0 200 16" width="200" height="16" aria-hidden="true">
                         <line x1="0" x2="200" y1="8" y2="8" />
-                        {% for v in stats.year_novelty %}<circle class="peer" cx="{{ 4 + v * 192 }}" cy="8" r="3" />{% endfor %}
+                        {% for v in stats.novelty_peers %}<circle class="peer" cx="{{ 4 + v * 192 }}" cy="8" r="3" />{% endfor %}
                         <circle class="this" cx="{{ 4 + stats.novelty * 192 }}" cy="8" r="5" />
                     </svg>
                     <span class="novelty-context">
-                        {%- if stats.novelty_rank >= 0.8 %}one of the most novel shows of {{ stats.year }}
-                        {%- elif stats.novelty_rank <= 0.2 %}one of the most familiar shows of {{ stats.year }}
-                        {%- else %}typical for {{ stats.year }}{% endif -%}
+                        {%- if stats.novelty_rank >= 0.8 %}more novel than most nearby shows
+                        {%- elif stats.novelty_rank <= 0.2 %}more familiar than most nearby shows
+                        {%- else %}typical for its time{% endif -%}
                     </span>
                 </div>
             </div>

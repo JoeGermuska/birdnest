@@ -49,11 +49,11 @@ def autocomplete():
 
 @app.route('/genre/<genre_name>')
 def genre(genre_name):
-    genre_obj = app.session.query(Genre).filter(Genre.name == genre_name).first()
-    if not genre_obj:
+    history = factoids.get_history()
+    profile = history.genre_profile(genre_name)
+    if not profile:
         abort(404)
-    genre_obj.artists.sort(key=lambda a: -1 * a.popularity) # reverse popularity sort
-    return render_template('genre.html',genre_name=genre_name,genre_obj=genre_obj)
+    return render_template('genre.html', genre_name=genre_name, profile=profile, history=history)
 
 @app.route('/genres')
 def genres():
@@ -65,7 +65,9 @@ def artist(spotify_id):
     artist = app.session.query(Artist).filter(Artist.spotify_id == spotify_id).first()
     if not artist:
         abort(404)
-    return render_template('artist.html',artist=artist)
+    history = factoids.get_history()
+    return render_template('artist.html', artist=artist, profile=history.artist_profile(artist.artist_id),
+                           history=history)
 
 @app.route('/artists')
 def artists():

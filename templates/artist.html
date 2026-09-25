@@ -1,37 +1,54 @@
-{% extends "_base.html" %} {% block title %}Artist: {{ genre_name }}{% endblock title %} {% block extra_head %} {% include "_sortable_extra_head.html" %} {% endblock extra_head %} {% block content %}
-<section id='artist'>
-    <section id='artist-details'>
-        <h2>{{ artist.name }}</h2>  
-        {% with image=artist.image_url(640) %}
-        {% if image %}<img src="{{ image }}" alt="Image of {{ artist.name }}" />{% endif %}
+{% extends "_base.html" %}
+{% block title %}{{ artist.name }}{% endblock title %}
+{% block content %}
+<section class="detail artist">
+    <header class="detail-header">
+        {% with image=artist.image_url(max_size=320) if artist.images else None %}
+        {% if image %}<img class="detail-image" src="{{ image }}" alt="">{% endif %}
         {% endwith %}
-        <p><strong>Popularity:</strong> {{ artist.popularity }}</p>
-        <p><strong>Followers:</strong> {{ "{:,}".format(artist.followers) }}</p>
-        <p><strong>Genres:</strong>
-        {% for g in artist.genres  %}
-        <li><a href="{{ url_for('genre',genre_name=g) }}">{{ g }}</a></li>
+        <div>
+            <h1>{{ artist.name }}</h1>
+            <p class="detail-meta">
+                {% if profile %}{{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} · {{ profile.n_plays }} play{{ 's' if profile.n_plays != 1 }} ·
+                {% if profile.n_shows > 1 %}{{ profile.first.year }}–{{ profile.last.year }}{% else %}{{ profile.first }}{% endif %} ·{% endif %}
+                {% if artist.followers is not none %}{{ "{:,}".format(artist.followers) }} followers ·{% endif %}
+                <a href="{{ artist.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a>
+            </p>
+            {% if profile and profile.genres %}
+            <p class="chips">{% for g in profile.genres %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}">{{ g }}</a>{% endfor %}</p>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if profile %}
+    {% set marks = [] %}
+    {% for s in profile.shows %}{% set _ = marks.append({'date': s.date, 'label': s.date ~ ': ' ~ (s.tracks|map(attribute='name')|join(', '))}) %}{% endfor %}
+    {% include "_timeline.html" %}
+
+    {% if profile.facts %}
+    <dl class="factoids">
+        {% for f in profile.facts %}
+        <div class="factoid factoid-{{ f.kind }}"><dt>{{ f.label }}</dt><dd>{{ f.text }}</dd></div>
         {% endfor %}
-        </ul>
-        
-    </section>
-    <section id='artist-tracks'>
-    <h3>Tracks played</h3>
-    {% with tracks=artist.tracks %}
-    {% include "_tracks_table.html" %}
-    {% endwith %}
-    </section>
-    <section id='artist-albums'>
-    <h3>Albums played from</h3>
-    {% for album in artist.albums %}
-    <div id='album-{{album.spotify_id}}' class='artist-album'>
-        {% with image=album.image_url(640) %}
-        {% if image %}<a title="Spotify Album Page" href="{{ album.spotify_url }}"><img src="{{ image }}" alt="Image for {{ album.name }}" /></a>{% endif %}
-        {% endwith %}
-        <p><a title="Spotify Album Page" href="{{ album.spotify_url }}">{{ album.name }}</a></p>
-    </div>
-    
-    {% endfor %}
-    </section>
-    
+    </dl>
+    {% endif %}
+
+    <h2>Played</h2>
+    <table class="show-tracks">
+        <thead><tr><th>Show</th><th class="num">#</th><th>Track</th><th>Album</th></tr></thead>
+        <tbody>
+            {% for s in profile.shows|reverse %}
+            {% for t in s.tracks %}
+            <tr>
+                <td>{% if loop.first %}<a href="{{ url_for('show_playlist', date_str=s.date) }}">{{ s.date }}</a>{% endif %}</td>
+                <td class="num seq">{{ t.position }}</td>
+                <td>{{ t.name }}{% if t.others %}<div class="album">with {% for a in t.others %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
+                <td class="label">{{ t.album }}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
 </section>
 {% endblock content %}

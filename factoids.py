@@ -17,6 +17,7 @@ DB_PATH = 'birdnest.db'
 THEME_NIGHT_MIN_TRACKS = 4
 LONG_ABSENCE_DAYS = 365 * 2
 REGULAR_MIN_SHOWS = 10
+NOVELTY_WINDOW = 20  # shows on each side to compare novelty against
 GENRE_MIN_TRACKS = 20  # ignore very rare genres, whose lift is noisy
 
 
@@ -110,17 +111,36 @@ class History:
         self.genre_track_counts = genre_track_counts
         self.total_track_plays = total_track_plays
 
+        self.pid_by_date = {d: pid for pid, d in self.show_dates.items()}
+        played = sorted(self.show_dates[p] for p in self.show_tracks)
+        self.first_date, self.last_date = played[0], played[-1]
+        self.show_artists = {pid: {a for t in tids for a in self.track_artists[t]}
+                             for pid, tids in self.show_tracks.items()}
+        self.artist_shows = defaultdict(set)
+        for pid, aids in self.show_artists.items():
+            for a in aids:
+                self.artist_shows[a].add(pid)
+        self.plays_by_year = Counter(self.show_dates[p].year for p, tids in self.show_tracks.items() for _ in tids)
+        self.genre_artists = defaultdict(set)
+        for aid, genres in self.artist_genres.items():
+            for g in genres:
+                self.genre_artists[g].add(aid)
+        # rank artists by number of shows (1 = most shows; ties share a rank)
+        self.artist_rank = {a: 1 + sum(1 for a2 in self.artist_shows if len(self.artist_shows[a2]) > len(v))
+                            for a, v in self.artist_shows.items()}
+
         # Novelty: share of a show's artists who had never been played before.
         # It trends down as the pool of already-played artists grows, so rank
-        # each show against others from the same year to make it comparable.
+        # each show against a sliding window of neighboring shows.
         self.novelty = {pid: self._debut_share(pid) for pid in self.show_tracks}
-        by_year = defaultdict(list)
-        for pid, share in self.novelty.items():
-            by_year[self.show_dates[pid].year].append(share)
-        self.novelty_rank = {}
-        for pid, share in self.novelty.items():
-            peers = by_year[self.show_dates[pid].year]
+        ordered = sorted(self.novelty, key=self.show_dates.get)
+        self.novelty_peers, self.novelty_rank = {}, {}
+        for i, pid in enumerate(ordered):
+            lo = max(0, min(i - NOVELTY_WINDOW, len(ordered) - 2 * NOVELTY_WINDOW - 1))
+            peers = [self.novelty[p] for p in ordered[lo:lo + 2 * NOVELTY_WINDOW + 1]]
+            share = self.novelty[pid]
             below = sum(1 for x in peers if x < share) + 0.5 * (sum(1 for x in peers if x == share) - 1)
+            self.novelty_peers[pid] = sorted(peers)
             self.novelty_rank[pid] = below / (len(peers) - 1) if len(peers) > 1 else 0.5
 
     def _debut_share(self, pid):
@@ -159,9 +179,7 @@ class History:
             'artists': len({a for t in tids for a in self.track_artists[t]}),
             'novelty': self.novelty.get(playlist_id, 0),
             'novelty_rank': self.novelty_rank.get(playlist_id, 0.5),
-            'year': self.show_dates[playlist_id].year,
-            'year_novelty': sorted(v for p, v in self.novelty.items()
-                                   if self.show_dates[p].year == self.show_dates[playlist_id].year),
+            'novelty_peers': self.novelty_peers.get(playlist_id, []),
         }
 
     def show_factoids(self, playlist_id):
@@ -271,6 +289,110 @@ class History:
                                   f"to {self.artists[hi]['name']} ({_compact(self.artists[hi]['followers'])})")
 
         return facts
+
+
+    def timeline_x(self, d, width):
+        """Horizontal position of date d on a timeline spanning the whole history."""
+        span = (self.last_date - self.first_date).days or 1
+        return round((d - self.first_date).days / span * width, 1)
+
+    def year_x(self, year, width):
+        return self.timeline_x(max(self.first_date, date(year, 1, 1)), width)
+
+    def artist_profile(self, artist_id):
+        pids = sorted(self.artist_shows.get(artist_id, ()), key=self.show_dates.get)
+        if not pids:
+            return None
+        shows = []
+        for pid in pids:
+            items = [(i + 1, t) for i, t in enumerate(self.show_tracks[pid]) if artist_id in self.track_artists[t]]
+            shows.append({'date': self.show_dates[pid], 'tracks': [
+                {'position': pos, 'name': self.tracks[t]['name'], 'album': self.tracks[t]['album'],
+                 'others': [self.artists[a] for a in self.track_artists[t] if a != artist_id]}
+                for pos, t in items]})
+        dates = [s['date'] for s in shows]
+        facts = []
+
+        def add(kind, label, text):
+            facts.append({'kind': kind, 'label': label, 'text': text})
+
+        n = len(pids)
+        rank = self.artist_rank[artist_id]
+        if n >= 3:
+            add('regular', 'Standing', f"#{rank} most-played artist" if rank <= 50 else f"played at {n} shows")
+        if len(dates) > 1:
+            gaps = [((b - a).days, a, b) for a, b in zip(dates, dates[1:])]
+            days, a, b = max(gaps)
+            if days >= 180:
+                add('return', 'Longest absence', f"{_years_months(days)}, between {a} and {b}")
+
+        recordings = Counter(self.recording_key(t) for pid in pids for t in self.show_tracks[pid]
+                             if artist_id in self.track_artists[t])
+        top_key, top_n = recordings.most_common(1)[0]
+        if top_n > 1:
+            name = next(self.tracks[t]['name'] for t in self.tracks if self.recording_key(t) == top_key)
+            add('repeat', 'Most played', f"“{name}” ({top_n} times)")
+
+        collaborators = Counter(a['name'] for s in shows for t in s['tracks'] for a in t['others'])
+        if collaborators:
+            add('stat', 'Credited with', ', '.join(name for name, _ in collaborators.most_common(5)))
+
+        # Artists who turn up in the same shows more than chance would suggest
+        if n >= 4:
+            together = Counter(a for pid in pids for a in self.show_artists[pid] if a != artist_id)
+            total_shows = len(self.show_tracks)
+            scored = []
+            for a, k in together.items():
+                if k < 3 or a in {x['artist_id'] for s in shows for t in s['tracks'] for x in t['others']}:
+                    continue
+                lift = k / (n * len(self.artist_shows[a]) / total_shows)
+                if lift > 2:
+                    scored.append((k * math.log(lift), a, k))
+            if scored:
+                scored.sort(reverse=True)
+                add('genre', 'Often shares a show with',
+                    ', '.join(f"{self.artists[a]['name']} ({k}×)" for _, a, k in scored[:4]))
+
+        return {'shows': shows, 'n_shows': n, 'n_plays': sum(len(s['tracks']) for s in shows),
+                'first': dates[0], 'last': dates[-1], 'facts': facts,
+                'genres': sorted(self.artist_genres.get(artist_id, ()))}
+
+    def genre_profile(self, name):
+        aids = self.genre_artists.get(name)
+        if not aids:
+            return None
+        artists = []
+        for a in aids:
+            pids = sorted(self.artist_shows.get(a, ()), key=self.show_dates.get)
+            if pids:
+                artists.append({**self.artists[a], 'shows': len(pids), 'first': self.show_dates[pids[0]],
+                                'last': self.show_dates[pids[-1]]})
+        artists.sort(key=lambda x: (-x['shows'], x['name']))
+
+        # share of each year's track plays that carry this genre
+        by_year = Counter()
+        for pid, tids in self.show_tracks.items():
+            for t in tids:
+                if any(a in aids for a in self.track_artists[t]):
+                    by_year[self.show_dates[pid].year] += 1
+        years = [{'year': y, 'plays': by_year[y], 'share': by_year[y] / self.plays_by_year[y]}
+                 for y in sorted(self.plays_by_year)]
+
+        # related genres: most over-represented among this genre's artists
+        n_artists = len(self.artist_genres)
+        related = []
+        co = Counter(g for a in aids for g in self.artist_genres[a] if g != name)
+        for g, k in co.items():
+            if k < 3:
+                continue
+            lift = k / (len(aids) * len(self.genre_artists[g]) / n_artists)
+            related.append((k * math.log(lift) if lift > 1 else 0, g, k))
+        related.sort(reverse=True)
+
+        return {'artists': artists, 'years': years,
+                'n_plays': sum(by_year.values()),
+                'n_shows': len({pid for a in aids for pid in self.artist_shows.get(a, ())}),
+                'related': [(g, k) for score, g, k in related[:12] if score > 0]}
 
 
 @lru_cache(maxsize=1)

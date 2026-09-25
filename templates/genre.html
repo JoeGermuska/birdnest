@@ -1,32 +1,48 @@
-{% extends "_base.html" %} {% block title %}Genre: {{ genre_name }}{% endblock title %} {% block extra_head %} {% include "_sortable_extra_head.html" %} {% endblock extra_head %} {% block content %}
-<section>
-    <h2>Genre: {{ genre_name }}</h2>
-    <a href="https://everynoise.com/research.cgi?mode=genre&name={{genre_name}}">Every Noise</a> | <a href="https://www.google.com/search?q={{genre_name}}">Google</a>
-    <table class="sortable-theme-bootstrap" data-sortable>
-        <thead>
-            <tr>
-                <th>
-                    Artist
-                </th>
-                <th>Popularity</th>
-                <th>Followers</th>
-                <th>Other Genres</th>
-            </tr>
-        </thead>
+{% extends "_base.html" %}
+{% block title %}Genre: {{ genre_name }}{% endblock title %}
+{% block content %}
+<section class="detail genre">
+    <header>
+        <h1>{{ genre_name }}</h1>
+        <p class="detail-meta">
+            {{ profile.artists|length }} artists · {{ profile.n_plays }} plays across {{ profile.n_shows }} shows ·
+            <a href="https://everynoise.com/research.cgi?mode=genre&name={{ genre_name|urlencode }}">Every Noise</a>
+        </p>
+    </header>
+
+    <figure class="year-bars">
+        {% set peak = profile.years|map(attribute='share')|max %}
+        <figcaption>Share of each year's plays</figcaption>
+        <div class="bars">
+            {% for y in profile.years %}
+            <div class="bar" title="{{ y.year }}: {{ y.plays }} of plays ({{ '%.1f' % (y.share * 100) }}%)">
+                <span class="bar-value">{{ '%.1f' % (y.share * 100) }}%</span>
+                <span class="bar-track"><span class="bar-fill" style="height: {{ (y.share / peak * 100) if peak else 0 }}%"></span></span>
+                <span class="bar-label">{{ y.year }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </figure>
+
+    {% if profile.related %}
+    <h2>Neighbors</h2>
+    <p class="chips">{% for g, k in profile.related %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}" title="{{ k }} shared artists">{{ g }}</a>{% endfor %}</p>
+    {% endif %}
+
+    <h2>Artists</h2>
+    <table class="show-tracks">
+        <thead><tr><th>Artist</th><th class="num">Shows</th><th>First</th><th>Latest</th><th class="num">Followers</th></tr></thead>
         <tbody>
-            {% for artist in genre_obj.artists %}
+            {% for a in profile.artists %}
             <tr>
-                <td><a href="{{ url_for('artist',spotify_id=artist.spotify_id)}}">{{ artist.name }}</a></td>
-                <td>{{ artist.popularity }}</td>
-                <td>{{ "{:,}".format(artist.followers) }}</td>
-                <td>
-                    {% for genre in artist.genres|reject('eq',genre_obj.name) %} <a href="{{ url_for('genre',genre_name=genre)}}">{{ genre }}</a> {% if not loop.last %}; {% endif %} {% endfor %}
-                </td>
+                <td><a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a></td>
+                <td class="num">{{ a.shows }}</td>
+                <td><a href="{{ url_for('show_playlist', date_str=a.first) }}">{{ a.first }}</a></td>
+                <td>{% if a.last != a.first %}<a href="{{ url_for('show_playlist', date_str=a.last) }}">{{ a.last }}</a>{% endif %}</td>
+                <td class="num">{{ "{:,}".format(a.followers) if a.followers is not none }}</td>
             </tr>
             {% endfor %}
-
         </tbody>
     </table>
-
 </section>
 {% endblock content %}

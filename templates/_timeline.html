@@ -1,0 +1,21 @@
+{# Expects `history` and `marks`: list of {'date', 'label'}; draws one tick per show across the whole history #}
+<figure class="timeline">
+    <svg viewBox="0 0 808 28" preserveAspectRatio="none" role="img" aria-label="{{ marks|length }} shows between {{ history.first_date.year }} and {{ history.last_date.year }}">
+        {% for y in range(history.first_date.year + 1, history.last_date.year + 1) %}
+        {% set x = 4 + history.year_x(y, 800) %}
+        <line class="year-rule" x1="{{ x }}" x2="{{ x }}" y1="0" y2="26" />
+        {% endfor %}
+        <line class="baseline" x1="4" x2="804" y1="26" y2="26" />
+        {% for m in marks %}
+        {% set x = 4 + history.timeline_x(m.date, 800) %}
+        <a href="{{ url_for('show_playlist', date_str=m.date) }}">
+            <title>{{ m.label }}</title>
+            <rect class="hit" x="{{ x - 5 }}" y="0" width="10" height="28" />
+            <line class="mark" x1="{{ x }}" x2="{{ x }}" y1="6" y2="26" />
+        </a>
+        {% endfor %}
+    </svg>
+    <figcaption>
+        {% for y in range(history.first_date.year, history.last_date.year + 1) %}<span style="left: {{ ((4 + history.year_x(y, 800)) / 8.08)|round(2) }}%">{{ y }}</span>{% endfor %}
+    </figcaption>
+</figure>
