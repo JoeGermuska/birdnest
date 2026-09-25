@@ -212,3 +212,119 @@
     border: 1px solid #ccc;
     border-radius: 3px;
 }
+
+/* Show page */
+section.show {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 16px 40px;
+}
+
+.show-nav {
+    display: flex;
+    justify-content: space-between;
+    margin: 12px 0;
+}
+
+.show-header {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.show-header h1 {
+    margin-top: 0;
+    font-family: 'David Libre', serif;
+}
+
+.show-description {
+    color: #555;
+}
+
+.factoids {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.factoid {
+    background: #f4f2ee;
+    border-left: 4px solid #bbb;
+    padding: 8px 12px;
+}
+
+.factoid dt {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #666;
+}
+
+.factoid dd {
+    margin: 4px 0 0;
+}
+
+.factoid-theme { border-color: #c0392b; }
+.factoid-repeat { border-color: #2e86c1; }
+.factoid-return { border-color: #8e44ad; }
+.factoid-regular { border-color: #d68910; }
+.factoid-genre { border-color: #229954; }
+
+table.show-tracks {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+table.show-tracks th {
+    text-align: left;
+    border-bottom: 2px solid #333;
+    padding: 6px;
+}
+
+table.show-tracks td {
+    border-bottom: 1px solid #e3e3e3;
+    padding: 6px;
+    vertical-align: top;
+}
+
+table.show-tracks .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+table.show-tracks .seq,
+table.show-tracks .album,
+table.show-tracks .label {
+    color: #777;
+    font-size: 0.85rem;
+}
+
+table.show-tracks a {
+    color: #222;
+    text-decoration: none;
+}
+
+table.show-tracks a:hover {
+    text-decoration: underline dotted;
+}
+
+.badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin: 0 4px 2px 0;
+    white-space: nowrap;
+}
+
+.badge-debut { background: #e8f6ee; color: #1d6b3d; }
+.badge-return { background: #f3eafa; color: #6c3483; }
+.badge-repeat { background: #e8f1fa; color: #1f5f8b; white-space: normal; }
+.badge-repeat a { color: inherit !important; }
+
+@media (max-width: 700px) {
+    .show-header { flex-direction: column; }
+    table.show-tracks .label,
+    table.show-tracks th:nth-child(4) { display: none; }
+}

@@ -2,21 +2,63 @@
 
 {% block title %}Playlist for {{ playlist.date }}{% endblock title %}
 
-{% block extra_head %}
-{% include "_sortable_extra_head.html" %}
-{% endblock extra_head %}
-
 {% block content %}
-    <section class="playlist">
-        <h1>Conference of the Birds — {{ playlist.date }}</h1>
-        <img class='playlist-image' src="{{ url_for('playlist_image', date_str=playlist.date) }}">
-        {% if playlist.description %}
-        <p>{{ playlist.description|safe }}</p>
-        {% else %}
+    <section class="playlist show">
+        <nav class="show-nav">
+            {% if prev_show %}<a href="{{ url_for('show_playlist', date_str=prev_show.date) }}">&larr; {{ prev_show.date }}</a>{% else %}<span></span>{% endif %}
+            {% if next_show %}<a href="{{ url_for('show_playlist', date_str=next_show.date) }}">{{ next_show.date }} &rarr;</a>{% endif %}
+        </nav>
+        <header class="show-header">
+            <img class='playlist-image' src="{{ url_for('playlist_image', date_str=playlist.date) }}" alt="">
+            <div>
+                <h1>Conference of the Birds — {{ playlist.date.strftime('%B %-d, %Y') }}</h1>
+                {% if playlist.description %}<p class="show-description">{{ playlist.description|safe }}</p>{% endif %}
+                <p><a href="{{playlist.spotify_url}}"><i class="fab fa-spotify"></i> listen on Spotify</a></p>
+            </div>
+        </header>
+
+        {% if facts %}
+        <dl class="factoids">
+            {% for f in facts %}
+            <div class="factoid factoid-{{ f.kind }}">
+                <dt>{{ f.label }}</dt>
+                <dd>{{ f.text }}</dd>
+            </div>
+            {% endfor %}
+        </dl>
         {% endif %}
-        <p><a href="{{playlist.spotify_url}}">listen on spotify</a></p>
-        {% with tracks=playlist.tracks %}
-        {% include "_tracks_table.html" %}
-        {% endwith %}
+
+        <table class="show-tracks">
+            <thead>
+                <tr><th>#</th><th>Track</th><th>Artist</th><th>Label</th><th class="num">Time</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+                {% for pt in playlist.playlist_tracks %}
+                {% set track = pt.track %}
+                {% set n = notes.get(track.track_id) %}
+                <tr>
+                    <td class="num seq">{{ loop.index }}</td>
+                    <td>
+                        <a class="track-name" href="{{ track.spotify_url }}" target="_blank">{{ track.name }}</a>
+                        {% if track.album %}<div class="album">{{ track.album.name }}</div>{% endif %}
+                    </td>
+                    <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>
+                    <td class="label">{{ track.album.label if track.album }}</td>
+                    <td class="num">{% if track.duration_ms %}{{ track.duration_ms // 60000 }}:{{ '%02d' % (track.duration_ms // 1000 % 60) }}{% endif %}</td>
+                    <td class="notes">
+                        {% if n %}
+                        {% for name in n.debut_artists %}<span class="badge badge-debut" title="First time {{ name }} was played">debut{% if track.artists|length > 1 %}: {{ name }}{% endif %}</span>{% endfor %}
+                        {% for name, last, days in n.returning %}<span class="badge badge-return" title="{{ name }} was last played {{ last }}">{{ name if track.artists|length > 1 }} back after {{ (days / 365)|round(1) }} yrs</span>{% endfor %}
+                        {% if n.total_plays > 1 %}
+                        <span class="badge badge-repeat">played {{ n.total_plays }}×:
+                            {% for d in n.other_dates %}<a href="{{ url_for('show_playlist', date_str=d) }}">{{ d }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+                        </span>
+                        {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </section>
 {% endblock content %}

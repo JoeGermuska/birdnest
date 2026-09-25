@@ -2,6 +2,7 @@ from flask import Flask, request, render_template, abort, send_from_directory, r
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
+import factoids
 from datetime import date
 from collections import Counter
 import os
@@ -84,7 +85,13 @@ def show_playlist(date_str):
     playlist = app.session.query(Playlist).filter(Playlist.date == playlist_date).scalar()
     if playlist is None:
         return f"No playlist for {date_str}", 404
-    return render_template("playlist.html", playlist=playlist)
+    history = factoids.get_history()
+    prev_show = app.session.query(Playlist).filter(Playlist.date < playlist_date).order_by(Playlist.date.desc()).first()
+    next_show = app.session.query(Playlist).filter(Playlist.date > playlist_date).order_by(Playlist.date).first()
+    return render_template("playlist.html", playlist=playlist,
+                           facts=history.show_factoids(playlist.playlist_id),
+                           notes=history.track_notes(playlist.playlist_id),
+                           prev_show=prev_show, next_show=next_show)
 
 @app.route('/image/<date_str>')
 def playlist_image(date_str):
