@@ -62,6 +62,10 @@ def genre(genre_name):
         abort(404)
     return render_template('genre.html', genre_name=genre_name, profile=profile, history=history)
 
+@app.route('/genres/map')
+def genre_map():
+    return render_template('genre_map.html', tree=factoids.get_history().genre_tree())
+
 @app.route('/genres')
 def genres():
     genres = sorted(set(x.name for x in app.session.query(Genre).order_by(Genre.name)))

@@ -1,5 +1,6 @@
 <nav id="topbar">
     <h1><a href="/">Conference of the Birds</a></h1>
+    <div class="nav-links"><a href="{{ url_for('ranking', kind='artists') }}">Rankings</a><a href="{{ url_for('genre_map') }}">Genre map</a></div>
     <form id="search" action="{{ url_for('search')}}" method="GET">
         search:
         <div class="autocomplete-container">

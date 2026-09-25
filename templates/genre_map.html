@@ -1,0 +1,121 @@
+{% extends "_base.html" %}
+{% block title %}Genre map{% endblock title %}
+{% block extra_head %}
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
+{% endblock extra_head %}
+{% block content %}
+<section class="detail genre-map viz-root">
+    <h1>Genre map</h1>
+    <p class="detail-meta">Every play, split evenly across the Spotify genres of its artists and grouped into
+        families. Box size is plays. Click a genre to open it. Plays by artists with no genres
+        (<span id="untagged"></span>) are left out.</p>
+    <div class="year-filter" role="group" aria-label="Year">
+        <button type="button" data-year="all" aria-pressed="true">All years</button>
+        {% for y in tree.years %}<button type="button" data-year="{{ loop.index0 }}" aria-pressed="false">{{ y }}</button>{% endfor %}
+    </div>
+    <figure class="treemap"><svg id="treemap" role="img" aria-label="Treemap of plays by genre family and genre"></svg></figure>
+
+    <h2>Family mix by year</h2>
+    <figure class="family-mix"><svg id="mix" role="img" aria-label="Share of each year's plays by genre family"></svg></figure>
+    <ul class="legend" id="legend"></ul>
+    <div class="viz-tip" id="tip" hidden></div>
+</section>
+<script>
+const TREE = {{ tree|tojson }};
+// categorical slots in family order (validated default palette); ink chosen for contrast on each fill
+const COLORS = {
+    'Jazz': ['#2a78d6', '#fff'], 'Rock': ['#eb6834', '#fff'], 'Soul, funk & blues': ['#1baf7a', '#0b0b0b'],
+    'Folk & country': ['#eda100', '#0b0b0b'], 'Pop': ['#e87ba4', '#0b0b0b'], 'Global': ['#008300', '#fff'],
+    'Electronic & hip hop': ['#4a3aa7', '#fff'], 'Experimental & classical': ['#e34948', '#fff'],
+    'Other': ['#9a9994', '#0b0b0b'],
+};
+const genreUrl = g => '/genre/' + encodeURIComponent(g);
+const fmt = v => v >= 10 ? Math.round(v).toLocaleString() : v.toFixed(1);
+const tip = document.getElementById('tip');
+function showTip(evt, html) {
+    tip.innerHTML = html; tip.hidden = false;
+    const box = tip.getBoundingClientRect();
+    tip.style.left = Math.min(evt.pageX + 12, window.scrollX + innerWidth - box.width - 8) + 'px';
+    tip.style.top = (evt.pageY + 14) + 'px';
+}
+const hideTip = () => { tip.hidden = true; };
+
+document.getElementById('untagged').textContent =
+    TREE.untagged.reduce((a, b) => a + b, 0).toLocaleString() + ' of ' + TREE.totals.reduce((a, b) => a + b, 0).toLocaleString();
+
+function drawTreemap(yearIndex) {
+    const svg = d3.select('#treemap');
+    const width = svg.node().parentNode.clientWidth, height = Math.max(420, Math.min(640, width * 0.6));
+    svg.attr('viewBox', `0 0 ${width} ${height}`).attr('width', width).attr('height', height).selectAll('*').remove();
+    const value = g => yearIndex === 'all' ? g.plays.reduce((a, b) => a + b, 0) : g.plays[yearIndex];
+    const root = d3.hierarchy({children: TREE.families.map(f => ({name: f.name, children: f.genres}))})
+        .sum(d => d.plays ? value(d) : 0)
+        .sort((a, b) => b.value - a.value);
+    d3.treemap().size([width, height]).paddingOuter(2).paddingTop(20).paddingInner(2).round(true)(root);
+    const total = root.value;
+
+    const fam = svg.selectAll('g.family').data(root.children || []).join('g').attr('class', 'family');
+    fam.append('text').attr('class', 'family-label')
+        .attr('x', d => d.x0 + 4).attr('y', d => d.y0 + 14)
+        .text(d => (d.x1 - d.x0 > 60 ? d.data.name : '') + (d.x1 - d.x0 > 160 ? ` · ${Math.round(d.value / total * 100)}%` : ''));
+
+    const leaf = fam.selectAll('a').data(d => d.leaves()).join('a').attr('href', d => genreUrl(d.data.name));
+    leaf.append('rect').attr('class', 'tile')
+        .attr('x', d => d.x0).attr('y', d => d.y0)
+        .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
+        .attr('rx', 2)
+        .attr('fill', d => COLORS[d.parent.data.name][0]);
+    leaf.filter(d => d.x1 - d.x0 > 44 && d.y1 - d.y0 > 16).append('text').attr('class', 'tile-label')
+        .attr('x', d => d.x0 + 4).attr('y', d => d.y0 + 13)
+        .attr('fill', d => COLORS[d.parent.data.name][1])
+        .text(d => d.data.name)
+        .each(function (d) {  // trim labels that overflow their tile
+            const max = d.x1 - d.x0 - 8;
+            let t = d.data.name;
+            while (this.getComputedTextLength() > max && t.length > 3) { t = t.slice(0, -1); this.textContent = t + '…'; }
+        });
+    leaf.on('mousemove', (evt, d) => showTip(evt,
+            `<strong>${d.data.name}</strong><br>${d.parent.data.name}<br>${fmt(d.value)} plays · ${(d.value / total * 100).toFixed(1)}%`))
+        .on('mouseleave', hideTip);
+}
+
+function drawMix() {
+    const svg = d3.select('#mix');
+    const width = svg.node().parentNode.clientWidth, height = 260, margin = {top: 8, right: 8, bottom: 22, left: 36};
+    svg.attr('viewBox', `0 0 ${width} ${height}`).attr('width', width).attr('height', height).selectAll('*').remove();
+    const names = TREE.families.map(f => f.name);
+    const rows = TREE.years.map((y, i) => {
+        const r = {year: y};
+        let tagged = 0;
+        for (const f of TREE.families) { r[f.name] = f.genres.reduce((a, g) => a + g.plays[i], 0); tagged += r[f.name]; }
+        for (const n of names) r[n] /= tagged;
+        return r;
+    });
+    const x = d3.scaleBand().domain(TREE.years).range([margin.left, width - margin.right]).padding(0.25);
+    const y = d3.scaleLinear().domain([0, 1]).range([height - margin.bottom, margin.top]);
+    svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x).tickSize(0)).call(g => g.select('.domain').remove());
+    svg.append('g').attr('class', 'axis').attr('transform', `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y).ticks(4, '%').tickSize(0)).call(g => g.select('.domain').remove());
+    const stack = d3.stack().keys(names)(rows);
+    svg.append('g').selectAll('g').data(stack).join('g').attr('fill', s => COLORS[s.key][0])
+        .selectAll('rect').data(s => s.map(d => Object.assign(d, {key: s.key}))).join('rect')
+        .attr('x', d => x(d.data.year)).attr('width', x.bandwidth())
+        .attr('y', d => y(d[1])).attr('height', d => Math.max(0, y(d[0]) - y(d[1]) - 2))
+        .on('mousemove', (evt, d) => showTip(evt, `<strong>${d.key}</strong><br>${d.data.year}: ${((d[1] - d[0]) * 100).toFixed(1)}% of tagged plays`))
+        .on('mouseleave', hideTip);
+    d3.select('#legend').selectAll('li').data(names).join('li')
+        .html(n => `<span class="swatch" style="background:${COLORS[n][0]}"></span>${n}`);
+}
+
+let year = 'all';
+document.querySelectorAll('.year-filter button').forEach(btn => btn.addEventListener('click', () => {
+    year = btn.dataset.year === 'all' ? 'all' : +btn.dataset.year;
+    document.querySelectorAll('.year-filter button').forEach(b => b.setAttribute('aria-pressed', b === btn));
+    drawTreemap(year);
+}));
+drawTreemap(year); drawMix();
+let resizeTimer;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawTreemap(year); drawMix(); }, 150); });
+</script>
+{% endblock content %}

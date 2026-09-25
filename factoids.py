@@ -8,6 +8,8 @@ import math
 import re
 import os
 import sqlite3
+
+import genre_families
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date
@@ -541,6 +543,30 @@ class History:
         return {'title': 'Longest absences', 'unit': '', 'rows': rows,
                 'blurb': "Artists who came back after a year or more away. The bar is the gap; "
                          "ticks are the artist's other shows."}
+
+    def genre_tree(self):
+        """Plays per genre per year, grouped into families, for the genre map. Each play
+        is split evenly across the genres of its artists, so totals match real plays."""
+        family_of = genre_families.assign(self.artist_genres)
+        years = sorted(self.plays_by_year)
+        plays = defaultdict(lambda: defaultdict(float))  # genre -> year -> plays
+        untagged = Counter()
+        for pid, tids in self.show_tracks.items():
+            y = self.show_dates[pid].year
+            for t in tids:
+                gs = set()
+                for a in self.track_artists[t]:
+                    gs |= self.artist_genres[a]
+                if not gs:
+                    untagged[y] += 1
+                for g in gs:
+                    plays[g][y] += 1 / len(gs)
+        families = {f: [] for f in genre_families.FAMILY_NAMES}
+        for g, by_year in plays.items():
+            families[family_of[g]].append({'name': g, 'plays': [round(by_year.get(y, 0), 3) for y in years]})
+        return {'years': years, 'untagged': [untagged[y] for y in years],
+                'totals': [self.plays_by_year[y] for y in years],
+                'families': [{'name': f, 'genres': gs} for f, gs in families.items() if gs]}
 
     def novelty_series(self):
         """Every show's novelty and its neighborhood median, in date order, for the novelty chart."""
