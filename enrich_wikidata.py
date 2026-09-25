@@ -5,8 +5,10 @@ Artists are found by Spotify artist ID, or by the Wikidata id MusicBrainz has
 for them (see enrich_musicbrainz.py); links MusicBrainz knows about fill in
 anything Wikidata lacks.
 
-Rebuilds the table from scratch each run; it's a few dozen batched queries.
-    python enrich_wikidata.py [path/to/birdnest.db]
+Incremental: only artists not looked up before are queried (wikidata_checked
+records who has been). Pass --all to re-query everyone, e.g. to pick up
+pages created on Wikipedia since.
+    python enrich_wikidata.py [--all] [path/to/birdnest.db]
 """
 import json
 import sqlite3
@@ -86,33 +88,50 @@ def fetch(binding, key_to_artist, links):
         time.sleep(1)
 
 
-def main(db_path='birdnest.db'):
+def main(db_path='birdnest.db', refresh_all=False):
     con = sqlite3.connect(db_path)
     con.execute("""create table if not exists artist_link (
         artist_id integer references artist(artist_id), source varchar, url varchar)""")
+    if not con.execute("select 1 from sqlite_master where name='wikidata_checked'").fetchone():
+        with con:
+            con.execute("""create table wikidata_checked (
+                artist_id integer primary key references artist(artist_id), checked_at timestamp)""")
+            # artists that already have links were looked up by an earlier full run
+            con.execute("""insert into wikidata_checked
+                           select distinct artist_id, current_timestamp from artist_link""")
     has_mb = con.execute("select 1 from sqlite_master where name='mb_artist'").fetchone()
+
+    todo = dict(con.execute("select spotify_id, artist_id from artist where spotify_id is not null" +
+                            ("" if refresh_all else
+                             " and artist_id not in (select artist_id from wikidata_checked)")))
+    targets = set(todo.values())
+    print(f"{len(targets)} artists to look up on Wikidata")
+    if not targets:
+        return
     links = {}  # artist_id -> {source: url}
 
-    print("Wikidata by Spotify id")
-    fetch(BY_SPOTIFY, dict(con.execute("select spotify_id, artist_id from artist where spotify_id is not null")), links)
+    fetch(BY_SPOTIFY, todo, links)
 
     if has_mb:
         qids = {q: a for a, q in con.execute("select artist_id, wikidata from mb_artist where wikidata is not null")
-                if a not in links}
-        print("Wikidata by MusicBrainz's Wikidata id")
+                if a in targets and a not in links}
         fetch(BY_QID, qids, links)
         for artist_id, mbid in con.execute("select artist_id, mbid from mb_artist where mbid is not null"):
-            links.setdefault(artist_id, {}).setdefault('musicbrainz', LINKS['musicbrainz'](mbid))
+            if artist_id in targets:
+                links.setdefault(artist_id, {}).setdefault('musicbrainz', LINKS['musicbrainz'](mbid))
         for artist_id, mb_type, url in con.execute("select artist_id, type, url from mb_artist_url"):
-            if mb_type in MB_SOURCES:
+            if artist_id in targets and mb_type in MB_SOURCES:
                 links.setdefault(artist_id, {}).setdefault(MB_SOURCES[mb_type], url)
 
     rows = [(a, source, url) for a, sources in links.items() for source, url in sources.items()]
     with con:
-        con.execute("delete from artist_link")
+        con.executemany("delete from artist_link where artist_id = ?", [(a,) for a in targets])
         con.executemany("insert into artist_link values (?, ?, ?)", rows)
-    print(f"{len(rows)} links for {len(links)} artists")
+        con.executemany("insert or replace into wikidata_checked values (?, current_timestamp)",
+                        [(a,) for a in targets])
+    print(f"{len(rows)} links for {len(links)} of {len(targets)} artists")
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:])
+    args = sys.argv[1:]
+    main(*[a for a in args if a != '--all'], refresh_all='--all' in args)
