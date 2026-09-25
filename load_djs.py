@@ -71,8 +71,6 @@ def parse_line(line):
                  parse_names(djs_m['djs']), weekday=date_m['weekday'])
     if len(e.djs) != len(set(e.djs)):
         e.warnings.append(f"duplicate names: {e.djs}")
-    if '…' in djs_m['djs']:
-        e.warnings.append("list trails off (…), may be incomplete")
     for note_m in NOTE_RE.finditer(line[djs_m.end():]):
         note = note_m['note'].strip()
         who = POSSESSIVE_RE.match(note)
