@@ -1,5 +1,6 @@
 {% extends "_base.html" %}
 
+{% from "_macros.html" import spotify_link %}
 {% block title %}Search — {{ terms }}{% endblock title %}
 {% block content %}
 <section class="detail search">
@@ -43,7 +44,7 @@
             <tr>
                 <td class="thumb">{% if track.album and track.album.images %}{% with img = track.album.image_url(max_size=64) %}{% if img %}<img src="{{ img }}" alt="" width="40" height="40" loading="lazy">{% endif %}{% endwith %}{% endif %}</td>
                 <td>
-                    <a class="track-name" href="{{ track.spotify_url }}" target="_blank">{{ track.name }}</a>
+                    <span class="track-name">{{ track.name }}</span> {{ spotify_link(track.spotify_url, track.name) }}
                     {% if track.album %}<div class="album">{{ track.album.name }}</div>{% endif %}
                 </td>
                 <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>

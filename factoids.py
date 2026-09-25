@@ -419,6 +419,7 @@ class History:
             items = [(i + 1, t) for i, t in enumerate(self.show_tracks[pid]) if artist_id in self.track_artists[t]]
             shows.append({'date': self.show_dates[pid], 'tracks': [
                 {'position': pos, 'name': self.tracks[t]['name'], 'album': self.tracks[t]['album'],
+                 'spotify_url': self.tracks[t]['spotify_url'],
                  'others': [self.artists[a] for a in self.track_artists[t] if a != artist_id]}
                 for pos, t in items]})
         dates = [s['date'] for s in shows]
