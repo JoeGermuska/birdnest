@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% from "_macros.html" import timeline_row %}
 {% block title %}Genre: {{ genre_name }}{% endblock title %}
 {% block content %}
 <section class="detail genre">
@@ -29,20 +30,33 @@
     <p class="chips">{% for g, k in profile.related %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}" title="{{ k }} shared artists">{{ g }}</a>{% endfor %}</p>
     {% endif %}
 
-    <h2>Artists</h2>
-    <table class="show-tracks">
-        <thead><tr><th>Artist</th><th class="num">Shows</th><th>First</th><th>Latest</th><th class="num">Followers</th></tr></thead>
-        <tbody>
-            {% for a in profile.artists %}
-            <tr>
-                <td><a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a></td>
-                <td class="num">{{ a.shows }}</td>
-                <td><a href="{{ url_for('show_playlist', date_str=a.first) }}">{{ a.first }}</a></td>
-                <td>{% if a.last != a.first %}<a href="{{ url_for('show_playlist', date_str=a.last) }}">{{ a.last }}</a>{% endif %}</td>
-                <td class="num">{{ "{:,}".format(a.followers) if a.followers is not none }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="section-head">
+        <h2>Artists</h2>
+        <div class="sort-toggle" role="group" aria-label="Sort artists">
+            <button type="button" data-sort="plays" aria-pressed="true">Most played</button>
+            <button type="button" data-sort="first" aria-pressed="false">First appearance</button>
+        </div>
+    </div>
+    {% set bar_max = profile.artists|map(attribute='plays')|max %}
+    <div class="rank-rows genre-artists" id="genre-artists">
+        <div class="rank-row rank-head has-bar"><span></span><span></span>{% include "_year_axis.html" %}<span></span><span class="rank-value">plays</span></div>
+        {% for a in profile.artists %}
+        {{ timeline_row(dict(a, rank=loop.index), history, bar_max=bar_max,
+                        attrs='data-plays="%d" data-first="%s"'|format(a.plays, a.first)) }}
+        {% endfor %}
+    </div>
 </section>
+<script>
+    // re-order artist rows client-side; rank numbers follow the current order
+    document.querySelectorAll('.sort-toggle button').forEach(btn => btn.addEventListener('click', () => {
+        const box = document.getElementById('genre-artists');
+        const rows = [...box.querySelectorAll('.rank-row:not(.rank-head)')];
+        const key = btn.dataset.sort;
+        rows.sort((a, b) => key === 'plays'
+            ? (b.dataset.plays - a.dataset.plays) || a.dataset.first.localeCompare(b.dataset.first)
+            : a.dataset.first.localeCompare(b.dataset.first) || (b.dataset.plays - a.dataset.plays));
+        rows.forEach((r, i) => { r.querySelector('.rank-num').textContent = i + 1; box.appendChild(r); });
+        document.querySelectorAll('.sort-toggle button').forEach(b => b.setAttribute('aria-pressed', b === btn));
+    }));
+</script>
 {% endblock content %}

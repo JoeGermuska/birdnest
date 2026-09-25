@@ -421,9 +421,14 @@ class History:
         for a in aids:
             pids = sorted(self.artist_shows.get(a, ()), key=self.show_dates.get)
             if pids:
-                artists.append({**self.artists[a], 'shows': len(pids), 'first': self.show_dates[pids[0]],
-                                'last': self.show_dates[pids[-1]]})
-        artists.sort(key=lambda x: (-x['shows'], x['name']))
+                dates = [self.show_dates[p] for p in pids]
+                plays = sum(1 for p in pids for t in self.show_tracks[p] if a in self.track_artists[t])
+                artists.append({'anchor': self.artists[a]['spotify_id'], 'label': [self._artist_part(a)],
+                                'marks': dates, 'first': dates[0], 'shows': len(pids), 'plays': plays,
+                                'value': plays,
+                                'tip': f"{self.artists[a]['name']}: {plays} play{'s' if plays != 1 else ''} "
+                                       f"at {len(pids)} show{'s' if len(pids) != 1 else ''}, first {dates[0]}"})
+        artists.sort(key=lambda x: (-x['plays'], x['first']))
 
         # share of each year's track plays that carry this genre
         by_year = Counter()

@@ -20,3 +20,20 @@
 </dl>
 {% endif %}
 {%- endmacro %}
+
+{% macro timeline_row(r, history, highlight=None, bar_max=None, attrs="") %}
+<div class="rank-row{% if r.anchor == highlight %} is-highlight{% endif %}{% if bar_max %} has-bar{% endif %}" id="{{ r.anchor }}" title="{{ r.tip }}" {{ attrs|safe }}>
+    <span class="rank-num">{{ r.rank }}</span>
+    <span class="rank-label">{{ parts(r.label) }}</span>
+    <svg class="rank-strip" viewBox="0 0 808 18" preserveAspectRatio="none" aria-hidden="true">
+        {% for y in range(history.first_date.year + 1, history.last_date.year + 1) %}{% set x = 4 + history.year_x(y, 800) %}<line class="year-rule" x1="{{ x }}" x2="{{ x }}" y1="0" y2="18" />{% endfor %}
+        {% if r.span %}{% set x1 = 4 + history.timeline_x(r.span[0], 800) %}{% set x2 = 4 + history.timeline_x(r.span[1], 800) %}
+        <rect class="gap" x="{{ x1 }}" y="6" width="{{ x2 - x1 }}" height="6" rx="2" />{% endif %}
+        {% for d in r.marks %}{% set x = 4 + history.timeline_x(d, 800) %}
+        <a href="{{ url_for('show_playlist', date_str=d) }}"><title>{{ d }}</title><rect class="hit" x="{{ x - 3 }}" y="0" width="6" height="18" /><line class="mark" x1="{{ x }}" x2="{{ x }}" y1="3" y2="15" /></a>
+        {% endfor %}
+    </svg>
+    {% if bar_max %}<span class="rank-bar"><span style="width: {{ (r.value / bar_max * 100)|round(1) }}%"></span></span>{% endif %}
+    <span class="rank-value">{{ r.value }}</span>
+</div>
+{% endmacro %}
