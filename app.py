@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, abort, send_from_directory, redirect, make_response, jsonify
+from flask import Flask, request, render_template, abort, send_from_directory, redirect, make_response, jsonify, url_for
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
@@ -78,10 +78,14 @@ def artist(spotify_id):
 
 @app.route('/artists')
 def artists():
-    artists = app.session.query(Artist).all()
-    from collections import Counter
-    artist_count = ((a.name,len(a.tracks)) for a in artists)
-    return render_template("artists.html",artist_count_json=json.dumps(artist_count))
+    return redirect(url_for('ranking', kind='artists'))
+
+@app.route('/rankings/<kind>')
+def ranking(kind):
+    table = factoids.get_history().ranking(kind) if kind in factoids.RANKINGS else None
+    if not table:
+        abort(404)
+    return render_template('ranking.html', kind=kind, table=table, rankings=factoids.RANKINGS)
 
 
 @app.route('/playlist/<date_str>')

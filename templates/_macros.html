@@ -1,0 +1,22 @@
+{% macro parts(items) -%}
+{%- for p in items -%}
+{%- if p is string -%}{{ p }}
+{%- elif p.artist -%}<a href="{{ url_for('artist', spotify_id=p.artist) }}">{{ p.text }}</a>
+{%- elif p.genre -%}<a href="{{ url_for('genre', genre_name=p.genre) }}">{{ p.text }}</a>
+{%- elif p.show -%}<a href="{{ url_for('show_playlist', date_str=p.show) }}">{{ p.text }}</a>
+{%- else -%}{{ p.text }}{%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
+
+{% macro factoids(facts) -%}
+{% if facts %}
+<dl class="factoids">
+    {% for f in facts %}
+    <div class="factoid factoid-{{ f.kind }}">
+        <dt>{{ f.label }}</dt>
+        <dd>{{ parts(f.parts) }}{% if f.more %} <a class="more" href="{{ url_for('ranking', kind=f.more.ranking) }}#{{ f.more.anchor }}">{{ f.more.text }} →</a>{% endif %}</dd>
+    </div>
+    {% endfor %}
+</dl>
+{% endif %}
+{%- endmacro %}

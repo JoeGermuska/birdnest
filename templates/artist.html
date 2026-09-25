@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% from "_macros.html" import factoids %}
 {% block title %}{{ artist.name }}{% endblock title %}
 {% block content %}
 <section class="detail artist">
@@ -24,14 +25,7 @@
     {% set marks = [] %}
     {% for s in profile.shows %}{% set _ = marks.append({'date': s.date, 'label': s.date ~ ': ' ~ (s.tracks|map(attribute='name')|join(', '))}) %}{% endfor %}
     {% include "_timeline.html" %}
-
-    {% if profile.facts %}
-    <dl class="factoids">
-        {% for f in profile.facts %}
-        <div class="factoid factoid-{{ f.kind }}"><dt>{{ f.label }}</dt><dd>{{ f.text }}</dd></div>
-        {% endfor %}
-    </dl>
-    {% endif %}
+        {{ factoids(profile.facts) }}
 
     <h2>Played</h2>
     <table class="show-tracks">

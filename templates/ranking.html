@@ -1,0 +1,30 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import parts %}
+{% block title %}{{ table.title }}{% endblock title %}
+{% block content %}
+<section class="detail ranking">
+    <nav class="ranking-tabs">
+        {% for k in rankings %}<a href="{{ url_for('ranking', kind=k) }}"{% if k == kind %} aria-current="page"{% endif %}>{{ k|capitalize }}</a>{% endfor %}
+    </nav>
+    <h1>{{ table.title }}</h1>
+    <p class="detail-meta">{{ table.blurb }}</p>
+    <table class="show-tracks ranking-table">
+        <thead><tr><th class="num">#</th>{% for c in table.columns %}<th{% if loop.index0 in table.numeric %} class="num"{% endif %}>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+            {% for row in table.rows %}
+            <tr id="{{ row.anchor }}">
+                <td class="num seq">{% if loop.first or row.rank != table.rows[loop.index0 - 1].rank %}{{ row.rank }}{% endif %}</td>
+                {% for cell in row.cells %}<td{% if loop.index0 in table.numeric %} class="num"{% endif %}>{{ parts(cell) }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+<script>
+    // scroll the highlighted row to the middle of the screen rather than the top
+    window.addEventListener('DOMContentLoaded', () => {
+        const row = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+        if (row) row.scrollIntoView({block: 'center'});
+    });
+</script>
+{% endblock content %}

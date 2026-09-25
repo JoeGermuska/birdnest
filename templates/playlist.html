@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% from "_macros.html" import factoids %}
 
 {% block title %}Playlist for {{ playlist.date }}{% endblock title %}
 
@@ -30,20 +31,11 @@
                         {%- elif stats.novelty_rank <= 0.2 %}more familiar than most nearby shows
                         {%- else %}typical for its time{% endif -%}
                     </span>
+                    <a class="more" href="{{ url_for('ranking', kind='novelty') }}#{{ playlist.date }}">ranking →</a>
                 </div>
             </div>
         </header>
-
-        {% if facts %}
-        <dl class="factoids">
-            {% for f in facts %}
-            <div class="factoid factoid-{{ f.kind }}">
-                <dt>{{ f.label }}</dt>
-                <dd>{{ f.text }}</dd>
-            </div>
-            {% endfor %}
-        </dl>
-        {% endif %}
+        {{ factoids(facts) }}
 
         <table class="show-tracks">
             <thead>
