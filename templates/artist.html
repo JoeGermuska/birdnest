@@ -32,13 +32,12 @@
 
     <h2>Played</h2>
     <table class="show-tracks">
-        <thead><tr><th>Show</th><th class="num">#</th><th>Track</th><th>Album</th></tr></thead>
+        <thead><tr><th>Show</th><th>Track</th><th>Album</th></tr></thead>
         <tbody>
             {% for s in profile.shows|reverse %}
             {% for t in s.tracks %}
             <tr>
                 <td>{% if loop.first %}<a href="{{ url_for('show_playlist', date_str=s.date) }}">{{ s.date }}</a>{% endif %}</td>
-                <td class="num seq">{{ t.position }}</td>
                 <td>{{ t.name }}{% if t.others %}<div class="album">with {% for a in t.others %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
                 <td class="label">{{ t.album }}</td>
             </tr>
