@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, spotify_link %}
+{% from "_macros.html" import factoids, spotify_link, room_list %}
 
 {% block title %}Playlist for {{ date }}{% endblock title %}
 
@@ -14,6 +14,7 @@
             <div>
                 <h1>Conference of the Birds — {{ date.strftime('%B %-d, %Y') }}</h1>
                 {% if show.description %}<p class="show-description">{{ show.description|safe }}</p>{% endif %}
+                {% if room %}<p class="show-room" title="In the order they joined. We don't know who picked which track."><span class="novelty-label">In the room</span> {{ room_list(room) }}</p>{% endif %}
                 <p class="show-meta">
                     {{ stats.tracks }} tracks · {{ stats.runtime_min // 60 }}h {{ '%02d' % (stats.runtime_min % 60) }}m · {{ stats.artists }} artists ·
                     <a href="{{ show.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a>

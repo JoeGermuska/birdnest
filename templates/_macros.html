@@ -3,6 +3,7 @@
 {%- if p is string -%}{{ p }}
 {%- elif p.artist -%}<a href="{{ url_for('artist', spotify_id=p.artist) }}">{{ p.text }}</a>
 {%- elif p.genre -%}<a href="{{ url_for('genre', genre_name=p.genre) }}">{{ p.text }}</a>
+{%- elif p.dj -%}<a href="{{ url_for('dj', slug=p.dj) }}">{{ p.text }}</a>
 {%- elif p.show -%}<a href="{{ url_for('show_playlist', date_str=p.show) }}">{{ p.text }}</a>
 {%- else -%}{{ p.text }}{%- endif -%}
 {%- endfor -%}
@@ -37,6 +38,12 @@
     <span class="rank-value">{{ r.value }}</span>
 </div>
 {% endmacro %}
+
+{% macro room_list(room) -%}
+{%- for d in room -%}{% if not loop.first %}<span class="room-sep" aria-hidden="true"> → </span>{% endif %}<a href="{{ url_for('dj', slug=d.slug) }}">{{ d.name }}</a>
+{%- if d.first_show %} <span class="badge badge-debut" title="{{ d.note or 'First show in the log' }}">first time</span>{% elif d.note %} <span class="badge badge-note">{{ d.note }}</span>{% endif -%}
+{%- endfor -%}
+{%- endmacro %}
 
 {% macro spotify_link(url, title) -%}
 {%- if url -%}

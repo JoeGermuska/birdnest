@@ -508,3 +508,16 @@ table a.spotify-link, a.spotify-link { display: inline-block; vertical-align: -1
 tr:hover a.spotify-link, a.spotify-link:focus-visible { opacity: 1; }
 table a.spotify-link:hover, a.spotify-link:hover { color: #169c46; }
 @media (hover: none) { a.spotify-link { opacity: 0.8; } }
+
+/* Who was in the room */
+.show-room { margin: 4px 0 8px; }
+.show-room .novelty-label { color: #555; margin-right: 4px; }
+.show-room a { color: inherit; }
+.room-sep { color: #aaa; }
+.badge-note { background: #f0eee9; color: #444; }
+.room-crew { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 20px; padding: 0; list-style: none; }
+.room-crew li { display: flex; align-items: center; gap: 8px; }
+.room-crew a { min-width: 6em; }
+.room-crew .rank-bar { flex: 1; }
+.room-shows td:first-child { white-space: nowrap; }
+.caveat { color: #666; font-size: 0.9rem; }
