@@ -61,9 +61,10 @@
                 {% for track in rows %}
                 {% set n = track.notes %}
                 <tr>
-                    <td class="num seq">{{ loop.index }}</td>
+                    <td class="num seq">{{ loop.index }}
+                        <div class="track-links">{{ spotify_link(track.spotify_url, track.name) }}{{ radio_link(track.spotify_url, track.name) }}</div></td>
                     <td>
-                        <span class="track-name">{{ track.name }}</span> {{ spotify_link(track.spotify_url, track.name) }} {{ radio_link(track.spotify_url, track.name) }}
+                        <span class="track-name">{{ track.name }}</span>
                         {% if track.album %}<div class="album">{{ track.album }}</div>{% endif %}
                     </td>
                     <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>

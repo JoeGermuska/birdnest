@@ -504,13 +504,12 @@ a.mix-seg:hover { filter: brightness(0.85); }
 .mix-key-usual { font-size: 0.6rem; line-height: 6px; color: #888; }
 
 /* Per-track Spotify link: faint until the row is hovered (always visible without hover) */
-table a.spotify-link, a.spotify-link { display: inline-block; vertical-align: -1px; margin-left: 4px; color: #1db954; opacity: 0.3; transition: opacity 0.15s; line-height: 0; }
-tr:hover a.spotify-link, a.spotify-link:focus-visible { opacity: 1; }
-table a.spotify-link:hover, a.spotify-link:hover { color: #169c46; }
-@media (hover: none) { a.spotify-link { opacity: 0.8; } }
-a.radio-link { display: inline-block; vertical-align: -1px; margin-left: 4px; color: #7a2e5e; opacity: 0.3; transition: opacity 0.15s; line-height: 0; }
-tr:hover a.radio-link, li:hover a.radio-link, a.radio-link:focus-visible, a.radio-link:hover { opacity: 1; }
-@media (hover: none) { a.radio-link { opacity: 0.8; } }
+/* track icons: quiet grey, in their service's color on hover */
+a.spotify-link, a.radio-link, table a.spotify-link, table a.radio-link { display: inline-block; vertical-align: -1px; margin-left: 4px; color: #b5b5b5; line-height: 0; transition: color 0.15s; }
+a.spotify-link:hover, a.spotify-link:focus-visible, table a.spotify-link:hover { color: #1db954; }
+a.radio-link:hover, a.radio-link:focus-visible, table a.radio-link:hover { color: #7a2e5e; }
+.track-links { display: flex; justify-content: flex-end; gap: 6px; margin-top: 5px; }
+.track-links a { margin-left: 0; }
 
 /* Who was in the room */
 .show-room { margin: 4px 0 8px; }
