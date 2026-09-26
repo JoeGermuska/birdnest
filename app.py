@@ -104,6 +104,18 @@ def wikidata_todo():
     rows = sorted(artists.values(), key=lambda a: (a['tier'] != 'likely', -a['shows'], a['name']))
     return render_template('wikidata_todo.html', rows=rows)
 
+@app.route('/dj/<slug>')
+def dj(slug):
+    history = factoids.get_history()
+    profile = history.dj_profile(slug)
+    if not profile:
+        abort(404)
+    return render_template('dj.html', profile=profile, history=history)
+
+@app.route('/djs')
+def djs():
+    return redirect(url_for('ranking', kind='djs'))
+
 @app.route('/artists')
 def artists():
     return redirect(url_for('ranking', kind='artists'))
@@ -138,6 +150,7 @@ def show_playlist(date_str):
     prev_date, next_date = history.neighbors(pid)
     return render_template("playlist.html", date=playlist_date, show=history.shows[pid],
                            rows=history.show_rows(pid),
+                           room=history.show_room(pid),
                            stats=history.show_stats(pid),
                            mix=history.show_mix(pid),
                            facts=history.show_factoids(pid),

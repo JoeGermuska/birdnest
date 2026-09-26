@@ -1,0 +1,69 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import factoids, room_list %}
+{% block title %}{{ profile.dj.name }}{% endblock title %}
+{% block content %}
+<section class="detail dj">
+    <header class="detail-header">
+        <div>
+            <h1>{{ profile.dj.name }}</h1>
+            <p class="detail-meta">
+                {{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} ({{ (profile.share * 100)|round|int }}% of all) ·
+                {% if profile.n_shows > 1 %}{{ profile.first }} to {{ profile.last }}{% else %}{{ profile.first }}{% endif %} ·
+                <a href="{{ url_for('ranking', kind='djs', h=profile.dj.slug) }}#{{ profile.dj.slug }}">all DJs</a>
+            </p>
+            {% for d, note in profile.notes %}<span class="badge badge-note">{{ d }}: {{ note }}</span>{% endfor %}
+        </div>
+    </header>
+
+    {% set marks = [] %}
+    {% for s in profile.shows %}{% set _ = marks.append({'date': s.date, 'label': s.date ~ ': ' ~ (s.room|map(attribute='name')|join(', '))}) %}{% endfor %}
+    {% include "_timeline.html" %}
+    {{ factoids(profile.facts) }}
+
+    {% if profile.regulars %}
+    <h2>In the room with</h2>
+    <ul class="room-crew">
+        {% for r in profile.regulars %}
+        <li title="{{ r.shows }} of {{ profile.n_shows }} shows">
+            <a href="{{ url_for('dj', slug=r.slug) }}">{{ r.name }}</a>
+            <span class="rank-bar"><span style="width: {{ (r.share * 100)|round(1) }}%"></span></span>
+            <span class="rank-value">{{ r.shows }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if profile.artists or profile.n_shows >= 4 %}
+    <h2>What their shows lean toward</h2>
+    <p class="caveat">We don't know who picked which track, so this compares the shows {{ profile.dj.name }} was in against all shows.</p>
+    <div class="mix">
+        <span class="novelty-label">Mix</span>
+        <div class="mix-bars">
+            <div class="mix-bar" aria-label="Share of runtime by genre family in shows with {{ profile.dj.name }}">
+                {% for seg in profile.mix.show %}<a href="{{ url_for('genre_map') }}" class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}" title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}% of runtime"></a>{% endfor %}
+            </div>
+            <div class="mix-bar usual" aria-label="Mix across all shows">
+                {% for seg in profile.mix.usual %}<span class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}" title="All shows, {{ seg.family or 'no genre data' }}: {{ (seg.share * 100)|round|int }}%"></span>{% endfor %}
+            </div>
+        </div>
+        <span class="mix-key"><span class="mix-key-show">their shows</span><span class="mix-key-usual">all shows</span></span>
+    </div>
+    {% if profile.artists %}
+    <p class="chips" style="margin-top: 12px">{% for a in profile.artists %}<a class="chip" href="{{ url_for('artist', spotify_id=a.spotify_id) }}" title="In {{ a.shows }} of the {{ a.of }} shows that played {{ a.name }}">{{ a.name }} · {{ a.shows }}/{{ a.of }}</a>{% endfor %}</p>
+    {% endif %}
+    {% endif %}
+
+    <h2>Shows</h2>
+    <table class="show-tracks room-shows">
+        <thead><tr><th>Show</th><th>In the room (join order)</th></tr></thead>
+        <tbody>
+            {% for s in profile.shows %}
+            <tr>
+                <td><a href="{{ url_for('show_playlist', date_str=s.date) }}">{{ s.date }}</a></td>
+                <td>{{ room_list(s.room) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock content %}
