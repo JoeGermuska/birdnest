@@ -13,3 +13,15 @@ ways in are done together, and the design pass fits around them.
 3. **Banner**: compact `_nav.html`, working at phone width; room for any new entry points.
 4. **Design pass on the other pages**: shared colors/type tokens, **dark and light mode** (built on those tokens), tables on phones, before/after screenshots.
 5. **Later**: option C (sort/filter the wall) as its own browse page; Apple Music in the radio player.
+
+## Birds radio player: next features (owner's requests, not started)
+
+- **Like**: a ♥ on the player (and maybe on each row) that saves the track to the listener's Liked Songs.
+  Needs the `user-library-modify` scope (and `user-library-read` to show whether it's already liked), so
+  everyone logs in again once.
+- **Add to my queue playlist**: many of us keep a Spotify playlist of candidates for the next show. Let each
+  listener **choose a queue** once (pick from their own playlists; needs `playlist-read-private` and
+  `playlist-modify-public`/`-private`), then a "+ queue" button on the player and on track rows adds to it.
+  Remember the choice in the browser (localStorage) since the deployed database can't take writes; show the
+  chosen playlist's name on the player so it's clear where tracks go.
+- Later: Apple Music (see the ISRC-based plan discussed earlier: `track_provider` table, MusicKit JS adapter).
