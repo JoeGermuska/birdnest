@@ -231,7 +231,7 @@ def radio_page():
     minutes = sum(p['track']['duration_ms'] or 0 for p in picks) // 60000
     return render_template('radio.html', picks=picks, start_label=start_label, start_url=start_url, start_kind=start_kind,
                            adventure=adventure, n=n, seed=seed,
-                           minutes=minutes, spotify_ready=bool(app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID')),
+                           minutes=minutes, spotify_ready=_spotify_configured(),
                            logged_in=bool(_spotify_token()),
                            saved=session.pop('saved_playlist', None) if app.secret_key else None,
                            save_error=session.pop('save_error', None) if app.secret_key else None)
@@ -242,12 +242,16 @@ SPOTIFY_SCOPES = ('streaming user-read-email user-read-private user-read-playbac
                   'user-modify-playback-state playlist-modify-private')
 
 
+def _spotify_configured():
+    return bool(app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID') and os.environ.get('SPOTIPY_CLIENT_SECRET'))
+
+
 def _spotify_token():
     """The listener's Spotify token info, refreshed if needed, or None."""
-    if not (app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID')):
+    if not _spotify_configured():
         return None
-    auth = _spotify_auth()
     try:
+        auth = _spotify_auth()
         return auth.validate_token(auth.cache_handler.get_cached_token())
     except Exception:
         app.logger.exception('refreshing Spotify token failed')
@@ -285,7 +289,7 @@ def _save_pending_playlist(auth):
 
 @app.route('/radio/save', methods=['POST'])
 def radio_save():
-    if not app.secret_key:
+    if not _spotify_configured():
         abort(404)
     return_to = _local_path(request.form.get('return_to'), url_for('radio_page'))
     tracks = [t for t in request.form.get('tracks', '').split(',') if t.isalnum()][:100]
@@ -300,7 +304,7 @@ def radio_save():
 
 @app.route('/spotify/login')
 def spotify_login():
-    if not app.secret_key:
+    if not _spotify_configured():
         abort(404)
     session['after_login'] = _local_path(request.args.get('next'), url_for('radio_page'))
     return redirect(_spotify_auth().get_authorize_url())
@@ -323,7 +327,7 @@ def spotify_token():
 
 @app.route('/spotify/callback')
 def spotify_callback():
-    if not app.secret_key:
+    if not _spotify_configured():
         abort(404)
     auth = _spotify_auth()
     if request.args.get('code'):
