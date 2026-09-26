@@ -508,8 +508,11 @@ a.mix-seg:hover { filter: brightness(0.85); }
 a.spotify-link, a.radio-link, table a.spotify-link, table a.radio-link { display: inline-block; vertical-align: -1px; margin-left: 4px; color: #b5b5b5; line-height: 0; transition: color 0.15s; }
 a.spotify-link:hover, a.spotify-link:focus-visible, table a.spotify-link:hover { color: #1db954; }
 a.radio-link:hover, a.radio-link:focus-visible, table a.radio-link:hover { color: #7a2e5e; }
-.track-links { display: flex; justify-content: flex-end; gap: 6px; margin-top: 5px; }
+/* Spotify + radio icons, stacked in a narrow column at the left of track lists */
+.track-links { display: inline-flex; flex-direction: column; align-items: center; gap: 5px; }
 .track-links a { margin-left: 0; }
+table.show-tracks .seq .track-links { display: flex; align-items: flex-end; margin-top: 5px; }
+table.show-tracks td.links { width: 14px; padding-right: 0; padding-top: 9px; }
 
 /* Who was in the room */
 .show-room { margin: 4px 0 8px; }

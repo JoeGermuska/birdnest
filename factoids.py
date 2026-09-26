@@ -516,6 +516,17 @@ class History:
                  'others': [self.artists[a] for a in self.track_artists[t] if a != artist_id]}
                 for pos, t in items]})
         dates = [s['date'] for s in shows]
+        # the same plays by recording, most recently played first
+        by_rec = {}
+        for pid in pids:
+            for t in self.show_tracks[pid]:
+                if artist_id in self.track_artists[t]:
+                    r = by_rec.setdefault(self.recording_key(t), {
+                        'name': self.tracks[t]['name'], 'album': self.tracks[t]['album'],
+                        'spotify_url': self.tracks[t]['spotify_url'], 'dates': [],
+                        'others': [self.artists[a] for a in self.track_artists[t] if a != artist_id]})
+                    r['dates'].append(self.show_dates[pid])
+        track_rows = sorted(by_rec.values(), key=lambda r: r['dates'][-1], reverse=True)
         facts = Facts()
         spotify_id = self.artists[artist_id]['spotify_id']
 
@@ -567,7 +578,7 @@ class History:
                 facts.add('stat', 'Often in the room',
                           *_join([[self._dj_part(i), f" ({k} of {n})"] for i, k in room]))
 
-        return {'shows': shows, 'n_shows': n, 'n_plays': sum(len(s['tracks']) for s in shows),
+        return {'shows': shows, 'tracks': track_rows, 'n_shows': n, 'n_plays': sum(len(s['tracks']) for s in shows),
                 'first': dates[0], 'last': dates[-1], 'facts': facts,
                 'genres': sorted(self.artist_genres.get(artist_id, ())),
                 'links': [(label, self.artist_links[artist_id][source]) for source, label in LINK_LABELS

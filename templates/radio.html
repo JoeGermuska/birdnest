@@ -8,11 +8,11 @@
     .radio-controls button, .radio-save button { font: inherit; padding: 4px 12px; border: 1px solid #bbb;
         border-radius: 4px; background: #fff; cursor: pointer; }
     .radio-controls button:hover, .radio-save button:hover { background: #f0eee8; }
-    .radio-set { padding-left: 2.2em; margin: 18px 0; }
-    .radio-set li { padding: 5px 0; border-top: 1px solid #eee; }
-    .radio-set li::marker { color: #999; font-variant-numeric: tabular-nums; }
+    .radio-set { list-style: none; padding: 0; margin: 18px 0; counter-reset: pick; }
+    .radio-set li { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 0 10px; padding: 6px 0; border-top: 1px solid #eee; counter-increment: pick; }
+    .radio-set .pick-num { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+    .radio-set .pick-no::before { content: counter(pick); color: #999; font-variant-numeric: tabular-nums; }
     .radio-set .track { font-weight: 600; }
-    .radio-set .track a { color: #222; }
     .radio-set .by a { color: #444; }
     .radio-set .why { display: block; font-size: 0.85rem; color: #777; }
     .radio-set .fam { font-size: 0.75rem; color: #999; margin-left: 4px; }
@@ -39,10 +39,12 @@
     .rp-account { font-size: 0.85rem; color: #777; }
     .radio-set li.is-playing { background: #e8f6ee; }
     .radio-set li.is-played { opacity: 0.55; }
-    .radio-set .play-from { display: none; }
-    .player-ready .radio-set li { position: relative; padding-left: 2.2em; }
-    .player-ready .radio-set .play-from { display: block; position: absolute; left: 0; top: 7px; width: 1.7em;
-        font-size: 0.7rem; padding: 1px 0; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; }
+    .radio-set .play-from { display: none; font-size: 0.7rem; width: 1.9em; padding: 1px 0; border: 1px solid #ccc;
+        border-radius: 3px; background: #fff; cursor: pointer; }
+    /* once the player is ready, the number turns into a play button on hover */
+    .player-ready .radio-set li:hover .pick-no, .player-ready .radio-set li:focus-within .pick-no { display: none; }
+    .player-ready .radio-set li:hover .play-from, .player-ready .radio-set li:focus-within .play-from { display: block; }
+    @media (hover: none) { .player-ready .radio-set .pick-no { display: none; } .player-ready .radio-set .play-from { display: block; } }
 </style>
 {% endblock extra_head %}
 {% block content %}
