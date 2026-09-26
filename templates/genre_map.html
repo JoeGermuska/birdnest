@@ -21,6 +21,9 @@
     <div class="viz-tip" id="tip" hidden></div>
 </section>
 <script>
+// wrapped: Turbo runs this again on each visit, and d3 (in <head>) may still be loading
+(function draw() {
+if (!window.d3) return setTimeout(draw, 30);
 const TREE = {{ tree|tojson }};
 // [fill, ink] per family, from genre_families.COLORS
 const COLORS = {{ colors|tojson }};
@@ -111,6 +114,9 @@ document.querySelectorAll('.year-filter button').forEach(btn => btn.addEventList
 }));
 drawTreemap(year); drawMix();
 let resizeTimer;
-window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawTreemap(year); drawMix(); }, 150); });
+const onResize = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawTreemap(year); drawMix(); }, 150); };
+window.addEventListener('resize', onResize);
+document.addEventListener('turbo:before-render', () => window.removeEventListener('resize', onResize), {once: true});
+})();
 </script>
 {% endblock content %}

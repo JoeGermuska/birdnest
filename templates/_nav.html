@@ -10,8 +10,10 @@
     </form>
 </nav>
 <script>
+(function () {
     function playlistTileClickHandler(e) {
-        window.location.href = this.dataset['internalUrl'];
+        // through Turbo when it's there, so the radio keeps playing
+        if (window.Turbo) Turbo.visit(this.dataset['internalUrl']); else window.location.href = this.dataset['internalUrl'];
     }
 
     // Autocomplete functionality
@@ -60,11 +62,13 @@
             }
         });
 
-        document.addEventListener('click', function(e) {
-            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
-                hideDropdown();
-            }
-        });
+        if (!window.autocompleteClickBound) {  // once: this script runs again on every Turbo page view
+            window.autocompleteClickBound = true;
+            document.addEventListener('click', function(e) {
+                const input = document.getElementById('q'), box = document.getElementById('autocomplete-dropdown');
+                if (input && box && !input.contains(e.target) && !box.contains(e.target)) hideDropdown();
+            });
+        }
     }
 
     async function fetchSuggestions(query) {
@@ -122,11 +126,12 @@
         return div.innerHTML;
     }
 
-    document.addEventListener('DOMContentLoaded', (e) => {
-        document.querySelectorAll('button.playlist-tile').forEach(elem => {
-            elem.addEventListener('click', playlistTileClickHandler.bind(elem))
-        });
+    // this script sits at the end of the page, so the elements are there; it runs again on each Turbo page view
+    document.querySelectorAll('button.playlist-tile').forEach(elem => {
+        elem.addEventListener('click', playlistTileClickHandler.bind(elem))
+    });
+    initAutocomplete();
 
-        initAutocomplete();
-    })
+    window.hideDropdown = hideDropdown;
+})();
 </script>

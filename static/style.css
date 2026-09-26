@@ -528,3 +528,16 @@ table.show-tracks td.links { width: 14px; padding-right: 0; padding-top: 9px; }
 .caveat { color: #666; font-size: 0.9rem; }
 
 table.artist-tracks .played a.date { display: block; font-variant-numeric: tabular-nums; }
+
+/* Birds radio player bar (radio-player.js): fixed at the bottom of every page while listening, and on /radio */
+.radio-player { display: none; }
+:root.radio-bar .radio-player { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; position: fixed;
+    left: 0; right: 0; bottom: 0; z-index: 10; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: #f3f1ec; border-top: 1px solid #ddd8cc; box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06); }
+:root.radio-bar body { padding-bottom: 72px; }
+.radio-player button { font: inherit; padding: 4px 14px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
+.radio-player button:disabled { opacity: 0.5; cursor: default; }
+.rp-now { flex: 1; min-width: 12rem; }
+.rp-now a { color: inherit; font-weight: 600; }
+.rp-endless { font-size: 0.9rem; display: flex; gap: 4px; align-items: center; }
+.rp-account { font-size: 0.85rem; color: #777; }

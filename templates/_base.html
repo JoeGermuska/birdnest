@@ -6,6 +6,8 @@
     <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script src="https://kit.fontawesome.com/65d0c7afaa.js" crossorigin="anonymous"></script>
+    <script src="{{ url_for('static', filename='vendor/turbo-8.0.23.umd.js') }}"></script>
+    <script src="{{ url_for('static', filename='radio-player.js') }}"></script>
     {% block extra_head %}<!-- no extra head -->{% endblock %}
 
     <script>
@@ -37,7 +39,9 @@
             }
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
+        // runs on every page view: Turbo swaps pages without reloading (see radio-player.js)
+        document.addEventListener('turbo:load', () => {
+            if (window.Sortable) Sortable.init();
             document.querySelectorAll('.preview-track').forEach(
                 (elem) => {
                     elem.addEventListener('click', (evt) => {
@@ -53,14 +57,14 @@
                     })
                 }
             )
-            window.addEventListener('keydown', (evt) => {
-                let searchbox = document.getElementById('q');
-                if (evt.target != searchbox && evt.key == '/') {
-                    searchbox.focus()
-                    evt.preventDefault()
-                    return false
-                }
-            })
+        })
+        window.addEventListener('keydown', (evt) => {
+            let searchbox = document.getElementById('q');
+            if (evt.target != searchbox && evt.key == '/') {
+                searchbox.focus()
+                evt.preventDefault()
+                return false
+            }
         })
     </script>
 
@@ -69,6 +73,16 @@
 <body>
     {% include "_nav.html" %}
     {% block content %}{% endblock %}
+    {% if radio_listener %}
+    <div class="radio-player" id="radio-player" data-turbo-permanent>
+        <button type="button" id="rp-play" disabled>▶ Play</button>
+        <button type="button" id="rp-next" hidden aria-label="Next track">⏭</button>
+        <span id="rp-now" class="rp-now">Connecting to Spotify…</span>
+        <button type="button" id="rp-sync" hidden>Back to now playing</button>
+        <label class="rp-endless" title="Add more tracks before the set runs out"><input type="checkbox" id="rp-endless" checked> Keep playing</label>
+        <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}" data-turbo="false">Log out of Spotify</a>
+    </div>
+    {% endif %}
 </body>
 
 </html>

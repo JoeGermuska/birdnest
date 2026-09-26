@@ -32,6 +32,11 @@ app.session = scoped_session(SessionLocal)
 
 # load the (pre-built) analysis cache at startup rather than on the first request
 factoids.get_history()
+@app.context_processor
+def radio_bar():
+    # the site-wide player bar; checking the session is enough here, /spotify/token refreshes as needed
+    return {'radio_listener': _spotify_configured() and 'token_info' in session}
+
 @app.route('/')
 def index():
     history = factoids.get_history()
@@ -367,7 +372,8 @@ def radio_more():
     out = []
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
-        out.append({'spotify_id': p['spotify_id'], 'html': render_template('_radio_pick.html', p=p)})
+        out.append({'spotify_id': p['spotify_id'], 'ms': p['track']['duration_ms'] or 0,
+                    'html': render_template('_radio_pick.html', p=p)})
     return jsonify({'picks': out})
 
 if __name__ == '__main__':

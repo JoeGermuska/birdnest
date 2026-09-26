@@ -16,10 +16,10 @@
     </div>
 </section>
 <script>
-    window.addEventListener('DOMContentLoaded', () => {
+    (() => {  // at the end of the page, and run again on each Turbo page view
         const row = document.querySelector('.is-highlight') ||
             (location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1))));
         if (row) row.scrollIntoView({block: 'center'});
-    });
+    })();
 </script>
 {% endblock content %}
