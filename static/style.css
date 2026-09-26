@@ -508,6 +508,9 @@ table a.spotify-link, a.spotify-link { display: inline-block; vertical-align: -1
 tr:hover a.spotify-link, a.spotify-link:focus-visible { opacity: 1; }
 table a.spotify-link:hover, a.spotify-link:hover { color: #169c46; }
 @media (hover: none) { a.spotify-link { opacity: 0.8; } }
+a.radio-link { display: inline-block; vertical-align: -1px; margin-left: 4px; color: #7a2e5e; opacity: 0.3; transition: opacity 0.15s; line-height: 0; }
+tr:hover a.radio-link, li:hover a.radio-link, a.radio-link:focus-visible, a.radio-link:hover { opacity: 1; }
+@media (hover: none) { a.radio-link { opacity: 0.8; } }
 
 /* Who was in the room */
 .show-room { margin: 4px 0 8px; }

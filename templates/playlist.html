@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, spotify_link, room_list %}
+{% from "_macros.html" import factoids, spotify_link, radio_link, room_list %}
 
 {% block title %}Playlist for {{ date }}{% endblock title %}
 
@@ -63,7 +63,7 @@
                 <tr>
                     <td class="num seq">{{ loop.index }}</td>
                     <td>
-                        <span class="track-name">{{ track.name }}</span> {{ spotify_link(track.spotify_url, track.name) }}
+                        <span class="track-name">{{ track.name }}</span> {{ spotify_link(track.spotify_url, track.name) }} {{ radio_link(track.spotify_url, track.name) }}
                         {% if track.album %}<div class="album">{{ track.album }}</div>{% endif %}
                     </td>
                     <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>

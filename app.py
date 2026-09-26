@@ -210,6 +210,12 @@ def radio_page():
             start, start_label = radio.start_for_artist(artist['artist_id']), artist['name']
             start_url = url_for('artist', spotify_id=artist['spotify_id'])
             start_kind = 'artist'
+    elif args.get('track'):
+        cat = radio.catalog()
+        start = cat.rec_by_spotify.get(args['track'])
+        if start is not None:
+            start_label = f"{cat.artist_names(start)}, {cat.title(start)}"
+            start_kind = 'track'
     elif args.get('show'):
         try:
             pid = history.pid_by_date.get(date.fromisoformat(args['show']))

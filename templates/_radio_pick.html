@@ -1,5 +1,4 @@
-<li data-spotify="{{ p.spotify_id }}" data-ms="{{ p.track.duration_ms or 0 }}"><span class="track"><a href="https://open.spotify.com/track/{{ p.spotify_id }}" target="_blank" rel="noopener">{{ p.track.name }}</a></span>
+<li data-spotify="{{ p.spotify_id }}" data-ms="{{ p.track.duration_ms or 0 }}"><button type="button" class="play-from" title="Play from here" aria-label="Play from here">▶</button><span class="track"><a href="https://open.spotify.com/track/{{ p.spotify_id }}" target="_blank" rel="noopener">{{ p.track.name }}</a></span>
     <span class="by">· {% for a in p.artists %}{% if a.spotify_id %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% else %}{{ a.name }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}</span>
     {% if p.family %}<span class="fam">{{ p.family }}</span>{% endif %}
-    <button type="button" class="play-from" title="Play from here" aria-label="Play from here">▶</button>
     <span class="why">{{ p.reason[0]|upper }}{{ p.reason[1:] }}</span></li>

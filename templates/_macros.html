@@ -45,6 +45,12 @@
 {%- endfor -%}
 {%- endmacro %}
 
+{% macro radio_link(url, title) -%}
+{%- if url -%}
+<a class="radio-link" href="{{ url_for('radio_page', track=url.rsplit('/', 1)[-1]) }}" title="Birds radio from “{{ title }}”" aria-label="Birds radio from this track"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5 5a9.9 9.9 0 0 0 0 14M19 5a9.9 9.9 0 0 1 0 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+{%- endif -%}
+{%- endmacro %}
+
 {% macro spotify_link(url, title) -%}
 {%- if url -%}
 <a class="spotify-link" href="{{ url }}" target="_blank" rel="noopener" title="Open “{{ title }}” on Spotify" aria-label="Open on Spotify"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="currentColor"/><path d="M6.5 9.3c3.7-1.1 7.9-.8 11.2 1.1M7.1 12.4c3-.9 6.4-.6 9.1.9M7.7 15.3c2.4-.6 4.9-.4 7 .7" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></a>

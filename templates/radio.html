@@ -40,8 +40,9 @@
     .radio-set li.is-playing { background: #e8f6ee; }
     .radio-set li.is-played { opacity: 0.55; }
     .radio-set .play-from { display: none; }
-    .player-ready .radio-set .play-from { display: inline; font-size: 0.7rem; padding: 0 6px; margin-left: 6px; border: 1px solid #ccc;
-        border-radius: 3px; background: #fff; cursor: pointer; vertical-align: 1px; }
+    .player-ready .radio-set li { position: relative; padding-left: 2.2em; }
+    .player-ready .radio-set .play-from { display: block; position: absolute; left: 0; top: 7px; width: 1.7em;
+        font-size: 0.7rem; padding: 1px 0; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; }
 </style>
 {% endblock extra_head %}
 {% block content %}
@@ -52,7 +53,7 @@
         a wildcard. Start from any artist or show with the "Birds radio" link on its page.</p>
 
     <form class="radio-controls" id="radio-controls" method="get" action="{{ url_for('radio_page') }}">
-        {% for key in ('artist', 'show') %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key, '') }}" {{ 'disabled' if not request.args.get(key) }}>{% endfor %}
+        {% for key in ('artist', 'show', 'track') %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key, '') }}" {{ 'disabled' if not request.args.get(key) }}>{% endfor %}
         <input type="hidden" name="seed" value="{{ seed }}">
         <label for="adventure">Adventure
             <span class="scale">close</span>
@@ -78,8 +79,8 @@
     </div>
     {% endif %}
 
-    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}">
-        {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show')}|dictsort|selectattr(1)|list %}
+    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}">
+        {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track')}|dictsort|selectattr(1)|list %}
         <dl class="radio-start">
             <div><dt>Starting from</dt>
                 <dd>{% if start_url %}<a href="{{ start_url }}">{{ start_label }}</a>{% else %}{{ start_label }}{% endif %}
@@ -272,7 +273,7 @@
             const fresh = doc.getElementById('radio-result');
             result.replaceWith(fresh);
             result = fresh;
-            for (const key of ['seed', 'artist', 'show']) {
+            for (const key of ['seed', 'artist', 'show', 'track']) {
                 const input = form.elements[key];
                 input.value = fresh.dataset[key];
                 input.disabled = !fresh.dataset[key];
