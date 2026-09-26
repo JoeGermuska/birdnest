@@ -1,0 +1,70 @@
+{% extends "_base.html" %}
+{% block title %}Birds radio{% endblock title %}
+{% block extra_head %}
+<style>
+    .radio-controls { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin: 14px 0; }
+    .radio-controls label { display: flex; gap: 8px; align-items: center; }
+    .radio-controls .scale { font-size: 0.8rem; color: #777; }
+    .radio-controls button, .radio-save button { font: inherit; padding: 4px 12px; border: 1px solid #bbb;
+        border-radius: 4px; background: #fff; cursor: pointer; }
+    .radio-controls button:hover, .radio-save button:hover { background: #f0eee8; }
+    .radio-set { padding-left: 2.2em; margin: 18px 0; }
+    .radio-set li { padding: 5px 0; border-top: 1px solid #eee; }
+    .radio-set li::marker { color: #999; font-variant-numeric: tabular-nums; }
+    .radio-set .track { font-weight: 600; }
+    .radio-set .track a { color: #222; }
+    .radio-set .by a { color: #444; }
+    .radio-set .why { display: block; font-size: 0.85rem; color: #777; }
+    .radio-set .fam { font-size: 0.75rem; color: #999; margin-left: 4px; }
+    .radio-save { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+    .radio-save input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; min-width: 0; width: 22rem; max-width: 100%; }
+    .radio-note { padding: 8px 12px; border-radius: 4px; background: #e8f6ee; color: #1d6b3d; }
+    .radio-note.error { background: #fbeaea; color: #922; }
+</style>
+{% endblock extra_head %}
+{% block content %}
+<section class="detail">
+    <h1>Birds radio</h1>
+    <p class="detail-meta">A set sequenced from the show's own history, starting from {{ start_label }}. Each pick
+        says why it follows the one before: a track the DJs actually played next, one from the same night, or
+        at higher adventure, a wildcard. Start from any artist or show with the "Birds radio" link on its page.</p>
+
+    <form class="radio-controls" method="get" action="{{ url_for('radio_page') }}">
+        {% for key in ('artist', 'show') %}{% if request.args.get(key) %}<input type="hidden" name="{{ key }}" value="{{ request.args[key] }}">{% endif %}{% endfor %}
+        <label for="adventure">Adventure
+            <span class="scale">close</span>
+            <input type="range" id="adventure" name="adventure" min="0" max="100" step="10" value="{{ adventure }}">
+            <span class="scale">wander</span></label>
+        <label for="n">Tracks
+            <select id="n" name="n">{% for k in (10, 20, 30, 40) %}<option {{ 'selected' if k == n }}>{{ k }}</option>{% endfor %}</select></label>
+        <input type="hidden" name="seed" value="{{ seed }}">
+        <button type="submit">Update</button>
+        {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show')}|dictsort|selectattr(1)|list %}
+        <a href="{{ url_for('radio_page', adventure=adventure, n=n, seed=(seed * 7919 + 17) % 1000000, **dict(start)) }}">Reshuffle</a>
+        <a href="{{ url_for('radio_page', adventure=adventure, n=n) }}">Random start</a>
+    </form>
+
+    {% if saved %}<p class="radio-note">Saved “{{ saved.name }}” to your Spotify: <a href="{{ saved.url }}" target="_blank" rel="noopener">open it</a>.</p>{% endif %}
+    {% if save_error %}<p class="radio-note error">Couldn't save to Spotify: {{ save_error }}</p>{% endif %}
+
+    <ol class="radio-set">
+        {% for p in picks %}
+        <li><span class="track"><a href="https://open.spotify.com/track/{{ p.spotify_id }}" target="_blank" rel="noopener">{{ p.track.name }}</a></span>
+            <span class="by">· {% for a in p.artists %}{% if a.spotify_id %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% else %}{{ a.name }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}</span>
+            {% if p.family %}<span class="fam">{{ p.family }}</span>{% endif %}
+            <span class="why">{{ p.reason[0]|upper }}{{ p.reason[1:] }}</span></li>
+        {% endfor %}
+    </ol>
+    <p class="muted">{{ picks|length }} tracks · about {{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m</p>
+
+    {% if can_save %}
+    <form class="radio-save" method="post" action="{{ url_for('radio_save') }}">
+        <input type="hidden" name="tracks" value="{{ picks|map(attribute='spotify_id')|join(',') }}">
+        <input type="hidden" name="return_to" value="{{ request.full_path }}">
+        <label for="playlist-name">Playlist name</label>
+        <input type="text" id="playlist-name" name="name" value="Birds radio: {{ start_label }}">
+        <button type="submit"><i class="fab fa-spotify"></i> Save to Spotify</button>
+    </form>
+    {% endif %}
+</section>
+{% endblock content %}

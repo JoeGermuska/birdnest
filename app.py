@@ -1,18 +1,25 @@
-from flask import Flask, request, render_template, abort, send_from_directory, redirect, make_response, jsonify, url_for
+from flask import Flask, request, render_template, abort, send_from_directory, redirect, make_response, jsonify, url_for, session
+from werkzeug.middleware.proxy_fix import ProxyFix
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
 import factoids
+import radio
 import genre_families
 from datetime import date
 from collections import Counter
 import os
+import random
 import json
 from urllib.parse import urlparse 
 
 app = Flask(__name__,
     static_folder='static'
     )
+# behind fly.io's proxy: trust X-Forwarded-Proto so external URLs (Spotify's redirect) are https
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+# signs the session cookie, which holds a listener's Spotify token; saving to Spotify is off without it
+app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 
 # from https://towardsdatascience.com/use-flask-and-sqlalchemy-not-flask-sqlalchemy-5a64fafe22a4
 SQLALCHEMY_DATABASE_URL = 'sqlite:///birdnest.db'
@@ -184,6 +191,94 @@ def playlist_image(date_str):
         response.cache_control.max_age = 86400 * 30
         return response
     abort(404)
+
+@app.route('/radio')
+def radio_page():
+    """A proposed set from the sequencer, e.g. /radio?artist=<spotify id>&adventure=30&seed=123"""
+    history = factoids.get_history()
+    args = request.args
+    if 'seed' not in args:  # pin the randomness in the URL, so a set can be revisited and shared
+        return redirect(url_for('radio_page', **args, seed=random.randrange(10 ** 6)))
+    seed = args.get('seed', type=int, default=0)
+    adventure = min(100, max(0, args.get('adventure', type=int, default=30)))
+    n = min(60, max(5, args.get('n', type=int, default=20)))
+    start, start_label = None, None
+    if args.get('artist'):
+        artist = next((a for a in history.artists.values() if a['spotify_id'] == args['artist']), None)
+        if artist:
+            start, start_label = radio.start_for_artist(artist['artist_id']), artist['name']
+    elif args.get('show'):
+        try:
+            pid = history.pid_by_date.get(date.fromisoformat(args['show']))
+        except ValueError:
+            pid = None
+        if pid is not None:
+            start, start_label = radio.start_for_show(pid), f"the {args['show']} show"
+    if start is None:
+        start = radio.random_start(random.Random(seed))
+    picks = radio.sequence(start, n, adventure / 100, seed)
+    for p in picks:
+        p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
+    start_label = start_label or f"{', '.join(a['name'] for a in picks[0]['artists'])}, “{picks[0]['track']['name']}”"
+    minutes = sum(p['track']['duration_ms'] or 0 for p in picks) // 60000
+    return render_template('radio.html', picks=picks, start_label=start_label, adventure=adventure, n=n, seed=seed,
+                           minutes=minutes, can_save=bool(app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID')),
+                           saved=session.pop('saved_playlist', None) if app.secret_key else None,
+                           save_error=session.pop('save_error', None) if app.secret_key else None)
+
+
+def _spotify_auth():
+    from spotipy.cache_handler import FlaskSessionCacheHandler
+    from spotipy.oauth2 import SpotifyOAuth
+    return SpotifyOAuth(scope='playlist-modify-private',
+                        redirect_uri=os.environ.get('SPOTIFY_REDIRECT_URI') or url_for('spotify_callback', _external=True),
+                        cache_handler=FlaskSessionCacheHandler(session), show_dialog=False)
+
+
+def _save_pending_playlist(auth):
+    import spotipy
+    pending = session.pop('pending_playlist', None)
+    if not pending:
+        return
+    try:
+        sp = spotipy.Spotify(auth_manager=auth)
+        playlist = sp.current_user_playlist_create(pending['name'], public=False, description=pending['description'])
+        sp.playlist_add_items(playlist['id'], [f"spotify:track:{t}" for t in pending['tracks']])
+        session['saved_playlist'] = {'name': pending['name'], 'url': playlist['external_urls']['spotify']}
+    except Exception as e:
+        app.logger.exception('saving playlist to Spotify failed')
+        session['save_error'] = str(e)
+    return pending['return_to']
+
+
+@app.route('/radio/save', methods=['POST'])
+def radio_save():
+    if not app.secret_key:
+        abort(404)
+    return_to = request.form.get('return_to') or url_for('radio_page')
+    if not return_to.startswith('/'):  # only ever send people back into this site
+        return_to = url_for('radio_page')
+    tracks = [t for t in request.form.get('tracks', '').split(',') if t.isalnum()][:100]
+    session['pending_playlist'] = {'name': (request.form.get('name') or 'Birds radio')[:100], 'tracks': tracks,
+                                   'description': f"Sequenced from Conference of the Birds history. {request.url_root.rstrip('/')}{return_to}"[:300],
+                                   'return_to': return_to}
+    auth = _spotify_auth()
+    if auth.validate_token(auth.cache_handler.get_cached_token()):
+        return redirect(_save_pending_playlist(auth))
+    return redirect(auth.get_authorize_url())
+
+
+@app.route('/spotify/callback')
+def spotify_callback():
+    if not app.secret_key:
+        abort(404)
+    auth = _spotify_auth()
+    if request.args.get('code'):
+        auth.get_access_token(request.args['code'], check_cache=False)
+        return redirect(_save_pending_playlist(auth) or url_for('radio_page'))
+    pending = session.pop('pending_playlist', None)
+    session['save_error'] = f"Spotify didn't connect ({request.args.get('error', 'no code returned')})."
+    return redirect(pending['return_to'] if pending else url_for('radio_page'))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

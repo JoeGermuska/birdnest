@@ -17,7 +17,8 @@
                 {% if room %}<p class="show-room" title="In the order they joined. We don't know who picked which track."><span class="novelty-label">In the room</span> {{ room_list(room) }}</p>{% endif %}
                 <p class="show-meta">
                     {{ stats.tracks }} tracks · {{ stats.runtime_min // 60 }}h {{ '%02d' % (stats.runtime_min % 60) }}m · {{ stats.artists }} artists ·
-                    <a href="{{ show.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a>
+                    <a href="{{ show.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a> ·
+                    <a href="{{ url_for('radio_page', show=date.isoformat()) }}">Birds radio</a>
                 </p>
                 <div class="novelty" title="Share of this show's artists who had never been played before. Dots are the {{ stats.novelty_peers|length }} shows around this one.">
                     <span class="novelty-label">Novelty</span>
