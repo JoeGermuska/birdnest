@@ -1,0 +1,154 @@
+{% extends "_base.html" %}
+{% block title %}Wikidata to-do{% endblock title %}
+{% block extra_head %}
+<style>
+    .wd-controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 12px 0 16px; }
+    .wd-controls button, .wd-row button { font: inherit; font-size: 0.85rem; padding: 3px 10px; border: 1px solid #bbb;
+        border-radius: 4px; background: #fff; cursor: pointer; }
+    .wd-controls button:hover, .wd-row button:hover { background: #f0eee8; }
+    .wd-progress { font-weight: 600; }
+    .wd-status { color: #777; font-size: 0.85rem; }
+    .wd-list { list-style: none; padding: 0; margin: 0; }
+    .wd-row { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; gap: 4px 14px; align-items: start;
+        padding: 10px 0; border-top: 1px solid #e5e5e5; }
+    .wd-row h2 { font-size: 1rem; margin: 0; }
+    .wd-row h2 a { color: #222; }
+    .wd-row .muted { font-weight: normal; margin-left: 6px; }
+    .wd-state { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #999; padding-top: 2px; }
+    .wd-row.is-done .wd-state { color: #1d6b3d; }
+    .wd-row.is-skipped .wd-state { color: #8a5a00; }
+    .wd-row.is-done, .wd-row.is-skipped { opacity: 0.55; }
+    .wd-spotify { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 4px 0; font-size: 0.9rem; }
+    .wd-spotify code { font-size: 0.85rem; background: #f3f1ec; padding: 2px 6px; border-radius: 3px; user-select: all; }
+    .wd-cands { margin: 4px 0 0; padding: 0; list-style: none; font-size: 0.9rem; }
+    .wd-cands li { margin: 2px 0; }
+    .wd-cands .qid { font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; color: #777; }
+    .wd-note { color: #8a5a00; font-size: 0.8rem; }
+    .wd-found { color: #1d6b3d; font-size: 0.85rem; }
+    .badge-check { background: #fbefd5; color: #8a5a00; }
+    body.hide-finished .wd-row.is-done, body.hide-finished .wd-row.is-skipped { display: none; }
+    @media (max-width: 600px) { .wd-row { grid-template-columns: minmax(0, 1fr) auto; } .wd-state { grid-column: 1 / -1; } }
+</style>
+{% endblock extra_head %}
+{% block content %}
+<section class="detail">
+    <h1>Wikidata to-do</h1>
+    <p class="detail-meta">Artists with no links whose name matches a musician or group on Wikidata, most-played first,
+        then the ones with several possible matches. Open the Wikidata item, check it's the same act, and add the
+        Spotify ID as <em>Spotify artist ID</em> (P1902). A row counts as done once Wikidata has the ID, checked live
+        from Wikidata when this page loads and when you come back to it. Its query service can lag a few minutes behind edits.
+        Rows you skip are remembered in this browser only.</p>
+    <div class="wd-controls">
+        <span class="wd-progress" id="wd-progress"></span>
+        <button type="button" id="wd-recheck">Check Wikidata again</button>
+        <label><input type="checkbox" id="wd-hide"> Hide finished</label>
+        <span class="wd-status" id="wd-status"></span>
+    </div>
+    <ol class="wd-list">
+        {% for r in rows %}
+        <li class="wd-row" data-spotify="{{ r.spotify_id }}">
+            <span class="wd-state">To do</span>
+            <div>
+                <h2><a href="{{ url_for('artist', spotify_id=r.spotify_id) }}">{{ r.name }}</a><span class="muted">{{ r.shows }} show{{ 's' if r.shows != 1 }}</span>
+                    {% if r.tier == 'check' %}<span class="badge badge-check">check</span>{% endif %}</h2>
+                <div class="wd-spotify">
+                    <a href="https://open.spotify.com/artist/{{ r.spotify_id }}" target="_blank" rel="noopener">Spotify</a>
+                    <code>{{ r.spotify_id }}</code>
+                    <button type="button" class="wd-copy">Copy ID</button>
+                </div>
+                <ul class="wd-cands">
+                    {% for c in r.candidates %}
+                    <li><a href="https://www.wikidata.org/wiki/{{ c.qid }}" target="_blank" rel="noopener">{{ c.label or c.qid }}</a>
+                        <span class="qid">{{ c.qid }}</span>{% if c.description %} · {{ c.description }}{% endif %}
+                        {% if c.wikipedia %}· <a href="{{ c.wikipedia }}" target="_blank" rel="noopener">Wikipedia</a>{% endif %}
+                        {% if c.spotify_ids %}<span class="wd-note">already has a different Spotify ID</span>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="wd-found" hidden></div>
+            </div>
+            <button type="button" class="wd-skip">Skip</button>
+        </li>
+        {% endfor %}
+    </ol>
+</section>
+<script>
+(function () {
+    const rows = [...document.querySelectorAll('.wd-row')];
+    const ids = rows.map(r => r.dataset.spotify);
+    let onWikidata = {};  // spotify id -> qid
+    let skipped = {};
+    try { skipped = JSON.parse(localStorage.getItem('wikidata-todo-skipped') || '{}') || {}; } catch (e) {}
+
+    function paint() {
+        let done = 0, skips = 0;
+        for (const row of rows) {
+            const id = row.dataset.spotify, qid = onWikidata[id], skip = !qid && skipped[id];
+            row.classList.toggle('is-done', !!qid);
+            row.classList.toggle('is-skipped', !!skip);
+            row.querySelector('.wd-state').textContent = qid ? 'On Wikidata' : skip ? 'Skipped' : 'To do';
+            row.querySelector('.wd-skip').textContent = skip ? 'Unskip' : 'Skip';
+            row.querySelector('.wd-skip').hidden = !!qid;
+            const found = row.querySelector('.wd-found');
+            found.hidden = !qid;
+            if (qid) found.innerHTML = `Added to <a href="https://www.wikidata.org/wiki/${qid}" target="_blank" rel="noopener">${qid}</a>`;
+            done += !!qid; skips += !!skip;
+        }
+        document.getElementById('wd-progress').textContent =
+            `${done} of ${rows.length} done` + (skips ? `, ${skips} skipped` : '');
+    }
+
+    let lastCheck = 0;
+    async function check() {
+        const status = document.getElementById('wd-status');
+        status.textContent = 'Checking Wikidata…';
+        lastCheck = Date.now();
+        const query = `SELECT ?sp ?item WHERE { VALUES ?sp { ${ids.map(i => `"${i}"`).join(' ')} } ?item wdt:P1902 ?sp }`;
+        try {
+            const resp = await fetch('https://query.wikidata.org/sparql', {
+                method: 'POST', body: new URLSearchParams({query}),
+                headers: {'Accept': 'application/sparql-results+json'}});
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            onWikidata = {};
+            for (const b of data.results.bindings) onWikidata[b.sp.value] = b.item.value.split('/').pop();
+            status.textContent = `Checked at ${new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}`;
+        } catch (e) {
+            status.textContent = `Couldn't reach Wikidata (${e.message}). Try "Check Wikidata again".`;
+        }
+        paint();
+    }
+
+    document.querySelector('.wd-list').addEventListener('click', e => {
+        const row = e.target.closest('.wd-row');
+        if (!row) return;
+        const id = row.dataset.spotify;
+        if (e.target.classList.contains('wd-copy')) {
+            const btn = e.target;
+            navigator.clipboard.writeText(id).then(() => {
+                btn.textContent = 'Copied';
+                setTimeout(() => btn.textContent = 'Copy ID', 1200);
+            }, () => getSelection().selectAllChildren(row.querySelector('code')));
+        } else if (e.target.classList.contains('wd-skip')) {
+            if (skipped[id]) delete skipped[id]; else skipped[id] = 1;
+            try { localStorage.setItem('wikidata-todo-skipped', JSON.stringify(skipped)); } catch (err) {}
+            paint();
+        }
+    });
+    const hide = document.getElementById('wd-hide');
+    try { hide.checked = localStorage.getItem('wikidata-todo-hide') === '1'; } catch (e) {}
+    document.body.classList.toggle('hide-finished', hide.checked);
+    hide.addEventListener('change', () => {
+        document.body.classList.toggle('hide-finished', hide.checked);
+        try { localStorage.setItem('wikidata-todo-hide', hide.checked ? '1' : '0'); } catch (e) {}
+    });
+    document.getElementById('wd-recheck').addEventListener('click', check);
+    // re-check when coming back from a Wikidata tab, at most every 20 seconds
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && Date.now() - lastCheck > 20000) check();
+    });
+    paint();
+    check();
+})();
+</script>
+{% endblock content %}

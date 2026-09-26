@@ -5,12 +5,13 @@ matches can be reviewed by hand and their Spotify IDs added to Wikidata
 Each unlinked artist's name is looked up on Wikidata; items whose English label
 or alias is exactly that name (with or without a leading "The") and that look
 like a musician or group become candidates.
-Writes a JSON list, most-played artists first, with a tier per artist:
+Replaces the wikidata_candidate table, one row per candidate, with a tier per
+artist (artists with no candidate get no rows):
   likely -- one musical candidate, which has no Spotify ID yet
   check  -- several musical candidates, or the one found already has a
             (different) Spotify ID
-  none   -- no musical candidate found
-    python wikidata_candidates.py [out.json] [path/to/birdnest.db]
+The web app lists them at /todo/wikidata for review.
+    python wikidata_candidates.py [path/to/birdnest.db]
 """
 import json
 import re
@@ -23,6 +24,13 @@ import urllib.request
 from enrich_wikidata import ENDPOINT, USER_AGENT, run_query
 
 BATCH = 50
+
+SCHEMA = """create table wikidata_candidate (
+    artist_id integer references artist(artist_id),
+    tier varchar,          -- likely | check (see module docstring); per artist, repeated on each row
+    qid varchar, label varchar, description varchar, wikipedia varchar, mbid varchar, year integer,
+    spotify_ids varchar    -- Spotify IDs the item already has, space-separated
+)"""
 
 DETAILS = """
 SELECT ?key ?label ?desc ?article ?musical ?year
@@ -97,20 +105,15 @@ def search(names):
     return found
 
 
-def main(out='wikidata_candidates.json', db_path='birdnest.db'):
+def main(db_path='birdnest.db'):
     con = sqlite3.connect(db_path)
     artists = con.execute("""
-        select a.artist_id, a.name, a.spotify_id, count(distinct pt.playlist_id) shows,
-               min(p.date), max(p.date)
+        select a.artist_id, a.name, a.spotify_id, count(distinct pt.playlist_id) shows
         from artist a join track_artist ta using(artist_id) join playlist_track pt using(track_id)
-             join playlist p using(playlist_id)
         where a.spotify_id is not null
           and a.artist_id not in (select artist_id from artist_link)
           and a.artist_id not in (select artist_id from mb_artist where mbid is not null)
         group by a.artist_id order by shows desc, a.name""").fetchall()
-    genres = {}
-    for artist_id, genre in con.execute("select artist_id, g.name from artist_genre join genre g using(genre_id)"):
-        genres.setdefault(artist_id, []).append(genre)
     print(f"looking up Wikidata for {len(artists)} artists")
 
     by_name = search({a[1] for a in artists})
@@ -133,23 +136,19 @@ def main(out='wikidata_candidates.json', db_path='birdnest.db'):
         print(f"  details {min(i + BATCH, len(qids))}/{len(qids)}")
         time.sleep(1)
 
-    rows = []
-    for artist_id, name, spotify_id, shows, first, last in artists:
+    rows, tiers = [], {'likely': 0, 'check': 0, 'none': 0}
+    for artist_id, name, spotify_id, *_ in artists:
         cands = [details[q] for q in found[artist_id] if q in details and details[q]['musical']]
         cands = [c for c in cands if spotify_id not in c['spotify']]  # already linked; enrich will find it
-        if len(cands) == 1 and not cands[0]['spotify']:
-            tier = 'likely'
-        elif cands:
-            tier = 'check'
-        else:
-            tier = 'none'
-        rows.append({'artist_id': artist_id, 'name': name, 'spotify_id': spotify_id, 'shows': shows,
-                     'first': first[:10], 'last': last[:10], 'genres': genres.get(artist_id, [])[:4],
-                     'tier': tier, 'candidates': cands})
-    with open(out, 'w') as f:
-        json.dump(rows, f, indent=1)
-    tiers = {t: sum(1 for r in rows if r['tier'] == t) for t in ('likely', 'check', 'none')}
-    print(f"wrote {out}: {tiers}")
+        tier = 'likely' if len(cands) == 1 and not cands[0]['spotify'] else 'check' if cands else 'none'
+        tiers[tier] += 1
+        rows += [(artist_id, tier, c['qid'], c['label'], c['desc'], c['wikipedia'], c['mbid'], c['year'],
+                  ' '.join(c['spotify'])) for c in cands]
+    with con:
+        con.execute("drop table if exists wikidata_candidate")
+        con.execute(SCHEMA)
+        con.executemany("insert into wikidata_candidate values (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    print(f"{len(rows)} candidates written: {tiers}")
 
 
 if __name__ == '__main__':

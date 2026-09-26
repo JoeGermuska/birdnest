@@ -85,6 +85,25 @@ def artist(spotify_id):
     return render_template('artist.html', artist=artist, profile=history.artist_profile(artist.artist_id),
                            history=history)
 
+@app.route('/todo/wikidata')
+def wikidata_todo():
+    """Unlisted: probable Wikidata items for unlinked artists (see wikidata_candidates.py), for adding
+    their Spotify IDs to Wikidata by hand."""
+    history = factoids.get_history()
+    con = app.session.connection().connection
+    if not con.execute("select 1 from sqlite_master where name = 'wikidata_candidate'").fetchone():
+        abort(404)
+    artists = {}
+    for artist_id, spotify_id, name, tier, *cand in con.execute("""
+            select c.artist_id, a.spotify_id, a.name, c.tier, c.qid, c.label, c.description, c.wikipedia, c.spotify_ids
+            from wikidata_candidate c join artist a using(artist_id)
+            where c.artist_id not in (select artist_id from artist_link)"""):
+        a = artists.setdefault(artist_id, {'spotify_id': spotify_id, 'name': name, 'tier': tier, 'candidates': [],
+                                           'shows': len(history.artist_shows.get(artist_id, ()))})
+        a['candidates'].append(dict(zip(('qid', 'label', 'description', 'wikipedia', 'spotify_ids'), cand)))
+    rows = sorted(artists.values(), key=lambda a: (a['tier'] != 'likely', -a['shows'], a['name']))
+    return render_template('wikidata_todo.html', rows=rows)
+
 @app.route('/artists')
 def artists():
     return redirect(url_for('ranking', kind='artists'))
