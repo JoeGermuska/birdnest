@@ -197,14 +197,9 @@ def playlist_image(date_str):
         return response
     abort(404)
 
-@app.route('/radio')
-def radio_page():
-    """A proposed set from the sequencer, e.g. /radio?artist=<spotify id>&adventure=30&seed=123"""
+def _radio_set(args, seed):
+    """The set a /radio URL describes: start from an artist, show or track (Spotify id / date), else at random."""
     history = factoids.get_history()
-    args = request.args
-    if 'seed' not in args:  # pin the randomness in the URL, so a set can be revisited and shared
-        return redirect(url_for('radio_page', **args, seed=random.randrange(10 ** 6)))
-    seed = args.get('seed', type=int, default=0)
     adventure = min(100, max(0, args.get('adventure', type=int, default=30)))
     n = min(60, max(5, args.get('n', type=int, default=20)))
     start = start_label = start_url = None
@@ -239,13 +234,32 @@ def radio_page():
     start_label = start_label or f"{', '.join(a['name'] for a in picks[0]['artists'])}, “{picks[0]['track']['name']}”"
     if not start_url and picks[0]['artists'][0]['spotify_id']:
         start_url = url_for('artist', spotify_id=picks[0]['artists'][0]['spotify_id'])
-    minutes = sum(p['track']['duration_ms'] or 0 for p in picks) // 60000
-    return render_template('radio.html', picks=picks, start_label=start_label, start_url=start_url, start_kind=start_kind,
-                           adventure=adventure, n=n, seed=seed,
-                           minutes=minutes, spotify_ready=_spotify_configured(),
-                           logged_in=bool(_spotify_token()),
+    return {'picks': picks, 'start_label': start_label, 'start_url': start_url, 'start_kind': start_kind,
+            'adventure': adventure, 'n': n, 'seed': seed}
+
+
+@app.route('/radio')
+def radio_page():
+    """A proposed set from the sequencer, e.g. /radio?artist=<spotify id>&adventure=30&seed=123"""
+    if 'seed' not in request.args:  # pin the randomness in the URL, so a set can be revisited and shared
+        return redirect(url_for('radio_page', **request.args, seed=random.randrange(10 ** 6)))
+    s = _radio_set(request.args, request.args.get('seed', type=int, default=0))
+    minutes = sum(p['track']['duration_ms'] or 0 for p in s['picks']) // 60000
+    return render_template('radio.html', **s, minutes=minutes, spotify_ready=_spotify_configured(),
                            saved=session.pop('saved_playlist', None) if app.secret_key else None,
                            save_error=session.pop('save_error', None) if app.secret_key else None)
+
+
+@app.route('/radio/set')
+def radio_set():
+    """The same set as JSON, for the player: {'label', 'picks': [{'spotify_id', 'ms', 'html'}]}"""
+    s = _radio_set(request.args, request.args.get('seed', type=int, default=random.randrange(10 ** 6)))
+    return jsonify({'label': s['start_label'], 'picks': [_pick_json(p) for p in s['picks']]})
+
+
+def _pick_json(p):
+    return {'spotify_id': p['spotify_id'], 'ms': p['track']['duration_ms'] or 0,
+            'html': render_template('_radio_pick.html', p=p)}
 
 
 # playing in the page (Web Playback SDK, Premium only) and saving sets as playlists
@@ -369,12 +383,9 @@ def radio_more():
         picks = first + radio.sequence(jump, n - 1, adventure, seed, played=[*played, jump])
     else:
         picks = radio.sequence(start, n, adventure, seed, played=played)
-    out = []
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
-        out.append({'spotify_id': p['spotify_id'], 'ms': p['track']['duration_ms'] or 0,
-                    'html': render_template('_radio_pick.html', p=p)})
-    return jsonify({'picks': out})
+    return jsonify({'picks': [_pick_json(p) for p in picks]})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

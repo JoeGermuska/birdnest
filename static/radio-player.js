@@ -1,18 +1,17 @@
 // Birds radio player. Loaded once in <head>; Turbo Drive swaps pages underneath without reloading, so this
-// script's state and the #radio-player bar (data-turbo-permanent) survive moving around the site, and the
-// music keeps playing. Uses Spotify's Web Playback SDK, which needs Spotify Premium.
+// script's state and the #radio-player bar (data-turbo-permanent, with its drawer holding the live track list)
+// survive moving around the site, and the music keeps playing. Uses Spotify's Web Playback SDK (Premium only).
 //
 // Spotify is handed one track at a time (play, then queue the next as each starts), so changing what's
-// coming never touches what's playing. The set is kept here, not in the page; /radio draws it when shown.
+// coming never touches what's playing. Any Birds radio link on the site starts that set here, in place.
 (function () {
     const S = {
-        player: null, deviceId: null, token: null, tokenAt: 0, sdkRequested: false,
+        player: null, deviceId: null, token: null, tokenAt: 0, sdkRequested: false, ready: false,
         queue: [],      // [{id, html, ms}] in play order
         sent: -1,       // index of the last track Spotify knows about
         current: -1,    // index of what's playing
         stale: new Set(),  // tracks queued on Spotify that are no longer in the set; skipped if they come up
         active: false, extending: false, queueing: false, browsing: false,
-        settings: {adventure: 30, n: 20},
     };
     const $ = id => document.getElementById(id);
     const uri = id => 'spotify:track:' + id;
@@ -20,6 +19,7 @@
     const loginLink = () => `/spotify/login?next=${encodeURIComponent(here())}`;
     const status = html => { const el = $('rp-now'); if (el) el.innerHTML = html; };
     const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+    const adventure = () => $('rp-adventure') ? +$('rp-adventure').value : 30;
 
     // ---- Spotify ----
     async function getToken(fresh) {
@@ -52,26 +52,15 @@
         }
     }
 
-    // ---- the list on /radio, when it's the current page ----
-    const rows = () => [...document.querySelectorAll('.radio-set li')];
-    function fromPage() {
-        return rows().map(li => {
-            const copy = li.cloneNode(true);
-            copy.classList.remove('is-playing', 'is-played', 'fresh');
-            return {id: li.dataset.spotify, ms: +li.dataset.ms || 0, html: copy.outerHTML};
-        });
-    }
-    function totals() {
-        const total = $('radio-total');
-        if (total) {
-            const min = Math.round(S.queue.reduce((t, p) => t + p.ms, 0) / 60000);
-            total.textContent = `${S.queue.length} tracks · about ${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
-        }
-        const save = document.querySelector('.radio-save input[name=tracks]');
-        if (save) save.value = S.queue.map(p => p.id).join(',');
+    // ---- the live list, in the player's drawer ----
+    const liveRows = () => [...document.querySelectorAll('#rp-list li')];
+    function draw(flashFrom) {
+        $('rp-list').innerHTML = S.queue.map(p => p.html).join('');
+        if (flashFrom != null) liveRows().slice(flashFrom).forEach(li => li.classList.add('fresh'));
+        mark();
     }
     function mark() {
-        rows().forEach((li, i) => {
+        liveRows().forEach((li, i) => {
             li.classList.toggle('is-playing', i === S.current);
             li.classList.toggle('is-played', i < S.current);
         });
@@ -79,48 +68,40 @@
     }
     // keep the playing track at the top of the list, unless the listener has scrolled away to look around
     function follow() {
-        const scroller = $('radio-scroll'), li = rows()[Math.max(0, S.current)];
-        if (scroller && li) scroller.scrollBy({top: li.getBoundingClientRect().top - scroller.getBoundingClientRect().top, behavior: 'smooth'});
-    }
-    function showLive(flashFrom) {
-        const list = document.querySelector('.radio-set'), scroller = $('radio-scroll');
-        if (!list) return;
-        list.innerHTML = S.queue.map(p => p.html).join('');
-        if (flashFrom != null) rows().slice(flashFrom).forEach(li => li.classList.add('fresh'));
-        scroller.classList.add('is-live');
-        $('radio-result').classList.add('is-live');  // the page's own "starting from" no longer describes what's playing
-        for (const ev of ['wheel', 'touchmove', 'keydown']) {
-            scroller.addEventListener(ev, () => { S.browsing = true; $('rp-sync').hidden = false; }, {passive: true});
+        const scroller = $('rp-scroll'), li = liveRows()[Math.max(0, S.current)];
+        if (scroller && li && !$('rp-drawer').hidden) {
+            scroller.scrollBy({top: li.getBoundingClientRect().top - scroller.getBoundingClientRect().top, behavior: 'smooth'});
         }
-        totals();
-        mark();
     }
     function replaceAfter(index, picks, flash) {
         S.queue = S.queue.slice(0, index + 1).concat(picks.map(p => ({id: p.spotify_id, html: p.html, ms: p.ms})));
-        const list = document.querySelector('.radio-set');
-        if (list) {
-            rows().slice(index + 1).forEach(li => li.remove());
-            const count = rows().length;
-            list.insertAdjacentHTML('beforeend', picks.map(p => p.html).join(''));
-            if (flash) rows().slice(count).forEach(li => li.classList.add('fresh'));
-            mark();
-        }
-        totals();
+        liveRows().slice(index + 1).forEach(li => li.remove());
+        const count = liveRows().length;
+        $('rp-list').insertAdjacentHTML('beforeend', picks.map(p => p.html).join(''));
+        if (flash) liveRows().slice(count).forEach(li => li.classList.add('fresh'));
+        mark();
+    }
+    function openDrawer(open) {
+        $('rp-drawer').hidden = !open;
+        $('rp-toggle').setAttribute('aria-expanded', String(open));
+        $('rp-toggle').textContent = open ? 'Tracks ▾' : 'Tracks ▴';
+        try { localStorage.setItem('radio-drawer', open ? '1' : '0'); } catch (e) {}
+        if (open) { S.browsing = false; $('rp-sync').hidden = true; follow(); }
     }
 
     // ---- playing ----
-    function settings() {
-        const form = $('radio-controls');
-        if (form) S.settings = {adventure: +form.elements.adventure.value, n: +form.elements.n.value};
-        return S.settings;
-    }
     // Spotify's queue can't be edited, so a track queued for a set we've since changed is remembered and skipped
     function abandonQueued() {
         if (S.sent > S.current && S.queue[S.sent]) S.stale.add(S.queue[S.sent].id);
     }
-    async function playFrom(i, queue) {
+    async function playFrom(i, queue, label) {
+        if (!S.ready) { status('The Spotify player is still connecting. Try again in a moment.'); return; }
         abandonQueued();
-        S.queue = queue;
+        if (queue) {
+            S.queue = queue;
+            if (label) $('rp-from').textContent = label;
+            draw();
+        }
         S.current = -1;
         await S.player.activateElement();
         try {
@@ -129,16 +110,26 @@
             S.active = true;
             S.browsing = false;
             $('rp-next').hidden = false;
-            $('rp-sync').hidden = true;
             document.documentElement.classList.add('radio-bar');
-            const scroller = $('radio-scroll');
-            if (scroller && !scroller.classList.contains('is-live')) showLive();
         } catch (e) { status(`Couldn't start playback (${esc(e.message)}).`); }
+    }
+    // start the set a /radio URL describes (?artist= / ?show= / ?track=), right here
+    async function startRadio(url) {
+        status('Starting Birds radio…');
+        document.documentElement.classList.add('radio-bar');
+        try {
+            const params = new URL(url, location.href).searchParams;
+            params.set('adventure', adventure());
+            const resp = await fetch('/radio/set?' + params);
+            if (!resp.ok) throw new Error(resp.status);
+            const set = await resp.json();
+            await playFrom(0, set.picks.map(p => ({id: p.spotify_id, html: p.html, ms: p.ms})), `From ${set.label}`);
+        } catch (e) { status(`Couldn't start that set (${esc(e.message)}).`); }
     }
     async function more(afterIndex, n, random) {
         const resp = await fetch('/radio/more', {method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({after: S.queue[afterIndex].id, played: S.queue.slice(0, afterIndex + 1).map(p => p.id),
-                                  n, random: !!random, seed: Math.floor(Math.random() * 1e6), adventure: settings().adventure})});
+                                  n, random: !!random, seed: Math.floor(Math.random() * 1e6), adventure: adventure()})});
         if (!resp.ok) throw new Error(resp.status);
         return (await resp.json()).picks;
     }
@@ -158,13 +149,14 @@
             S.queueing = false;
         }
     }
-    // controls changed while listening: what's playing and the track already handed to Spotify stay, the rest
-    // is re-sequenced (random: from a random new start instead of from here)
+    // what's playing and the track already handed to Spotify stay; the rest is re-sequenced
+    // (random: from a random new start instead of from here)
     async function retune(random) {
+        if (!S.active) return;
         const keep = Math.max(S.current, S.sent);
-        const n = Math.max(5, settings().n - keep - 1);
         try {
-            replaceAfter(keep, await more(keep, n, random), true);
+            replaceAfter(keep, await more(keep, 15, random), true);
+            if (random) $('rp-from').textContent = 'From a random new start';
             keepGoing();
         } catch (e) { status(`Couldn't change what's next (${esc(e.message)}).`); }
     }
@@ -175,14 +167,14 @@
                                                      getOAuthToken: cb => getToken(true).then(cb, () => {})});
             p.addListener('ready', ({device_id}) => {
                 S.deviceId = device_id;
+                S.ready = true;
                 $('rp-play').disabled = false;
-                if (!S.active) status($('radio-controls') ? 'Ready. Press Play, or ▶ next to any track to start there.'
-                                                          : 'Ready. <a href="/radio">Pick a set to play</a>.');
+                if (!S.active) status('Ready. Press ▶ on any track, or a radio link, to start.');
                 document.documentElement.classList.add('player-ready');
             });
-            p.addListener('not_ready', () => status('Spotify player went offline.'));
+            p.addListener('not_ready', () => { S.ready = false; status('Spotify player went offline.'); });
             p.addListener('account_error', () => {
-                status('Playing here needs Spotify Premium. You can still save a set as a playlist.');
+                status('Playing here needs Spotify Premium. You can still save a set as a playlist on the radio page.');
                 $('rp-play').disabled = true;
             });
             p.addListener('authentication_error', () => { getToken(true).catch(() => {}); });
@@ -192,8 +184,9 @@
                 if (!state) return;
                 const t = state.track_window.current_track;
                 const id = (t.linked_from && t.linked_from.id) || t.id;
-                status(`${state.paused ? 'Paused' : 'Now playing'}: <a href="/radio">${esc(t.name)}</a> · ${esc(t.artists.map(a => a.name).join(', '))}`);
-                $('rp-play').textContent = state.paused ? '▶ Play' : '⏸ Pause';
+                status(`${state.paused ? 'Paused' : 'Now playing'}: <strong>${esc(t.name)}</strong> · ${esc(t.artists.map(a => a.name).join(', '))}`);
+                $('rp-play').textContent = state.paused ? '▶' : '⏸';
+                $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
                 if (S.stale.has(id) && !state.paused) { S.stale.delete(id); p.nextTrack(); return; }
                 const i = S.queue.findIndex(q => q.id === id);
                 if (i >= 0 && i !== S.current) { S.current = i; mark(); }
@@ -208,7 +201,24 @@
         S.sdkRequested = true;
     }
 
-    // ---- /radio page controls (a new set each time when idle; rewrite what's next while listening) ----
+    // The Web Playback SDK plays through an iframe it adds to <body>. Turbo normally swaps in a whole new <body>,
+    // which would take the iframe (and the music) with it, and moving an iframe reloads it. So keep the current
+    // <body> and swap everything in it except Spotify's iframes.
+    const isSpotifyFrame = el => el.tagName === 'IFRAME' && /scdn\.co|spotify\.com/.test(el.src || '');
+    document.addEventListener('turbo:before-render', e => {
+        e.detail.render = (current, next) => {
+            [...current.childNodes].forEach(node => { if (!isSpotifyFrame(node)) node.remove(); });
+            for (const a of [...current.attributes]) current.removeAttribute(a.name);
+            for (const a of [...next.attributes]) current.setAttribute(a.name, a.value);
+            // pages restored from Turbo's cache carry copies of the frame; the live one is already here
+            current.prepend(...[...next.childNodes].filter(node => !isSpotifyFrame(node)));
+        };
+    });
+
+    // ---- the /radio page: a proposed set to preview, play or save (it doesn't drive the live list) ----
+    const pageRows = () => [...document.querySelectorAll('#radio-list li')];
+    const pageSet = () => pageRows().map(li => ({id: li.dataset.spotify, ms: +li.dataset.ms || 0, html: li.outerHTML}));
+    const pageLabel = () => $('radio-result') ? $('radio-result').dataset.label : null;
     let latest = 0, timer = null;
     async function loadSet(url) {
         const mine = ++latest, result = $('radio-result'), form = $('radio-controls');
@@ -226,7 +236,7 @@
             }
             history.replaceState(history.state, '', resp.url);  // keep Turbo's state
         } catch (e) {
-            if (mine === latest) location.href = url;
+            if (mine === latest && !S.active) location.href = url;
         } finally {
             if (mine === latest && $('radio-result')) $('radio-result').classList.remove('loading');
         }
@@ -235,96 +245,82 @@
         const form = $('radio-controls');
         if (!form) return;
         $('radio-update').hidden = true;
-        if (S.active) {
-            // arriving from a "Birds radio" link while listening: that set comes up after the current track
-            const params = new URLSearchParams(location.search);
-            let flashFrom = null;
-            if (lastVisit !== 'restore' && ['artist', 'show', 'track'].some(k => params.get(k))) {
-                abandonQueued();
-                const keep = S.current;
-                S.queue = S.queue.slice(0, keep + 1).concat(fromPage());
-                S.sent = keep;
-                flashFrom = keep + 1;
-                keepGoing();
-            }
-            S.browsing = false;
-            showLive(flashFrom);
-        } else {
-            settings();
-        }
         const fromControls = () => form.action + '?' + new URLSearchParams(new FormData(form));
-        const changed = () => {
-            settings();
-            if (S.active) { history.replaceState(history.state, '', fromControls()); retune(); }
-            else loadSet(fromControls());
-        };
-        form.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(changed, 250); });
-        form.addEventListener('submit', e => { e.preventDefault(); changed(); });
+        form.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => loadSet(fromControls()), 250); });
+        form.addEventListener('submit', e => { e.preventDefault(); loadSet(fromControls()); });
     }
 
-    // clicks anywhere: ▶ on a track, Reshuffle / Random start, and the bar's buttons
+    // a link to /radio?artist=… / ?show=… / ?track=…: with the player ready, play it here instead of going there
+    function radioLink(a) {
+        if (!a || !S.ready || a.closest('.radio-nav')) return null;
+        const url = new URL(a.href, location.href);
+        if (url.origin !== location.origin || url.pathname !== '/radio') return null;
+        return ['artist', 'show', 'track'].some(k => url.searchParams.get(k)) ? url : null;
+    }
+
     document.addEventListener('click', e => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const link = radioLink(e.target.closest('a'));
+        if (link) { e.preventDefault(); startRadio(link); return; }
         const play = e.target.closest('.play-from');
         if (play && S.player) {
             const li = play.closest('li');
-            // mid-set, start from that track in what's playing; otherwise the page's set becomes what's playing
-            const queue = S.active && $('radio-scroll') && $('radio-scroll').classList.contains('is-live') ? S.queue : fromPage();
-            playFrom(rows().indexOf(li), queue);
+            if (li.closest('#rp-list')) playFrom(liveRows().indexOf(li));
+            else playFrom(pageRows().indexOf(li), pageSet(), pageLabel());
             return;
         }
         const nav = e.target.closest('.radio-nav a');
-        if (nav && !(e.metaKey || e.ctrlKey || e.shiftKey)) {
+        if (nav && $('radio-controls')) {  // Reshuffle / Random start on the radio page: a new proposed set
             e.preventDefault();
-            if (S.active) { retune(nav.dataset.action === 'random'); return; }
-            const url = new URL(nav.href);  // keep the controls' current settings
-            url.searchParams.set('adventure', settings().adventure);
-            url.searchParams.set('n', settings().n);
+            const url = new URL(nav.href), form = $('radio-controls');
+            url.searchParams.set('adventure', form.elements.adventure.value);
+            url.searchParams.set('n', form.elements.n.value);
             loadSet(url);
             return;
         }
         if (!S.player) return;
-        if (e.target.closest('#rp-play')) {
+        if (e.target.closest('#radio-play-set')) {
+            playFrom(0, pageSet(), pageLabel());
+        } else if (e.target.closest('#rp-play')) {
             if (S.active) S.player.togglePlay();
-            else if (rows().length) playFrom(0, fromPage());
-            else if (window.Turbo) Turbo.visit('/radio');
+            else if (pageRows().length) playFrom(0, pageSet(), pageLabel());
+            else startRadio('/radio');
         } else if (e.target.closest('#rp-next')) {
             S.player.nextTrack();
+        } else if (e.target.closest('#rp-toggle')) {
+            openDrawer($('rp-drawer').hidden);
         } else if (e.target.closest('#rp-sync')) {
             S.browsing = false;
             $('rp-sync').hidden = true;
             follow();
+        } else if (e.target.closest('#rp-reshuffle')) {
+            retune(false);
+        } else if (e.target.closest('#rp-random')) {
+            retune(true);
         }
     });
     document.addEventListener('change', e => {
-        if (e.target.id !== 'rp-endless') return;
-        try { localStorage.setItem('radio-endless', e.target.checked ? '1' : '0'); } catch (err) {}
-        if (e.target.checked && S.active) keepGoing();
+        if (e.target.id === 'rp-endless') {
+            try { localStorage.setItem('radio-endless', e.target.checked ? '1' : '0'); } catch (err) {}
+            if (e.target.checked && S.active) keepGoing();
+        } else if (e.target.id === 'rp-adventure') {
+            retune(false);
+        }
     });
-
-    // The Web Playback SDK plays through an iframe it adds to <body>. Turbo normally swaps in a whole new <body>,
-    // which would take the iframe (and the music) with it, and moving an iframe reloads it. So keep the current
-    // <body> and swap everything in it except Spotify's iframes.
-    const isSpotifyFrame = el => el.tagName === 'IFRAME' && /scdn\.co|spotify\.com/.test(el.src || '');
-    document.addEventListener('turbo:before-render', e => {
-        e.detail.render = (current, next) => {
-            [...current.childNodes].forEach(node => { if (!isSpotifyFrame(node)) node.remove(); });
-            for (const a of [...current.attributes]) current.removeAttribute(a.name);
-            for (const a of [...next.attributes]) current.setAttribute(a.name, a.value);
-            // pages restored from Turbo's cache carry copies of the frame; the live one is already here
-            current.prepend(...[...next.childNodes].filter(node => !isSpotifyFrame(node)));
-        };
-    });
-
-    let lastVisit = null;  // Turbo's visit action: 'advance', 'replace' or 'restore' (back/forward)
-    document.addEventListener('turbo:visit', e => { lastVisit = e.detail.action; });
 
     // every page view, the first one included
     document.addEventListener('turbo:load', () => {
         const bar = $('radio-player');
         document.documentElement.classList.toggle('radio-bar', !!bar && (S.active || !!$('radio-controls')));
-        if (!S.browsing) { const sync = $('rp-sync'); if (sync) sync.hidden = true; }
         if (bar && !S.sdkRequested) {
-            try { $('rp-endless').checked = localStorage.getItem('radio-endless') !== '0'; } catch (e) {}
+            try {
+                $('rp-endless').checked = localStorage.getItem('radio-endless') !== '0';
+                if (localStorage.getItem('radio-drawer') === '1') openDrawer(true);
+            } catch (e) {}
+            // only real input counts as scrolling away; the list's own following doesn't
+            for (const ev of ['wheel', 'touchmove', 'keydown']) {
+                $('rp-scroll').addEventListener(ev, () => { if (S.active) { S.browsing = true; $('rp-sync').hidden = false; } }, {passive: true});
+            }
             connect();
         }
         bindRadioPage();

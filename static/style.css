@@ -529,15 +529,42 @@ table.show-tracks td.links { width: 14px; padding-right: 0; padding-top: 9px; }
 
 table.artist-tracks .played a.date { display: block; font-variant-numeric: tabular-nums; }
 
-/* Birds radio player bar (radio-player.js): fixed at the bottom of every page while listening, and on /radio */
+/* Birds radio track lists: the live one in the player's drawer and the proposed set on /radio */
+.radio-set { list-style: none; padding: 0; margin: 18px 0; counter-reset: pick; }
+.radio-set li { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 0 10px; padding: 6px 0; border-top: 1px solid #eee; counter-increment: pick; }
+.radio-set .pick-num { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.radio-set .pick-no::before { content: counter(pick); color: #999; font-variant-numeric: tabular-nums; }
+.radio-set .track { font-weight: 600; }
+.radio-set .by a { color: #444; }
+.radio-set .why { display: block; font-size: 0.85rem; color: #777; }
+.radio-set .fam { font-size: 0.75rem; color: #999; margin-left: 4px; }
+.radio-set li.is-playing { background: #e8f6ee; }
+@keyframes fresh { from { background: #fff1c2; } to { background: transparent; } }
+.radio-set li.fresh { animation: fresh 1.6s ease-out; }
+@media (prefers-reduced-motion: reduce) { .radio-set li.fresh { animation: none; } }
+.radio-set li.is-played { opacity: 0.55; }
+.radio-set .play-from { display: none; font-size: 0.7rem; width: 1.9em; padding: 1px 0; border: 1px solid #ccc;
+    border-radius: 3px; background: #fff; cursor: pointer; }
+:root.player-ready .radio-set li:hover .pick-no, :root.player-ready .radio-set li:focus-within .pick-no { display: none; }
+:root.player-ready .radio-set li:hover .play-from, :root.player-ready .radio-set li:focus-within .play-from { display: block; }
+@media (hover: none) { :root.player-ready .radio-set .pick-no { display: none; } :root.player-ready .radio-set .play-from { display: block; } }
+
+/* Birds radio player (radio-player.js): fixed at the bottom of every page while listening, and on /radio.
+   The drawer above the bar holds the live track list and the controls for what comes next. */
 .radio-player { display: none; }
-:root.radio-bar .radio-player { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; position: fixed;
-    left: 0; right: 0; bottom: 0; z-index: 10; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+:root.radio-bar .radio-player { display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
     background: #f3f1ec; border-top: 1px solid #ddd8cc; box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06); }
 :root.radio-bar body { padding-bottom: 72px; }
-.radio-player button { font: inherit; padding: 4px 14px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
+.rp-bar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+.radio-player button { font: inherit; padding: 4px 12px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
 .radio-player button:disabled { opacity: 0.5; cursor: default; }
+#rp-play, #rp-next { min-width: 2.6em; }
 .rp-now { flex: 1; min-width: 12rem; }
-.rp-now a { color: inherit; font-weight: 600; }
-.rp-endless { font-size: 0.9rem; display: flex; gap: 4px; align-items: center; }
 .rp-account { font-size: 0.85rem; color: #777; }
+.rp-drawer { border-bottom: 1px solid #ddd8cc; }
+.rp-drawer-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 10px 16px 8px; font-size: 0.9rem; }
+.rp-drawer-head label { display: flex; gap: 6px; align-items: center; }
+.rp-drawer-head .scale { font-size: 0.8rem; color: #777; }
+.rp-from { font-weight: 600; flex-basis: 100%; }
+.rp-scroll { max-height: min(24rem, 50vh); overflow-y: auto; background: #fff; margin: 0 16px 10px; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0 8px; }
+.rp-scroll .radio-set { margin: 0; }

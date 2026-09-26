@@ -75,12 +75,25 @@
     {% block content %}{% endblock %}
     {% if radio_listener %}
     <div class="radio-player" id="radio-player" data-turbo-permanent>
-        <button type="button" id="rp-play" disabled>▶ Play</button>
-        <button type="button" id="rp-next" hidden aria-label="Next track">⏭</button>
-        <span id="rp-now" class="rp-now">Connecting to Spotify…</span>
-        <button type="button" id="rp-sync" hidden>Back to now playing</button>
-        <label class="rp-endless" title="Add more tracks before the set runs out"><input type="checkbox" id="rp-endless" checked> Keep playing</label>
-        <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}" data-turbo="false">Log out of Spotify</a>
+        <div class="rp-drawer" id="rp-drawer" hidden>
+            <div class="rp-drawer-head">
+                <span id="rp-from" class="rp-from">Birds radio</span>
+                <label for="rp-adventure">Adventure <span class="scale">close</span>
+                    <input type="range" id="rp-adventure" min="0" max="100" step="10" value="30"> <span class="scale">wander</span></label>
+                <button type="button" id="rp-reshuffle">Reshuffle</button>
+                <button type="button" id="rp-random">Random start</button>
+                <label class="rp-endless" title="Add more tracks before the set runs out"><input type="checkbox" id="rp-endless" checked> Keep playing</label>
+                <button type="button" id="rp-sync" hidden>Back to now playing</button>
+            </div>
+            <div class="rp-scroll" id="rp-scroll"><ol class="radio-set" id="rp-list"></ol></div>
+        </div>
+        <div class="rp-bar">
+            <button type="button" id="rp-play" disabled aria-label="Play">▶</button>
+            <button type="button" id="rp-next" hidden aria-label="Next track">⏭</button>
+            <span id="rp-now" class="rp-now">Connecting to Spotify…</span>
+            <button type="button" id="rp-toggle" aria-expanded="false" aria-controls="rp-drawer">Tracks ▴</button>
+            <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}" data-turbo="false">Log out</a>
+        </div>
     </div>
     {% endif %}
 </body>

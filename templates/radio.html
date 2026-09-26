@@ -8,20 +8,15 @@
     .radio-controls button, .radio-save button { font: inherit; padding: 4px 12px; border: 1px solid #bbb;
         border-radius: 4px; background: #fff; cursor: pointer; }
     .radio-controls button:hover, .radio-save button:hover { background: #f0eee8; }
-    .radio-set { list-style: none; padding: 0; margin: 18px 0; counter-reset: pick; }
-    .radio-set li { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 0 10px; padding: 6px 0; border-top: 1px solid #eee; counter-increment: pick; }
-    .radio-set .pick-num { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
-    .radio-set .pick-no::before { content: counter(pick); color: #999; font-variant-numeric: tabular-nums; }
-    .radio-set .track { font-weight: 600; }
-    .radio-set .by a { color: #444; }
-    .radio-set .why { display: block; font-size: 0.85rem; color: #777; }
-    .radio-set .fam { font-size: 0.75rem; color: #999; margin-left: 4px; }
     .radio-save { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
     .radio-save input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; min-width: 0; width: 22rem; max-width: 100%; }
     .radio-note { padding: 8px 12px; border-radius: 4px; background: #e8f6ee; color: #1d6b3d; }
     .radio-note.error { background: #fbeaea; color: #922; }
     .radio-login { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; padding: 10px 14px; background: #f3f1ec; border-radius: 6px; }
     .radio-login a { font-weight: 600; }
+    .radio-play-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+    #radio-play-set { font: inherit; font-weight: 600; padding: 5px 14px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
+    :root:not(.player-ready) .radio-play-row { display: none; }
     .radio-start { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; margin: 16px 0 4px; }
     .radio-start dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #777; }
     .radio-start dd { margin: 2px 0 0; font-size: 1.15rem; font-weight: 600; }
@@ -31,21 +26,6 @@
     .radio-nav { display: flex; gap: 14px; align-self: flex-end; }
     #radio-result { transition: opacity 0.15s; }
     #radio-result.loading { opacity: 0.45; }
-    .radio-set li.is-playing { background: #e8f6ee; }
-    /* while listening, the list scrolls on its own to keep what's playing at the top */
-    .radio-scroll.is-live { max-height: min(32rem, 65vh); overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0 8px; }
-    .radio-scroll.is-live .radio-set { margin: 0; }
-    #radio-result.is-live .radio-start > div:not(.radio-nav) { display: none; }
-    @keyframes fresh { from { background: #fff1c2; } to { background: transparent; } }
-    .radio-set li.fresh { animation: fresh 1.6s ease-out; }
-    @media (prefers-reduced-motion: reduce) { .radio-set li.fresh { animation: none; } }
-    .radio-set li.is-played { opacity: 0.55; }
-    .radio-set .play-from { display: none; font-size: 0.7rem; width: 1.9em; padding: 1px 0; border: 1px solid #ccc;
-        border-radius: 3px; background: #fff; cursor: pointer; }
-    /* once the player is ready, the number turns into a play button on hover */
-    :root.player-ready .radio-set li:hover .pick-no, :root.player-ready .radio-set li:focus-within .pick-no { display: none; }
-    :root.player-ready .radio-set li:hover .play-from, :root.player-ready .radio-set li:focus-within .play-from { display: block; }
-    @media (hover: none) { :root.player-ready .radio-set .pick-no { display: none; } :root.player-ready .radio-set .play-from { display: block; } }
 </style>
 {% endblock extra_head %}
 {% block content %}
@@ -72,7 +52,7 @@
         <span class="muted">Playing here needs Spotify Premium. Without it you can still save the set as a playlist.</span></p>
     {% endif %}
 
-    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}">
+    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}" data-label="From {{ start_label }}">
         {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track')}|dictsort|selectattr(1)|list %}
         <dl class="radio-start">
             <div><dt>Starting from</dt>
@@ -87,11 +67,11 @@
         {% if saved %}<p class="radio-note">Saved “{{ saved.name }}” to your Spotify: <a href="{{ saved.url }}" target="_blank" rel="noopener">open it</a>.</p>{% endif %}
         {% if save_error %}<p class="radio-note error">Couldn't save to Spotify: {{ save_error }}</p>{% endif %}
 
-        <div class="radio-scroll" id="radio-scroll">
-        <ol class="radio-set">
+        {% if radio_listener %}<p class="radio-play-row"><button type="button" id="radio-play-set">▶ Play this set</button>
+            <span class="muted">or ▶ on any track to start there</span></p>{% endif %}
+        <ol class="radio-set" id="radio-list">
             {% for p in picks %}{% include "_radio_pick.html" %}{% endfor %}
         </ol>
-        </div>
         <p class="muted" id="radio-total">{{ picks|length }} tracks · about {{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m</p>
 
         {% if spotify_ready %}
