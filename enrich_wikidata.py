@@ -59,10 +59,10 @@ BY_QID = ('VALUES ?item { %s } BIND(STRAFTER(STR(?item), "/entity/") AS ?key)', 
 MB_SOURCES = {'discogs': 'discogs', 'bandcamp': 'bandcamp', 'allmusic': 'allmusic', 'official homepage': 'website'}
 
 
-def run_query(binding, keys):
+def run_query(binding, keys, query=QUERY):
     clause, fmt = binding
     values = ' '.join(fmt(k) for k in keys)
-    body = urllib.parse.urlencode({'query': QUERY % (clause % values)}).encode()
+    body = urllib.parse.urlencode({'query': query % (clause % values)}).encode()
     req = urllib.request.Request(ENDPOINT, data=body, headers={
         'User-Agent': USER_AGENT, 'Accept': 'application/sparql-results+json'})
     for attempt in range(4):
