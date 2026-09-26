@@ -301,6 +301,20 @@
         if (e.target.checked && S.active) keepGoing();
     });
 
+    // The Web Playback SDK plays through an iframe it adds to <body>. Turbo normally swaps in a whole new <body>,
+    // which would take the iframe (and the music) with it, and moving an iframe reloads it. So keep the current
+    // <body> and swap everything in it except Spotify's iframes.
+    const isSpotifyFrame = el => el.tagName === 'IFRAME' && /scdn\.co|spotify\.com/.test(el.src || '');
+    document.addEventListener('turbo:before-render', e => {
+        e.detail.render = (current, next) => {
+            [...current.childNodes].forEach(node => { if (!isSpotifyFrame(node)) node.remove(); });
+            for (const a of [...current.attributes]) current.removeAttribute(a.name);
+            for (const a of [...next.attributes]) current.setAttribute(a.name, a.value);
+            // pages restored from Turbo's cache carry copies of the frame; the live one is already here
+            current.prepend(...[...next.childNodes].filter(node => !isSpotifyFrame(node)));
+        };
+    });
+
     let lastVisit = null;  // Turbo's visit action: 'advance', 'replace' or 'restore' (back/forward)
     document.addEventListener('turbo:visit', e => { lastVisit = e.detail.action; });
 
