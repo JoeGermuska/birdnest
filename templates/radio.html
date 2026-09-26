@@ -38,6 +38,12 @@
     .rp-endless { font-size: 0.9rem; display: flex; gap: 4px; align-items: center; }
     .rp-account { font-size: 0.85rem; color: #777; }
     .radio-set li.is-playing { background: #e8f6ee; }
+    /* while listening, the list scrolls on its own to keep what's playing at the top */
+    .radio-scroll.is-live { max-height: min(32rem, 65vh); overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0 8px; }
+    .radio-scroll.is-live .radio-set { margin: 0; }
+    @keyframes fresh { from { background: #fff1c2; } to { background: transparent; } }
+    .radio-set li.fresh { animation: fresh 1.6s ease-out; }
+    @media (prefers-reduced-motion: reduce) { .radio-set li.fresh { animation: none; } }
     .radio-set li.is-played { opacity: 0.55; }
     .radio-set .play-from { display: none; font-size: 0.7rem; width: 1.9em; padding: 1px 0; border: 1px solid #ccc;
         border-radius: 3px; background: #fff; cursor: pointer; }
@@ -71,6 +77,7 @@
         {% if logged_in %}
         <button type="button" id="rp-play" disabled>▶ Play</button>
         <button type="button" id="rp-next" hidden aria-label="Next track">⏭</button>
+        <button type="button" id="rp-sync" hidden>Back to now playing</button>
         <span id="rp-now" class="rp-now">Connecting to Spotify…</span>
         <label class="rp-endless" title="Add more tracks before the set runs out"><input type="checkbox" id="rp-endless" checked> Keep playing</label>
         <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}">Log out of Spotify</a>
@@ -90,15 +97,17 @@
             <div><dt>Set</dt><dd class="seed">#{{ seed }}</dd></div>
             <div class="radio-nav">
                 <a href="{{ url_for('radio_page', adventure=adventure, n=n, seed=(seed * 7919 + 17) % 1000000, **dict(start)) }}">Reshuffle</a>
-                <a href="{{ url_for('radio_page', adventure=adventure, n=n) }}">Random start</a></div>
+                <a href="{{ url_for('radio_page', adventure=adventure, n=n) }}" data-action="random">Random start</a></div>
         </dl>
 
         {% if saved %}<p class="radio-note">Saved “{{ saved.name }}” to your Spotify: <a href="{{ saved.url }}" target="_blank" rel="noopener">open it</a>.</p>{% endif %}
         {% if save_error %}<p class="radio-note error">Couldn't save to Spotify: {{ save_error }}</p>{% endif %}
 
+        <div class="radio-scroll" id="radio-scroll">
         <ol class="radio-set">
             {% for p in picks %}{% include "_radio_pick.html" %}{% endfor %}
         </ol>
+        </div>
         <p class="muted" id="radio-total">{{ picks|length }} tracks · about {{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m</p>
 
         {% if spotify_ready %}
@@ -159,7 +168,23 @@
             li.classList.toggle('is-playing', i === current);
             li.classList.toggle('is-played', i < current);
         });
+        if (!browsing) follow();
     }
+    // keep the playing track at the top of the list, unless the listener has scrolled away to look around
+    const scroller = document.getElementById('radio-scroll'), syncBtn = document.getElementById('rp-sync');
+    let browsing = false;
+    function follow() {
+        const li = rows()[Math.max(0, current)];
+        if (li) scroller.scrollBy({top: li.getBoundingClientRect().top - scroller.getBoundingClientRect().top, behavior: 'smooth'});
+    }
+    for (const ev of ['wheel', 'touchmove', 'keydown']) {
+        scroller.addEventListener(ev, () => {
+            if (!active) return;
+            browsing = true;
+            syncBtn.hidden = false;
+        }, {passive: true});
+    }
+    syncBtn.addEventListener('click', () => { browsing = false; syncBtn.hidden = true; follow(); });
     // Spotify's queue can't be edited, so a track queued for a set we've since changed is remembered and skipped
     function abandonQueued() {
         if (sent > current && queue[sent]) stale.add(queue[sent]);
@@ -173,20 +198,25 @@
             sent = i;
             active = true;
             nextBtn.hidden = false;
+            scroller.classList.add('is-live');
+            browsing = false;
+            syncBtn.hidden = true;
         } catch (e) { now.textContent = `Couldn't start playback (${e.message}).`; }
     }
     // add picks that continue from the last track in the set
-    async function more(afterIndex, n) {
+    async function more(afterIndex, n, random) {
         const resp = await fetch('{{ url_for("radio_more") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({after: queue[afterIndex], played: queue.slice(0, afterIndex + 1), n,
+            body: JSON.stringify({after: queue[afterIndex], played: queue.slice(0, afterIndex + 1), n, random: !!random,
                                   seed: Math.floor(Math.random() * 1e6), ...settings()})});
         if (!resp.ok) throw new Error(resp.status);
         return (await resp.json()).picks;
     }
-    function replaceAfter(index, picks) {
+    function replaceAfter(index, picks, flash) {
         const list = document.querySelector('.radio-set');
         rows().slice(index + 1).forEach(li => li.remove());
+        const count = rows().length;
         list.insertAdjacentHTML('beforeend', picks.map(p => p.html).join(''));
+        if (flash) rows().slice(count).forEach(li => li.classList.add('fresh'));
         queue = rows().map(li => li.dataset.spotify);
         const min = Math.round(rows().reduce((t, li) => t + +li.dataset.ms, 0) / 60000);
         document.getElementById('radio-total').textContent =
@@ -211,13 +241,14 @@
     }
     // controls changed while listening: re-sequence everything after the current track
     // what's playing and the one track already handed to Spotify stay; everything after is re-sequenced
-    async function retune() {
+    // random: jump to a random new start instead of continuing from here
+    async function retune(random) {
         const keep = Math.max(current, sent);
         const n = Math.max(5, +form.elements.n.value - keep - 1);
         try {
-            replaceAfter(keep, await more(keep, n));
+            replaceAfter(keep, await more(keep, n, random), true);
             keepGoing();
-        } catch (e) { now.textContent = `Couldn't retune (${e.message}).`; }
+        } catch (e) { now.textContent = `Couldn't change what's next (${e.message}).`; }
     }
     // a whole new set (Reshuffle, Random start) while listening: it starts when the current track ends
     async function newSet() {
@@ -304,7 +335,8 @@
             history.replaceState(null, '', resp.url);
             if (window.birdsRadio) window.birdsRadio.newSet();
         } catch (e) {
-            if (mine === latest) location.href = url;  // fall back to a normal page load
+            // fall back to a normal page load, but never while music is playing
+            if (mine === latest && !(window.birdsRadio && window.birdsRadio.isActive())) location.href = url;
         } finally {
             if (mine === latest) result.classList.remove('loading');
         }
@@ -323,11 +355,19 @@
             }
         }, 250);
     });
-    form.addEventListener('submit', e => { e.preventDefault(); load(fromControls()); });
+    form.addEventListener('submit', e => {
+        e.preventDefault();
+        if (window.birdsRadio && window.birdsRadio.isActive()) window.birdsRadio.retune();
+        else load(fromControls());
+    });
     document.addEventListener('click', e => {
         const a = e.target.closest('.radio-nav a');
         if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
         e.preventDefault();
+        if (window.birdsRadio && window.birdsRadio.isActive()) {  // listening: rewrite what's next, keep playing
+            window.birdsRadio.retune(a.dataset.action === 'random');
+            return;
+        }
         const url = new URL(a.href);  // keep the controls' current settings
         url.searchParams.set('adventure', form.elements.adventure.value);
         url.searchParams.set('n', form.elements.n.value);

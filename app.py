@@ -353,10 +353,17 @@ def radio_more():
     start = cat.rec_by_spotify.get(body.get('after'))
     if start is None:
         abort(400)
-    played = [cat.rec_by_spotify[i] for i in body.get('played', []) if i in cat.rec_by_spotify]
-    adventure = min(100, max(0, int(body.get('adventure', 30))))
-    picks = radio.sequence(start, min(40, max(1, int(body.get('n', 10)))), adventure / 100,
-                           int(body.get('seed', 0)), played=played or [start])
+    played = [cat.rec_by_spotify[i] for i in body.get('played', []) if i in cat.rec_by_spotify] or [start]
+    adventure = min(100, max(0, int(body.get('adventure', 30)))) / 100
+    n, seed = min(40, max(1, int(body.get('n', 10)))), int(body.get('seed', 0))
+    if body.get('random'):  # jump somewhere new, then carry on from there
+        rng = random.Random(seed)
+        jump = rng.choice([r for r in cat.all_recs if r not in set(played)])
+        first = radio.sequence(jump, 1, adventure, seed)
+        first[0]['reason'] = 'a random new start'
+        picks = first + radio.sequence(jump, n - 1, adventure, seed, played=[*played, jump])
+    else:
+        picks = radio.sequence(start, n, adventure, seed, played=played)
     out = []
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
