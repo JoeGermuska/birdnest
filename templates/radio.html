@@ -124,8 +124,10 @@
     const form = document.getElementById('radio-controls');
     let player, deviceId, token, tokenAt = 0;
     let queue = [];     // spotify ids in play order: the set as shown
-    let sent = -1;      // index of the last track Spotify knows about
+    let sent = -1;      // index of the last track Spotify knows about: we hand it one track at a time,
+                        // so changing what's coming never touches what's playing
     let current = -1;   // index of what's playing
+    let stale = new Set();  // tracks we queued on Spotify that are no longer in the set; skipped if they come up
     let active = false, extending = false, queueing = false;
     const endless = document.getElementById('rp-endless');
     try { endless.checked = localStorage.getItem('radio-endless') !== '0'; } catch (e) {}
@@ -158,12 +160,17 @@
             li.classList.toggle('is-played', i < current);
         });
     }
-    async function playFrom(i, positionMs = 0) {
+    // Spotify's queue can't be edited, so a track queued for a set we've since changed is remembered and skipped
+    function abandonQueued() {
+        if (sent > current && queue[sent]) stale.add(queue[sent]);
+    }
+    async function playFrom(i) {
+        abandonQueued();
         queue = rows().map(li => li.dataset.spotify);
         await player.activateElement();
         try {
-            await api('PUT', `/me/player/play?device_id=${deviceId}`, {uris: queue.slice(i).map(uri), position_ms: positionMs});
-            sent = queue.length - 1;
+            await api('PUT', `/me/player/play?device_id=${deviceId}`, {uris: [uri(queue[i])]});
+            sent = i;
             active = true;
             nextBtn.hidden = false;
         } catch (e) { now.textContent = `Couldn't start playback (${e.message}).`; }
@@ -203,13 +210,26 @@
         }
     }
     // controls changed while listening: re-sequence everything after the current track
+    // what's playing and the one track already handed to Spotify stay; everything after is re-sequenced
     async function retune() {
-        const state = await player.getCurrentState();
-        const n = Math.max(5, +form.elements.n.value - current - 1);
+        const keep = Math.max(current, sent);
+        const n = Math.max(5, +form.elements.n.value - keep - 1);
         try {
-            replaceAfter(current, await more(current, n));
-            await playFrom(current, state ? state.position : 0);
+            replaceAfter(keep, await more(keep, n));
+            keepGoing();
         } catch (e) { now.textContent = `Couldn't retune (${e.message}).`; }
+    }
+    // a whole new set (Reshuffle, Random start) while listening: it starts when the current track ends
+    async function newSet() {
+        abandonQueued();
+        queue = rows().map(li => li.dataset.spotify);
+        current = -1;
+        mark();
+        if (!active) return;
+        try {
+            await api('POST', `/me/player/queue?device_id=${deviceId}&uri=${encodeURIComponent(uri(queue[0]))}`);
+            sent = 0;
+        } catch (e) { now.textContent = `Couldn't queue the new set (${e.message}).`; }
     }
 
     window.onSpotifyWebPlaybackSDKReady = () => {
@@ -235,6 +255,7 @@
             const id = (t.linked_from && t.linked_from.id) || t.id;
             now.textContent = `${state.paused ? 'Paused' : 'Now playing'}: ${t.name} · ${t.artists.map(a => a.name).join(', ')}`;
             playBtn.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+            if (stale.has(id) && !state.paused) { stale.delete(id); player.nextTrack(); return; }
             const i = queue.indexOf(id);
             if (i >= 0 && i !== current) { current = i; mark(); }
             if (i >= 0) keepGoing();
@@ -252,7 +273,7 @@
     window.birdsRadio = {
         isActive: () => active,
         retune,
-        newSet: () => { current = -1; if (active) playFrom(0); },
+        newSet,
     };
 })();
 </script>
