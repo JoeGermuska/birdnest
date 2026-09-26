@@ -37,7 +37,19 @@
         const resp = await fetch('https://api.spotify.com/v1' + path, {method,
             headers: {'Authorization': 'Bearer ' + await getToken(), 'Content-Type': 'application/json'},
             body: body ? JSON.stringify(body) : undefined});
-        if (!resp.ok) throw new Error(`Spotify said ${resp.status}`);
+        if (!resp.ok) throw Object.assign(new Error(`Spotify said ${resp.status}`), {status: resp.status});
+    }
+    // play on this page's device; Spotify answers 404 until the device has been made the active one
+    async function playOnDevice(body) {
+        const play = () => api('PUT', `/me/player/play?device_id=${S.deviceId}`, body);
+        try {
+            await play();
+        } catch (e) {
+            if (e.status !== 404) throw e;
+            await api('PUT', '/me/player', {device_ids: [S.deviceId], play: false});
+            await new Promise(r => setTimeout(r, 800));
+            await play();
+        }
     }
 
     // ---- the list on /radio, when it's the current page ----
@@ -112,7 +124,7 @@
         S.current = -1;
         await S.player.activateElement();
         try {
-            await api('PUT', `/me/player/play?device_id=${S.deviceId}`, {uris: [uri(S.queue[i].id)]});
+            await playOnDevice({uris: [uri(S.queue[i].id)]});
             S.sent = i;
             S.active = true;
             S.browsing = false;
