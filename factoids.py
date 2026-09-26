@@ -5,7 +5,9 @@ Everything here is derived from the whole play history, so we load the
 database only changes on deploy, so the cache is keyed on the file's mtime.
 """
 import hashlib
+import html
 import json
+import random
 import math
 import re
 import os
@@ -721,6 +723,70 @@ class History:
         return {'title': 'Longest absences', 'unit': '', 'rows': rows,
                 'blurb': "Artists who came back after a year or more away. The bar is the gap; "
                          "ticks are the artist's other shows."}
+
+    # ---- home page ----
+
+    def show_caption(self, playlist_id):
+        """A show's description split into its own note and the playlist image credit, without the
+        "What we played for each other on <date>." boilerplate."""
+        text = html.unescape(self.shows[playlist_id]['description'] or '')
+        text = re.sub(r'^\s*What we played for each other on [\d/]+\.?\s*', '', text)
+        note, _, image = text.partition('Playlist image:')
+        return {'note': ' '.join(note.split()), 'image': ' '.join(image.split()).rstrip('.')}
+
+    def same_week(self, playlist_id, days=3):
+        """The show closest to this one's calendar date in each earlier year (within `days`), newest first."""
+        d = self.show_dates[playlist_id]
+        out = []
+        for year in range(d.year - 1, self.first_date.year - 1, -1):
+            try:
+                target = d.replace(year=year)
+            except ValueError:  # Feb 29
+                target = d.replace(year=year, day=28)
+            near = [(abs((self.show_dates[p] - target).days), p) for p in self.show_tracks
+                    if self.show_dates[p].year == year and abs((self.show_dates[p] - target).days) <= days]
+            if near:
+                out.append(min(near)[1])
+        return out
+
+    def home_notes(self, rng=None):
+        """Small cards for the home page wall: a return, a much-repeated track, a very new show, a regular,
+        a DJ, a random show to pull out, and a radio start. Different picks each call."""
+        rng = rng or random.Random()
+        if not hasattr(self, '_home_pools'):
+            self._home_pools = {'returns': self._rank_returns()['rows'][:60], 'tracks': self._rank_tracks()['rows'][:40],
+                                'artists': self._rank_artists()['rows'][:60]}
+        pools, notes = self._home_pools, []
+        shows = sorted(self.show_tracks, key=self.show_dates.get)
+
+        r = rng.choice(pools['returns'])
+        a, b = r['span']
+        notes.append({'kind': 'return', 'label': 'Welcome back', 'parts': r['label'] + [f" returned after {r['value']}, on "],
+                      'link': {'show': b, 'text': f"{b:%B} {b.day}, {b.year}"}})
+        t = rng.choice(pools['tracks'])
+        notes.append({'kind': 'repeat', 'label': 'Heard it before', 'parts': t['label'] + [f", played {t['value']} times"],
+                      'more': {'ranking': 'tracks', 'anchor': t['anchor']}})
+        novel = sorted(shows, key=lambda p: -self.novelty[p])[:25]
+        p = rng.choice(novel)
+        d = self.show_dates[p]
+        notes.append({'kind': 'theme', 'label': 'All new', 'parts': [f"{round(self.novelty[p] * 100)}% of the artists on "],
+                      'link': {'show': d, 'text': f"{d:%B} {d.day}, {d.year}"}, 'tail': " had never been played before"})
+        ar = rng.choice(pools['artists'])
+        notes.append({'kind': 'regular', 'label': 'Regulars', 'parts': ar['label'] + [f", at {ar['value']} shows"]})
+        regulars = [i for i, pids in self.dj_shows.items() if len(pids) >= 10]
+        if regulars:
+            i = rng.choice(regulars)
+            notes.append({'kind': 'genre', 'label': 'In the room', 'parts': [self._dj_part(i), f", at {len(self.dj_shows[i])} shows"]})
+        d = self.show_dates[rng.choice(shows)]
+        notes.append({'kind': 'random', 'label': 'Pull one out', 'parts': [],
+                      'link': {'show': d, 'text': f"{d:%B} {d.day}, {d.year}"}, 'tail': ", picked at random"})
+        d = self.show_dates[rng.choice(shows)]
+        notes.append({'kind': 'radio', 'label': 'Birds radio', 'parts': ["Start the radio from the show of "],
+                      'radio': d, 'text': f"{d:%B} {d.day}, {d.year}"})
+        for n in notes:  # everything but the radio start reads as one run of parts
+            n['parts'] = n['parts'] + ([n.pop('link')] if 'link' in n else []) + ([n.pop('tail')] if 'tail' in n else [])
+        rng.shuffle(notes)
+        return notes
 
     def genre_tree(self):
         """Plays per genre per year, grouped into families, for the genre map. Each play

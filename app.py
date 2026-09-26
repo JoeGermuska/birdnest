@@ -40,8 +40,25 @@ def radio_bar():
 @app.route('/')
 def index():
     history = factoids.get_history()
-    playlists = sorted(history.shows.values(), key=lambda s: s['date'], reverse=True)
-    return render_template("index.html", playlists=playlists)
+    pids = sorted(history.show_tracks, key=history.show_dates.get, reverse=True)
+    tile = lambda p: {**history.shows[p], 'caption': history.show_caption(p)['image']}
+    latest = pids[0]
+    # the wall, with a note card after every few shows
+    notes, wall = history.home_notes(), []
+    for i, p in enumerate(pids):
+        if i and i % 9 == 4 and notes:
+            wall.append({'note': notes.pop(), 'tilt': random.choice((-1.5, -0.8, 0.6, 1.2))})
+        wall.append({'show': tile(p)})
+    return render_template("index.html", latest=tile(latest), latest_caption=history.show_caption(latest),
+                           room=history.show_room(latest), mix=history.show_mix(latest),
+                           facts=history.show_factoids(latest), stats=history.show_stats(latest),
+                           this_week=[tile(p) for p in history.same_week(latest)], wall=wall, n_shows=len(pids))
+
+
+@app.route('/shows/random')
+def random_show():
+    history = factoids.get_history()
+    return redirect(url_for('show_playlist', date_str=history.show_dates[random.choice(list(history.show_tracks))]))
 
 @app.route('/search')
 def search():

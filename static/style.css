@@ -64,49 +64,73 @@
      color: inherit;
  }
  
- .playlist-tiles {
-  display: flex;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
+/* Show tiles: the image, the date on a bar at the bottom, and the playlist image credit on hover */
 .playlist-tile {
   display: block;
   position: relative;
-  flex-grow: 1;
-  width: calc(20% - 2px); /* Adjust this value to change the number of columns */
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
+  background: #e8e4da;
+  color: #f4f1ea;
+  text-decoration: none;
 }
+.playlist-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
+.playlist-tile .tile-date {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 5px 8px;
+  background: rgba(40, 36, 30, 0.72);
+  font-size: clamp(0.8rem, 1.3vw, 1rem);
+  font-variant-numeric: tabular-nums;
+}
+.playlist-tile .tile-caption {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 10px 8px 34px;
+  background: linear-gradient(transparent, rgba(40, 36, 30, 0.85) 30%);
+  font-size: 0.8rem; line-height: 1.3;
+  opacity: 0; transition: opacity 0.2s;
+}
+.playlist-tile:hover .tile-caption, .playlist-tile:focus-visible .tile-caption { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) { .playlist-tile:hover img { transform: scale(1.03); } }
 
-.playlist-tile img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
+/* Home page */
+section.home { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
+.home-latest { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.home-latest .playlist-tile .tile-date { display: none; }
+.latest-info h1 { font-family: 'David Libre', serif; font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 0 0 10px; }
+.latest-info h1 a { color: inherit; text-decoration: none; }
+.eyebrow { margin: 0 0 4px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #777; }
+.latest-note { color: #444; max-width: 60ch; }
+.latest-info .show-meta { color: #555; }
+.latest-info .factoids { margin-top: 14px; }
+.latest-links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 16px; }
+.home-head { font-family: 'David Libre', serif; font-size: 1.5rem; margin: 34px 0 10px; }
+.home-head .muted { font-family: Arial, Helvetica, sans-serif; font-size: 0.9rem; margin-left: 8px; }
+.tile-row, .tile-grid { display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(min(45%, 170px), 1fr)); }
+.tile-row .tile-date { font-size: 1rem; }
+@media (max-width: 700px) { .home-latest { grid-template-columns: 1fr; } }
 
-.playlist-tile h2 {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  margin: 0;
-  height: 15%; /* This makes the text height 15% of the tile height */
-  background-color: rgba(64, 64, 64, 0.7);
-  color: rgb(240, 240, 240);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 0 10px;
-  font-size: 2.5vw; /* This makes the font size responsive */
-  line-height: 1.2;
+/* note cards mixed into the wall: small facts to wander off from, a little askew */
+.note-card {
+  aspect-ratio: 1 / 1;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px;
+  background: #f7f2e6;
+  border: 1px solid #e3dccb;
+  transform: rotate(var(--tilt, 0deg));
+  font-family: 'David Libre', serif; font-size: clamp(1rem, 1.5vw, 1.2rem); line-height: 1.3;
+  overflow: hidden;
 }
+.note-card p { margin: 0; }
+.note-card a { color: #222; }
+.note-card .more { margin-top: auto; font-family: Arial, Helvetica, sans-serif; font-size: 0.8rem; color: #777; }
+.note-label { font-family: Arial, Helvetica, sans-serif; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #777; display: flex; align-items: center; gap: 6px; }
+.note-label::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #999; }
+.note-theme .note-label::before { background: #c0392b; }
+.note-repeat .note-label::before { background: #2e86c1; }
+.note-return .note-label::before { background: #8e44ad; }
+.note-regular .note-label::before { background: #d68910; }
+.note-genre .note-label::before { background: #229954; }
+.note-radio .note-label::before { background: #7a2e5e; }
  
 /* Autocomplete styles */
 .autocomplete-container {
@@ -491,6 +515,14 @@ a.more:hover { color: #222 !important; }
 nav#topbar .nav-links { display: flex; gap: 18px; font-size: 1rem; margin-right: auto; margin-left: 24px; }
 nav#topbar .nav-links a { color: #ccc; }
 nav#topbar .nav-links a:hover { color: #fff; }
+/* phones: let the banner wrap instead of running off the side (a fuller banner redesign is in notes/plan.md) */
+@media (max-width: 700px) {
+    nav#topbar { flex-wrap: wrap; font-size: 1rem; }
+    nav#topbar h1 { font-size: 1.4rem; margin: 10px 12px 4px; flex-basis: 100%; }
+    nav#topbar .nav-links { margin-left: 12px; gap: 14px; }
+    nav#topbar form#search { margin: 6px 12px 10px; display: flex; gap: 6px; align-items: center; }
+    nav#topbar form#search input { width: 11rem; }
+}
 
 /* Show page genre-family mix */
 .mix { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.9rem; color: #555; }

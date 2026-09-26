@@ -1,12 +1,50 @@
 {% extends "_base.html" %}
-
+{% from "_macros.html" import factoids, parts, room_list %}
 {% block title %}Home{% endblock title %}
 {% block content %}
-
-    <section>
-        <div class="playlist-tiles">
-            {% for playlist in playlists %} {% include "_playlist_tile.html" %} {% endfor %}
+<section class="home">
+    <div class="home-latest">
+        {% with playlist=latest, label=None %}{% include "_playlist_tile.html" %}{% endwith %}
+        <div class="latest-info">
+            <p class="eyebrow">Latest show</p>
+            <h1><a href="{{ url_for('show_playlist', date_str=latest.date) }}">{{ latest.date.strftime('%B') }} {{ latest.date.day }}, {{ latest.date.year }}</a></h1>
+            {% if latest_caption.note %}<p class="latest-note">{{ latest_caption.note }}</p>{% endif %}
+            {% if room %}<p class="show-room"><span class="novelty-label">In the room</span> {{ room_list(room) }}</p>{% endif %}
+            <p class="show-meta">{{ stats.tracks }} tracks · {{ stats.artists }} artists</p>
+            <div class="mix">
+                <span class="novelty-label">Mix</span>
+                <div class="mix-bars"><div class="mix-bar" aria-label="Share of this show's runtime by genre family">
+                    {% for seg in mix.show %}<span class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}" title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}%"></span>{% endfor %}
+                </div></div>
+            </div>
+            {{ factoids(facts[:3]) }}
+            <p class="latest-links">
+                <a href="{{ url_for('show_playlist', date_str=latest.date) }}">The playlist →</a>
+                <a href="{{ url_for('radio_page', show=latest.date.isoformat()) }}">Birds radio from this show</a>
+                <a href="{{ url_for('random_show') }}">Pull out a random show</a>
+            </p>
         </div>
-    </section>
+    </div>
 
+    {% if this_week %}
+    <h2 class="home-head">This week in past years</h2>
+    <div class="tile-row">
+        {% for playlist in this_week %}{% with label=playlist.date.year %}{% include "_playlist_tile.html" %}{% endwith %}{% endfor %}
+    </div>
+    {% endif %}
+
+    <h2 class="home-head">Every show <span class="muted">{{ n_shows }} since {{ wall[-1].show.date.strftime('%B') }} {{ wall[-1].show.date.year }}</span></h2>
+    <div class="tile-grid">
+        {% for item in wall %}
+        {% if item.show %}{% with playlist=item.show, label=None %}{% include "_playlist_tile.html" %}{% endwith %}
+        {% else %}{% set n = item.note %}
+        <div class="note-card note-{{ n.kind }}" style="--tilt: {{ item.tilt }}deg">
+            <span class="note-label">{{ n.label }}</span>
+            <p>{% if n.radio %}{{ parts(n.parts) }}<a href="{{ url_for('radio_page', show=n.radio.isoformat()) }}">{{ n.text }}</a>{% else %}{{ parts(n.parts) }}{% endif %}</p>
+            {% if n.more %}<a class="more" href="{{ url_for('ranking', kind=n.more.ranking, h=n.more.anchor) }}#{{ n.more.anchor }}">see them all →</a>{% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</section>
 {% endblock content %}

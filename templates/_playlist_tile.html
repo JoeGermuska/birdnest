@@ -1,6 +1,6 @@
-<a class='playlist-tile' href="{{ url_for('show_playlist', date_str=playlist.date) }}">
-    <img src="{{ url_for('playlist_image', date_str=playlist.date) }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/vinyl-placeholder.png') }}'" loading="lazy">
-    <h2>
-        {{ playlist.date }}
-    </h2>
+{# playlist: a show dict with 'date' and optional 'caption' (the playlist image credit); label: optional text under the image #}
+<a class="playlist-tile" href="{{ url_for('show_playlist', date_str=playlist.date) }}"{% if playlist.caption %} title="{{ playlist.caption }}"{% endif %}>
+    <img src="{{ url_for('playlist_image', date_str=playlist.date) }}" alt="" onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/vinyl-placeholder.png') }}'" loading="lazy">
+    {% if playlist.caption %}<span class="tile-caption">{{ playlist.caption }}</span>{% endif %}
+    <span class="tile-date">{{ label or '%s %d, %d'|format(playlist.date.strftime('%b'), playlist.date.day, playlist.date.year) }}</span>
 </a>
