@@ -39,7 +39,7 @@
             <tr>
                 <td class="links">{{ track_links(t.spotify_url, t.name) }}</td>
                 <td><span class="track-name">{{ t.name }}</span>{% if t.others %}<div class="album">with {% for a in t.others %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
-                <td class="played">{% for d in t.dates|reverse %}<a href="{{ url_for('show_playlist', date_str=d) }}">{{ d }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+                <td class="played">{% for d in t.dates|reverse %}<a class="date" href="{{ url_for('show_playlist', date_str=d) }}">{{ d }}</a>{% endfor %}</td>
                 <td class="label">{{ t.album }}</td>
             </tr>
             {% endfor %}

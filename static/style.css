@@ -526,3 +526,5 @@ table.show-tracks td.links { width: 14px; padding-right: 0; padding-top: 9px; }
 .room-crew .rank-bar { flex: 1; }
 .room-shows td:first-child { white-space: nowrap; }
 .caveat { color: #666; font-size: 0.9rem; }
+
+table.artist-tracks .played a.date { display: block; font-variant-numeric: tabular-nums; }
