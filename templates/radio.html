@@ -29,6 +29,18 @@
     .radio-nav { display: flex; gap: 14px; align-self: flex-end; }
     #radio-result { transition: opacity 0.15s; }
     #radio-result.loading { opacity: 0.45; }
+    .radio-player { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 14px;
+        margin: 10px 0; background: #f3f1ec; border-radius: 6px; }
+    .radio-player button { font: inherit; padding: 4px 14px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
+    .radio-player button:disabled { opacity: 0.5; cursor: default; }
+    .rp-login { font-weight: 600; }
+    .rp-now { flex: 1; min-width: 12rem; }
+    .rp-account { font-size: 0.85rem; color: #777; }
+    .radio-set li.is-playing { background: #e8f6ee; }
+    .radio-set li.is-played { opacity: 0.55; }
+    .radio-set .play-from { display: none; }
+    .player-ready .radio-set .play-from { display: inline; font-size: 0.7rem; padding: 0 6px; margin-left: 6px; border: 1px solid #ccc;
+        border-radius: 3px; background: #fff; cursor: pointer; vertical-align: 1px; }
 </style>
 {% endblock extra_head %}
 {% block content %}
@@ -50,6 +62,20 @@
         <button type="submit" id="radio-update">Update</button>
     </form>
 
+    {% if spotify_ready %}
+    <div class="radio-player" id="radio-player" {{ 'data-logged-in' if logged_in }}>
+        {% if logged_in %}
+        <button type="button" id="rp-play" disabled>▶ Play</button>
+        <button type="button" id="rp-next" hidden aria-label="Next track">⏭</button>
+        <span id="rp-now" class="rp-now">Connecting to Spotify…</span>
+        <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}">Log out of Spotify</a>
+        {% else %}
+        <a class="rp-login" href="{{ url_for('spotify_login', next=request.full_path) }}"><i class="fab fa-spotify"></i> Log in with Spotify to listen</a>
+        <span class="muted">Playing here needs Spotify Premium. Without it you can still save the set as a playlist.</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}">
         {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show')}|dictsort|selectattr(1)|list %}
         <dl class="radio-start">
@@ -66,16 +92,11 @@
         {% if save_error %}<p class="radio-note error">Couldn't save to Spotify: {{ save_error }}</p>{% endif %}
 
         <ol class="radio-set">
-            {% for p in picks %}
-            <li><span class="track"><a href="https://open.spotify.com/track/{{ p.spotify_id }}" target="_blank" rel="noopener">{{ p.track.name }}</a></span>
-                <span class="by">· {% for a in p.artists %}{% if a.spotify_id %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% else %}{{ a.name }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}</span>
-                {% if p.family %}<span class="fam">{{ p.family }}</span>{% endif %}
-                <span class="why">{{ p.reason[0]|upper }}{{ p.reason[1:] }}</span></li>
-            {% endfor %}
+            {% for p in picks %}{% include "_radio_pick.html" %}{% endfor %}
         </ol>
-        <p class="muted">{{ picks|length }} tracks · about {{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m</p>
+        <p class="muted" id="radio-total">{{ picks|length }} tracks · about {{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m</p>
 
-        {% if can_save %}
+        {% if spotify_ready %}
         <form class="radio-save" method="post" action="{{ url_for('radio_save') }}">
             <input type="hidden" name="tracks" value="{{ picks|map(attribute='spotify_id')|join(',') }}">
             <input type="hidden" name="return_to" value="{{ request.full_path }}">
@@ -86,6 +107,144 @@
         {% endif %}
     </div>
 </section>
+<script src="https://sdk.scdn.co/spotify-player.js" async></script>
+<script>
+// The in-page Spotify player (Web Playback SDK; Spotify Premium only). Plays the set, keeps it going
+// with more picks from /radio/more, and retunes what's coming when the controls change mid-play.
+(function () {
+    const box = document.getElementById('radio-player');
+    if (!box || !box.hasAttribute('data-logged-in')) return;
+    const playBtn = document.getElementById('rp-play'), nextBtn = document.getElementById('rp-next');
+    const now = document.getElementById('rp-now');
+    const form = document.getElementById('radio-controls');
+    let player, deviceId, token, tokenAt = 0;
+    let queue = [];     // spotify ids in play order: the set as shown
+    let sent = -1;      // index of the last track Spotify knows about
+    let current = -1;   // index of what's playing
+    let active = false, extending = false, queueing = false;
+
+    async function getToken(fresh) {
+        if (!fresh && token && Date.now() - tokenAt < 20 * 60 * 1000) return token;
+        const resp = await fetch('{{ url_for("spotify_token") }}');
+        if (!resp.ok) { now.innerHTML = 'Your Spotify login expired. <a href="{{ url_for("spotify_login", next=request.full_path) }}">Log in again</a>'; throw new Error('no token'); }
+        token = (await resp.json()).access_token;
+        tokenAt = Date.now();
+        return token;
+    }
+    async function api(method, path, body) {
+        const resp = await fetch('https://api.spotify.com/v1' + path, {method,
+            headers: {'Authorization': 'Bearer ' + await getToken(), 'Content-Type': 'application/json'},
+            body: body ? JSON.stringify(body) : undefined});
+        if (!resp.ok) throw new Error(`Spotify said ${resp.status}`);
+    }
+    const uri = id => 'spotify:track:' + id;
+    const rows = () => [...document.querySelectorAll('.radio-set li')];
+    const settings = () => ({adventure: +form.elements.adventure.value});
+
+    function mark() {
+        rows().forEach((li, i) => {
+            li.classList.toggle('is-playing', i === current);
+            li.classList.toggle('is-played', i < current);
+        });
+    }
+    async function playFrom(i, positionMs = 0) {
+        queue = rows().map(li => li.dataset.spotify);
+        await player.activateElement();
+        try {
+            await api('PUT', `/me/player/play?device_id=${deviceId}`, {uris: queue.slice(i).map(uri), position_ms: positionMs});
+            sent = queue.length - 1;
+            active = true;
+            nextBtn.hidden = false;
+        } catch (e) { now.textContent = `Couldn't start playback (${e.message}).`; }
+    }
+    // add picks that continue from the last track in the set
+    async function more(afterIndex, n) {
+        const resp = await fetch('{{ url_for("radio_more") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({after: queue[afterIndex], played: queue.slice(0, afterIndex + 1), n,
+                                  seed: Math.floor(Math.random() * 1e6), ...settings()})});
+        if (!resp.ok) throw new Error(resp.status);
+        return (await resp.json()).picks;
+    }
+    function replaceAfter(index, picks) {
+        const list = document.querySelector('.radio-set');
+        rows().slice(index + 1).forEach(li => li.remove());
+        list.insertAdjacentHTML('beforeend', picks.map(p => p.html).join(''));
+        queue = rows().map(li => li.dataset.spotify);
+        const min = Math.round(rows().reduce((t, li) => t + +li.dataset.ms, 0) / 60000);
+        document.getElementById('radio-total').textContent =
+            `${queue.length} tracks · about ${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
+        const save = document.querySelector('.radio-save input[name=tracks]');
+        if (save) save.value = queue.join(',');
+    }
+    async function keepGoing() {
+        // running low: sequence more from the end of the set
+        if (!extending && current >= queue.length - 3) {
+            extending = true;
+            try { replaceAfter(queue.length - 1, await more(queue.length - 1, 10)); } catch (e) {}
+            extending = false;
+        }
+        // playing the last track Spotify knows: hand it the next one
+        if (!queueing && current === sent && sent < queue.length - 1) {
+            queueing = true;
+            try { await api('POST', `/me/player/queue?device_id=${deviceId}&uri=${encodeURIComponent(uri(queue[sent + 1]))}`); sent++; }
+            catch (e) {}
+            queueing = false;
+        }
+    }
+    // controls changed while listening: re-sequence everything after the current track
+    async function retune() {
+        const state = await player.getCurrentState();
+        const n = Math.max(5, +form.elements.n.value - current - 1);
+        try {
+            replaceAfter(current, await more(current, n));
+            await playFrom(current, state ? state.position : 0);
+        } catch (e) { now.textContent = `Couldn't retune (${e.message}).`; }
+    }
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
+        player = new Spotify.Player({name: 'Birds radio', volume: 0.8,
+                                     getOAuthToken: cb => getToken(true).then(cb, () => {})});
+        player.addListener('ready', ({device_id}) => {
+            deviceId = device_id;
+            playBtn.disabled = false;
+            now.textContent = 'Ready. Press Play, or ▶ next to any track to start there.';
+            document.body.classList.add('player-ready');
+        });
+        player.addListener('not_ready', () => { now.textContent = 'Spotify player went offline.'; });
+        player.addListener('account_error', () => {
+            now.textContent = 'Playing here needs Spotify Premium. You can still save the set as a playlist below.';
+            playBtn.disabled = true;
+        });
+        player.addListener('authentication_error', () => { getToken(true).catch(() => {}); });
+        player.addListener('initialization_error', ({message}) => { now.textContent = `This browser can't play Spotify here (${message}).`; });
+        player.addListener('playback_error', ({message}) => { now.textContent = `Playback problem: ${message}`; });
+        player.addListener('player_state_changed', state => {
+            if (!state) return;
+            const t = state.track_window.current_track;
+            const id = (t.linked_from && t.linked_from.id) || t.id;
+            now.textContent = `${state.paused ? 'Paused' : 'Now playing'}: ${t.name} · ${t.artists.map(a => a.name).join(', ')}`;
+            playBtn.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+            const i = queue.indexOf(id);
+            if (i >= 0 && i !== current) { current = i; mark(); }
+            if (i >= 0) keepGoing();
+        });
+        player.connect();
+    };
+
+    playBtn.addEventListener('click', () => active ? player.togglePlay() : playFrom(Math.max(0, current)));
+    nextBtn.addEventListener('click', () => player.nextTrack());
+    document.addEventListener('click', e => {
+        const btn = e.target.closest('.play-from');
+        if (btn) playFrom(rows().indexOf(btn.closest('li')));
+    });
+    // used by the live-update script below
+    window.birdsRadio = {
+        isActive: () => active,
+        retune,
+        newSet: () => { current = -1; if (active) playFrom(0); },
+    };
+})();
+</script>
 <script>
 // Live update: changing a control, Reshuffle or Random start fetches the new set and swaps it in place.
 (function () {
@@ -111,6 +270,7 @@
                 input.disabled = !fresh.dataset[key];
             }
             history.replaceState(null, '', resp.url);
+            if (window.birdsRadio) window.birdsRadio.newSet();
         } catch (e) {
             if (mine === latest) location.href = url;  // fall back to a normal page load
         } finally {
@@ -120,7 +280,17 @@
     function fromControls() {
         return form.action + '?' + new URLSearchParams(new FormData(form));
     }
-    form.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => load(fromControls()), 250); });
+    form.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            if (window.birdsRadio && window.birdsRadio.isActive()) {  // listening: change what comes next
+                history.replaceState(null, '', fromControls());
+                window.birdsRadio.retune();
+            } else {
+                load(fromControls());
+            }
+        }, 250);
+    });
     form.addEventListener('submit', e => { e.preventDefault(); load(fromControls()); });
     document.addEventListener('click', e => {
         const a = e.target.closest('.radio-nav a');

@@ -58,6 +58,9 @@ class Catalog:
         for rec, fam in self.family.items():
             self.by_family[fam].append(rec)
         self.all_recs = sorted(self.rec_track)
+        # any Spotify track id we have -> its recording, for continuing from what's playing
+        self.rec_by_spotify = {t['spotify_url'].rsplit('/', 1)[-1]: h.recording_key(tid)
+                               for tid, t in h.tracks.items() if t['spotify_url']}
 
     def _family(self, track_id):
         h = self.history
@@ -116,12 +119,17 @@ def candidates(cat, rec, adventure, rng):
     return out
 
 
-def sequence(start, n=20, adventure=0.3, seed=None):
-    """[{'rec', 'track', 'reason'}] starting with recording start."""
+def sequence(start, n=20, adventure=0.3, seed=None, played=()):
+    """[{'rec', 'track', 'reason'}] starting with recording start. With played (recordings
+    already heard, oldest first), continue after start instead: start itself is left out and
+    nothing in played repeats."""
     cat = catalog()
     rng = random.Random(seed)
     picks = [{'rec': start, 'reason': 'where we start'}]
-    used, recent_artists = {start}, list(cat.rec_artists[start])
+    used = {start, *played}
+    recent_artists = [a for r in [*played, start][-ARTIST_COOLDOWN:] for a in cat.rec_artists.get(r, [])]
+    if played:
+        n += 1
     recent_shows = []  # per step, the shows behind that pick's connection
     while len(picks) < n:
         cur = picks[-1]['rec']
@@ -152,6 +160,8 @@ def sequence(start, n=20, adventure=0.3, seed=None):
         recent_shows.append(set(pids))
         used.add(rec)
         recent_artists += cat.rec_artists[rec]
+    if played:
+        picks = picks[1:]
     for p in picks:
         p['track'] = cat.track(p['rec'])
         p['track_id'] = cat.rec_track[p['rec']]

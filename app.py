@@ -231,15 +231,38 @@ def radio_page():
     minutes = sum(p['track']['duration_ms'] or 0 for p in picks) // 60000
     return render_template('radio.html', picks=picks, start_label=start_label, start_url=start_url, start_kind=start_kind,
                            adventure=adventure, n=n, seed=seed,
-                           minutes=minutes, can_save=bool(app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID')),
+                           minutes=minutes, spotify_ready=bool(app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID')),
+                           logged_in=bool(_spotify_token()),
                            saved=session.pop('saved_playlist', None) if app.secret_key else None,
                            save_error=session.pop('save_error', None) if app.secret_key else None)
+
+
+# playing in the page (Web Playback SDK, Premium only) and saving sets as playlists
+SPOTIFY_SCOPES = ('streaming user-read-email user-read-private user-read-playback-state '
+                  'user-modify-playback-state playlist-modify-private')
+
+
+def _spotify_token():
+    """The listener's Spotify token info, refreshed if needed, or None."""
+    if not (app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID')):
+        return None
+    auth = _spotify_auth()
+    try:
+        return auth.validate_token(auth.cache_handler.get_cached_token())
+    except Exception:
+        app.logger.exception('refreshing Spotify token failed')
+        return None
+
+
+def _local_path(url, default):
+    """url if it points into this site, else default."""
+    return url if url and url.startswith('/') and not url.startswith('//') else default
 
 
 def _spotify_auth():
     from spotipy.cache_handler import FlaskSessionCacheHandler
     from spotipy.oauth2 import SpotifyOAuth
-    return SpotifyOAuth(scope='playlist-modify-private',
+    return SpotifyOAuth(scope=SPOTIFY_SCOPES,
                         redirect_uri=os.environ.get('SPOTIFY_REDIRECT_URI') or url_for('spotify_callback', _external=True),
                         cache_handler=FlaskSessionCacheHandler(session), show_dialog=False)
 
@@ -264,9 +287,7 @@ def _save_pending_playlist(auth):
 def radio_save():
     if not app.secret_key:
         abort(404)
-    return_to = request.form.get('return_to') or url_for('radio_page')
-    if not return_to.startswith('/'):  # only ever send people back into this site
-        return_to = url_for('radio_page')
+    return_to = _local_path(request.form.get('return_to'), url_for('radio_page'))
     tracks = [t for t in request.form.get('tracks', '').split(',') if t.isalnum()][:100]
     session['pending_playlist'] = {'name': (request.form.get('name') or 'Birds radio')[:100], 'tracks': tracks,
                                    'description': f"Sequenced from Conference of the Birds history. {request.url_root.rstrip('/')}{return_to}"[:300],
@@ -277,6 +298,29 @@ def radio_save():
     return redirect(auth.get_authorize_url())
 
 
+@app.route('/spotify/login')
+def spotify_login():
+    if not app.secret_key:
+        abort(404)
+    session['after_login'] = _local_path(request.args.get('next'), url_for('radio_page'))
+    return redirect(_spotify_auth().get_authorize_url())
+
+
+@app.route('/spotify/logout')
+def spotify_logout():
+    session.pop('token_info', None)
+    return redirect(_local_path(request.args.get('next'), url_for('radio_page')))
+
+
+@app.route('/spotify/token')
+def spotify_token():
+    """A current access token for the in-page player."""
+    token = _spotify_token()
+    if not token:
+        return jsonify({'error': 'not logged in'}), 401
+    return jsonify({'access_token': token['access_token']})
+
+
 @app.route('/spotify/callback')
 def spotify_callback():
     if not app.secret_key:
@@ -284,10 +328,30 @@ def spotify_callback():
     auth = _spotify_auth()
     if request.args.get('code'):
         auth.get_access_token(request.args['code'], check_cache=False)
-        return redirect(_save_pending_playlist(auth) or url_for('radio_page'))
+        return redirect(_save_pending_playlist(auth) or session.pop('after_login', None) or url_for('radio_page'))
     pending = session.pop('pending_playlist', None)
     session['save_error'] = f"Spotify didn't connect ({request.args.get('error', 'no code returned')})."
-    return redirect(pending['return_to'] if pending else url_for('radio_page'))
+    return redirect(pending['return_to'] if pending else session.pop('after_login', None) or url_for('radio_page'))
+
+
+@app.route('/radio/more', methods=['POST'])
+def radio_more():
+    """Picks to follow what's playing: {'after': spotify id, 'played': [spotify ids], 'adventure', 'n', 'seed'}
+    -> {'picks': [{'spotify_id', 'html'}]}"""
+    body = request.get_json(silent=True) or {}
+    cat = radio.catalog()
+    start = cat.rec_by_spotify.get(body.get('after'))
+    if start is None:
+        abort(400)
+    played = [cat.rec_by_spotify[i] for i in body.get('played', []) if i in cat.rec_by_spotify]
+    adventure = min(100, max(0, int(body.get('adventure', 30))))
+    picks = radio.sequence(start, min(40, max(1, int(body.get('n', 10)))), adventure / 100,
+                           int(body.get('seed', 0)), played=played or [start])
+    out = []
+    for p in picks:
+        p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
+        out.append({'spotify_id': p['spotify_id'], 'html': render_template('_radio_pick.html', p=p)})
+    return jsonify({'picks': out})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
