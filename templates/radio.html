@@ -35,6 +35,7 @@
     .radio-player button:disabled { opacity: 0.5; cursor: default; }
     .rp-login { font-weight: 600; }
     .rp-now { flex: 1; min-width: 12rem; }
+    .rp-endless { font-size: 0.9rem; display: flex; gap: 4px; align-items: center; }
     .rp-account { font-size: 0.85rem; color: #777; }
     .radio-set li.is-playing { background: #e8f6ee; }
     .radio-set li.is-played { opacity: 0.55; }
@@ -68,6 +69,7 @@
         <button type="button" id="rp-play" disabled>▶ Play</button>
         <button type="button" id="rp-next" hidden aria-label="Next track">⏭</button>
         <span id="rp-now" class="rp-now">Connecting to Spotify…</span>
+        <label class="rp-endless" title="Add more tracks before the set runs out"><input type="checkbox" id="rp-endless" checked> Keep playing</label>
         <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}">Log out of Spotify</a>
         {% else %}
         <a class="rp-login" href="{{ url_for('spotify_login', next=request.full_path) }}"><i class="fab fa-spotify"></i> Log in with Spotify to listen</a>
@@ -122,6 +124,12 @@
     let sent = -1;      // index of the last track Spotify knows about
     let current = -1;   // index of what's playing
     let active = false, extending = false, queueing = false;
+    const endless = document.getElementById('rp-endless');
+    try { endless.checked = localStorage.getItem('radio-endless') !== '0'; } catch (e) {}
+    endless.addEventListener('change', () => {
+        try { localStorage.setItem('radio-endless', endless.checked ? '1' : '0'); } catch (e) {}
+        if (endless.checked && active) keepGoing();
+    });
 
     async function getToken(fresh) {
         if (!fresh && token && Date.now() - tokenAt < 20 * 60 * 1000) return token;
@@ -178,7 +186,7 @@
     }
     async function keepGoing() {
         // running low: sequence more from the end of the set
-        if (!extending && current >= queue.length - 3) {
+        if (!extending && endless.checked && current >= queue.length - 3) {
             extending = true;
             try { replaceAfter(queue.length - 1, await more(queue.length - 1, 10)); } catch (e) {}
             extending = false;
