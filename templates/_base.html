@@ -73,6 +73,14 @@
 <body>
     {% include "_nav.html" %}
     {% block content %}{% endblock %}
+    {% if radio_available and not radio_listener %}
+    <div class="radio-player" id="radio-login">
+        <div class="rp-bar">
+            <a class="rp-login" href="{{ url_for('spotify_login', next=request.full_path) }}" data-turbo="false"><i class="fab fa-spotify"></i> Log in with Spotify to play Birds radio</a>
+            <span class="rp-note">Needs Spotify Premium. For now your Spotify account also has to be on our list, so ask to be added first.</span>
+        </div>
+    </div>
+    {% endif %}
     {% if radio_listener %}
     <div class="radio-player" id="radio-player" data-turbo-permanent>
         <div class="rp-drawer" id="rp-drawer" hidden>

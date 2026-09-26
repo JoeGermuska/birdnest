@@ -549,7 +549,7 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 :root.player-ready .radio-set li:hover .play-from, :root.player-ready .radio-set li:focus-within .play-from { display: block; }
 @media (hover: none) { :root.player-ready .radio-set .pick-no { display: none; } :root.player-ready .radio-set .play-from { display: block; } }
 
-/* Birds radio player (radio-player.js): fixed at the bottom of every page while listening, and on /radio.
+/* Birds radio player (radio-player.js): fixed at the bottom of every page (a log-in prompt until you log in).
    The drawer above the bar holds the live track list and the controls for what comes next. */
 .radio-player { display: none; }
 :root.radio-bar .radio-player { display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
@@ -561,6 +561,8 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 #rp-play, #rp-next { min-width: 2.6em; }
 .rp-now { flex: 1; min-width: 12rem; }
 .rp-account { font-size: 0.85rem; color: #777; }
+.rp-login { font-weight: 600; }
+.rp-note { font-size: 0.85rem; color: #777; }
 .rp-drawer { border-bottom: 1px solid #ddd8cc; }
 .rp-drawer-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 10px 16px 8px; font-size: 0.9rem; }
 .rp-drawer-head label { display: flex; gap: 6px; align-items: center; }

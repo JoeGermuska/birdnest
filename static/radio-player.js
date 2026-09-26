@@ -311,7 +311,8 @@
     // every page view, the first one included
     document.addEventListener('turbo:load', () => {
         const bar = $('radio-player');
-        document.documentElement.classList.toggle('radio-bar', !!bar && (S.active || !!$('radio-controls')));
+        // the bar is always there when Spotify is set up: the player, or a prompt to log in
+        document.documentElement.classList.toggle('radio-bar', !!document.querySelector('.radio-player'));
         if (bar && !S.sdkRequested) {
             try {
                 $('rp-endless').checked = localStorage.getItem('radio-endless') !== '0';

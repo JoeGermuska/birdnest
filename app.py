@@ -35,7 +35,7 @@ factoids.get_history()
 @app.context_processor
 def radio_bar():
     # the site-wide player bar; checking the session is enough here, /spotify/token refreshes as needed
-    return {'radio_listener': _spotify_configured() and 'token_info' in session}
+    return {'radio_available': _spotify_configured(), 'radio_listener': _spotify_configured() and 'token_info' in session}
 
 @app.route('/')
 def index():

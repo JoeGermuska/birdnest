@@ -12,8 +12,6 @@
     .radio-save input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; min-width: 0; width: 22rem; max-width: 100%; }
     .radio-note { padding: 8px 12px; border-radius: 4px; background: #e8f6ee; color: #1d6b3d; }
     .radio-note.error { background: #fbeaea; color: #922; }
-    .radio-login { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; padding: 10px 14px; background: #f3f1ec; border-radius: 6px; }
-    .radio-login a { font-weight: 600; }
     .radio-play-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
     #radio-play-set { font: inherit; font-weight: 600; padding: 5px 14px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
     :root:not(.player-ready) .radio-play-row { display: none; }
@@ -47,10 +45,6 @@
         <button type="submit" id="radio-update">Update</button>
     </form>
 
-    {% if spotify_ready and not radio_listener %}
-    <p class="radio-login"><a href="{{ url_for('spotify_login', next=request.full_path) }}" data-turbo="false"><i class="fab fa-spotify"></i> Log in with Spotify to listen</a>
-        <span class="muted">Playing here needs Spotify Premium. Without it you can still save the set as a playlist.</span></p>
-    {% endif %}
 
     <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}" data-label="From {{ start_label }}">
         {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track')}|dictsort|selectattr(1)|list %}
