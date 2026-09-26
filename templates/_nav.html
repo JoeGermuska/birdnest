@@ -11,10 +11,6 @@
 </nav>
 <script>
 (function () {
-    function playlistTileClickHandler(e) {
-        // through Turbo when it's there, so the radio keeps playing
-        if (window.Turbo) Turbo.visit(this.dataset['internalUrl']); else window.location.href = this.dataset['internalUrl'];
-    }
 
     // Autocomplete functionality
     let autocompleteTimer = null;
@@ -127,9 +123,6 @@
     }
 
     // this script sits at the end of the page, so the elements are there; it runs again on each Turbo page view
-    document.querySelectorAll('button.playlist-tile').forEach(elem => {
-        elem.addEventListener('click', playlistTileClickHandler.bind(elem))
-    });
     initAutocomplete();
 
     window.hideDropdown = hideDropdown;

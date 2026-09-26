@@ -71,6 +71,7 @@
 }
 
 .playlist-tile {
+  display: block;
   position: relative;
   flex-grow: 1;
   width: calc(20% - 2px); /* Adjust this value to change the number of columns */
