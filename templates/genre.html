@@ -16,7 +16,7 @@
         <figcaption>Share of each year's plays</figcaption>
         <div class="bars">
             {% for y in profile.years %}
-            <div class="bar" title="{{ y.year }}: {{ y.plays }} of plays ({{ '%.1f' % (y.share * 100) }}%)">
+            <div class="bar" title="{{ y.year }}: {{ y.plays }} of {{ y.total }} plays ({{ '%.1f' % (y.share * 100) }}%)">
                 <span class="bar-value">{{ '%.1f' % (y.share * 100) }}%</span>
                 <span class="bar-track"><span class="bar-fill" style="height: {{ (y.share / peak * 100) if peak else 0 }}%"></span></span>
                 <span class="bar-label">{{ y.year }}</span>

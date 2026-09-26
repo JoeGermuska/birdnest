@@ -497,7 +497,8 @@ class History:
             for t in tids:
                 if any(a in aids for a in self.track_artists[t]):
                     by_year[self.show_dates[pid].year] += 1
-        years = [{'year': y, 'plays': by_year[y], 'share': by_year[y] / self.plays_by_year[y]}
+        years = [{'year': y, 'plays': by_year[y], 'total': self.plays_by_year[y],
+                  'share': by_year[y] / self.plays_by_year[y]}
                  for y in sorted(self.plays_by_year)]
 
         # related genres: most over-represented among this genre's artists
