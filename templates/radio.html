@@ -20,51 +20,117 @@
     .radio-save input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; min-width: 0; width: 22rem; max-width: 100%; }
     .radio-note { padding: 8px 12px; border-radius: 4px; background: #e8f6ee; color: #1d6b3d; }
     .radio-note.error { background: #fbeaea; color: #922; }
+    .radio-start { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; margin: 16px 0 4px; }
+    .radio-start dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #777; }
+    .radio-start dd { margin: 2px 0 0; font-size: 1.15rem; font-weight: 600; }
+    .radio-start dd a { color: #222; }
+    .radio-start .muted { font-weight: normal; }
+    .radio-start .seed { font-family: ui-monospace, Menlo, monospace; font-weight: 500; }
+    .radio-nav { display: flex; gap: 14px; align-self: flex-end; }
+    #radio-result { transition: opacity 0.15s; }
+    #radio-result.loading { opacity: 0.45; }
 </style>
 {% endblock extra_head %}
 {% block content %}
 <section class="detail">
     <h1>Birds radio</h1>
-    <p class="detail-meta">A set sequenced from the show's own history, starting from {{ start_label }}. Each pick
-        says why it follows the one before: a track the DJs actually played next, one from the same night, or
-        at higher adventure, a wildcard. Start from any artist or show with the "Birds radio" link on its page.</p>
+    <p class="detail-meta">Sets sequenced from everything played on Conference of the Birds. Each pick says why it
+        follows the one before: a track the DJs actually played next, one from the same night, or at higher adventure,
+        a wildcard. Start from any artist or show with the "Birds radio" link on its page.</p>
 
-    <form class="radio-controls" method="get" action="{{ url_for('radio_page') }}">
-        {% for key in ('artist', 'show') %}{% if request.args.get(key) %}<input type="hidden" name="{{ key }}" value="{{ request.args[key] }}">{% endif %}{% endfor %}
+    <form class="radio-controls" id="radio-controls" method="get" action="{{ url_for('radio_page') }}">
+        {% for key in ('artist', 'show') %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key, '') }}" {{ 'disabled' if not request.args.get(key) }}>{% endfor %}
+        <input type="hidden" name="seed" value="{{ seed }}">
         <label for="adventure">Adventure
             <span class="scale">close</span>
             <input type="range" id="adventure" name="adventure" min="0" max="100" step="10" value="{{ adventure }}">
             <span class="scale">wander</span></label>
         <label for="n">Tracks
             <select id="n" name="n">{% for k in (10, 20, 30, 40) %}<option {{ 'selected' if k == n }}>{{ k }}</option>{% endfor %}</select></label>
-        <input type="hidden" name="seed" value="{{ seed }}">
-        <button type="submit">Update</button>
+        <button type="submit" id="radio-update">Update</button>
+    </form>
+
+    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}">
         {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show')}|dictsort|selectattr(1)|list %}
-        <a href="{{ url_for('radio_page', adventure=adventure, n=n, seed=(seed * 7919 + 17) % 1000000, **dict(start)) }}">Reshuffle</a>
-        <a href="{{ url_for('radio_page', adventure=adventure, n=n) }}">Random start</a>
-    </form>
+        <dl class="radio-start">
+            <div><dt>Starting from</dt>
+                <dd>{% if start_url %}<a href="{{ start_url }}">{{ start_label }}</a>{% else %}{{ start_label }}{% endif %}
+                    {% if start_kind == 'random' %}<span class="muted">(picked at random)</span>{% endif %}</dd></div>
+            <div><dt>Set</dt><dd class="seed">#{{ seed }}</dd></div>
+            <div class="radio-nav">
+                <a href="{{ url_for('radio_page', adventure=adventure, n=n, seed=(seed * 7919 + 17) % 1000000, **dict(start)) }}">Reshuffle</a>
+                <a href="{{ url_for('radio_page', adventure=adventure, n=n) }}">Random start</a></div>
+        </dl>
 
-    {% if saved %}<p class="radio-note">Saved “{{ saved.name }}” to your Spotify: <a href="{{ saved.url }}" target="_blank" rel="noopener">open it</a>.</p>{% endif %}
-    {% if save_error %}<p class="radio-note error">Couldn't save to Spotify: {{ save_error }}</p>{% endif %}
+        {% if saved %}<p class="radio-note">Saved “{{ saved.name }}” to your Spotify: <a href="{{ saved.url }}" target="_blank" rel="noopener">open it</a>.</p>{% endif %}
+        {% if save_error %}<p class="radio-note error">Couldn't save to Spotify: {{ save_error }}</p>{% endif %}
 
-    <ol class="radio-set">
-        {% for p in picks %}
-        <li><span class="track"><a href="https://open.spotify.com/track/{{ p.spotify_id }}" target="_blank" rel="noopener">{{ p.track.name }}</a></span>
-            <span class="by">· {% for a in p.artists %}{% if a.spotify_id %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% else %}{{ a.name }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}</span>
-            {% if p.family %}<span class="fam">{{ p.family }}</span>{% endif %}
-            <span class="why">{{ p.reason[0]|upper }}{{ p.reason[1:] }}</span></li>
-        {% endfor %}
-    </ol>
-    <p class="muted">{{ picks|length }} tracks · about {{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m</p>
+        <ol class="radio-set">
+            {% for p in picks %}
+            <li><span class="track"><a href="https://open.spotify.com/track/{{ p.spotify_id }}" target="_blank" rel="noopener">{{ p.track.name }}</a></span>
+                <span class="by">· {% for a in p.artists %}{% if a.spotify_id %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% else %}{{ a.name }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}</span>
+                {% if p.family %}<span class="fam">{{ p.family }}</span>{% endif %}
+                <span class="why">{{ p.reason[0]|upper }}{{ p.reason[1:] }}</span></li>
+            {% endfor %}
+        </ol>
+        <p class="muted">{{ picks|length }} tracks · about {{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m</p>
 
-    {% if can_save %}
-    <form class="radio-save" method="post" action="{{ url_for('radio_save') }}">
-        <input type="hidden" name="tracks" value="{{ picks|map(attribute='spotify_id')|join(',') }}">
-        <input type="hidden" name="return_to" value="{{ request.full_path }}">
-        <label for="playlist-name">Playlist name</label>
-        <input type="text" id="playlist-name" name="name" value="Birds radio: {{ start_label }}">
-        <button type="submit"><i class="fab fa-spotify"></i> Save to Spotify</button>
-    </form>
-    {% endif %}
+        {% if can_save %}
+        <form class="radio-save" method="post" action="{{ url_for('radio_save') }}">
+            <input type="hidden" name="tracks" value="{{ picks|map(attribute='spotify_id')|join(',') }}">
+            <input type="hidden" name="return_to" value="{{ request.full_path }}">
+            <label for="playlist-name">Playlist name</label>
+            <input type="text" id="playlist-name" name="name" value="Birds radio: {{ start_label }}">
+            <button type="submit"><i class="fab fa-spotify"></i> Save to Spotify</button>
+        </form>
+        {% endif %}
+    </div>
 </section>
+<script>
+// Live update: changing a control, Reshuffle or Random start fetches the new set and swaps it in place.
+(function () {
+    const form = document.getElementById('radio-controls');
+    let result = document.getElementById('radio-result');
+    document.getElementById('radio-update').hidden = true;
+    let latest = 0, timer = null;
+
+    async function load(url) {
+        const mine = ++latest;
+        result.classList.add('loading');
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(resp.status);
+            const doc = new DOMParser().parseFromString(await resp.text(), 'text/html');
+            if (mine !== latest) return;  // a newer request is on its way
+            const fresh = doc.getElementById('radio-result');
+            result.replaceWith(fresh);
+            result = fresh;
+            for (const key of ['seed', 'artist', 'show']) {
+                const input = form.elements[key];
+                input.value = fresh.dataset[key];
+                input.disabled = !fresh.dataset[key];
+            }
+            history.replaceState(null, '', resp.url);
+        } catch (e) {
+            if (mine === latest) location.href = url;  // fall back to a normal page load
+        } finally {
+            if (mine === latest) result.classList.remove('loading');
+        }
+    }
+    function fromControls() {
+        return form.action + '?' + new URLSearchParams(new FormData(form));
+    }
+    form.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => load(fromControls()), 250); });
+    form.addEventListener('submit', e => { e.preventDefault(); load(fromControls()); });
+    document.addEventListener('click', e => {
+        const a = e.target.closest('.radio-nav a');
+        if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        const url = new URL(a.href);  // keep the controls' current settings
+        url.searchParams.set('adventure', form.elements.adventure.value);
+        url.searchParams.set('n', form.elements.n.value);
+        load(url);
+    });
+})();
+</script>
 {% endblock content %}

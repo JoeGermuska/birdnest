@@ -202,26 +202,35 @@ def radio_page():
     seed = args.get('seed', type=int, default=0)
     adventure = min(100, max(0, args.get('adventure', type=int, default=30)))
     n = min(60, max(5, args.get('n', type=int, default=20)))
-    start, start_label = None, None
+    start = start_label = start_url = None
+    start_kind = 'random'
     if args.get('artist'):
         artist = next((a for a in history.artists.values() if a['spotify_id'] == args['artist']), None)
         if artist:
             start, start_label = radio.start_for_artist(artist['artist_id']), artist['name']
+            start_url = url_for('artist', spotify_id=artist['spotify_id'])
+            start_kind = 'artist'
     elif args.get('show'):
         try:
             pid = history.pid_by_date.get(date.fromisoformat(args['show']))
         except ValueError:
             pid = None
         if pid is not None:
-            start, start_label = radio.start_for_show(pid), f"the {args['show']} show"
+            d = date.fromisoformat(args['show'])
+            start, start_label = radio.start_for_show(pid), f"the show of {d:%B} {d.day}, {d.year}"
+            start_url = url_for('show_playlist', date_str=args['show'])
+            start_kind = 'show'
     if start is None:
         start = radio.random_start(random.Random(seed))
     picks = radio.sequence(start, n, adventure / 100, seed)
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
     start_label = start_label or f"{', '.join(a['name'] for a in picks[0]['artists'])}, “{picks[0]['track']['name']}”"
+    if not start_url and picks[0]['artists'][0]['spotify_id']:
+        start_url = url_for('artist', spotify_id=picks[0]['artists'][0]['spotify_id'])
     minutes = sum(p['track']['duration_ms'] or 0 for p in picks) // 60000
-    return render_template('radio.html', picks=picks, start_label=start_label, adventure=adventure, n=n, seed=seed,
+    return render_template('radio.html', picks=picks, start_label=start_label, start_url=start_url, start_kind=start_kind,
+                           adventure=adventure, n=n, seed=seed,
                            minutes=minutes, can_save=bool(app.secret_key and os.environ.get('SPOTIPY_CLIENT_ID')),
                            saved=session.pop('saved_playlist', None) if app.secret_key else None,
                            save_error=session.pop('save_error', None) if app.secret_key else None)
