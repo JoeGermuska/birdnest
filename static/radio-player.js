@@ -460,6 +460,9 @@
         frames.forEach(el => { if (el !== S.frame) el.remove(); });
     });
 
+    // going to another page on the site: fold the track list away so it doesn't cover what was asked for
+    document.addEventListener('turbo:visit', () => { if ($('rp-drawer') && !$('rp-drawer').hidden) openDrawer(false); });
+
     // every page view, the first one included
     document.addEventListener('turbo:load', () => {
         const bar = $('radio-player');
