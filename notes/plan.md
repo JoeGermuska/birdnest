@@ -25,4 +25,14 @@ ways in are done together, and the design pass fits around them.
   `playlist-modify-public`/`-private`), then a "+ queue" button on the player and on track rows adds to it.
   Remember the choice in the browser (localStorage) since the deployed database can't take writes; show the
   chosen playlist's name on the player so it's clear where tracks go.
+- Later: **Play on Spotify** (remote-control mode): besides playing in the page, a "Play on…" device picker so
+  the radio drives the listener's Spotify app, phone, speakers etc. via Spotify Connect. Pros: works where the
+  in-browser player can't (iPhone Safari), real background audio and lock-screen controls, accurate "now playing"
+  across devices, music survives closing the tab. Cons: the page still has to be open to feed the next tracks (no
+  push events for other devices, so poll /me/player every few seconds; queue one or two ahead); Spotify's queue
+  can't be edited, so pre-queued tracks survive a retune; tracks the listener queues themselves mix in, and the
+  page must stop feeding when they switch to other listening. Default to it on iPhones. A server-side feeder
+  would survive closed tabs but needs persistent per-user token storage, which the deployment doesn't have.
+  (Today, switching playback to the Spotify app keeps going by accident: the page's one queued-ahead track plays
+  there, and its state events keep the feeding alive.)
 - Later: Apple Music (see the ISRC-based plan discussed earlier: `track_provider` table, MusicKit JS adapter).
