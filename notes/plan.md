@@ -7,7 +7,8 @@ ways in are done together, and the design pass fits around them.
 1. **Groundwork** (small, blocks nothing)
    - [x] Home tiles are real links (13ba9fa).
    - [x] `<!DOCTYPE html>`, `<meta charset>` and `<meta name="viewport">` in `_base.html`, and the banner wraps on phones.
-   - [ ] Player bar fits on phones: compact layout, and reserve its real height instead of a fixed 72px.
+   - [x] Player bar fits on phones: one compact row, and the page reserves its real height (measured).
+   - [x] Pages no longer widen past a phone screen (show page header wraps; track tables scroll in their own box for now).
 2. **Home page**: tile wall as a CSS grid, plus option A (latest show big, then "this week in past years") and
    option B (note cards mixed into the wall). Owner chose both.
 3. **Banner**: compact `_nav.html`, working at phone width; room for any new entry points.
@@ -16,10 +17,10 @@ ways in are done together, and the design pass fits around them.
 
 ## Birds radio player: next features (owner's requests, not started)
 
-- **Like**: a ♥ on the player (and maybe on each row) that saves the track to the listener's Liked Songs.
+- [x] **Like**: ♥ on the player saves the playing track to Liked Songs (and shows if it's already there). Maybe on each row later.
   Needs the `user-library-modify` scope (and `user-library-read` to show whether it's already liked), so
   everyone logs in again once.
-- **Add to my queue playlist**: many of us keep a Spotify playlist of candidates for the next show. Let each
+- [x] **Add to my queue playlist** (＋ on the player; choose the playlist in the Tracks drawer). Maybe on each row later. Original idea: many of us keep a Spotify playlist of candidates for the next show. Let each
   listener **choose a queue** once (pick from their own playlists; needs `playlist-read-private` and
   `playlist-modify-public`/`-private`), then a "+ queue" button on the player and on track rows adds to it.
   Remember the choice in the browser (localStorage) since the deployed database can't take writes; show the

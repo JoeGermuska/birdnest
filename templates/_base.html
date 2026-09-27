@@ -95,6 +95,9 @@
                 <button type="button" id="rp-random">Random start</button>
                 <label class="rp-endless" title="Add more tracks before the set runs out"><input type="checkbox" id="rp-endless" checked> Keep playing</label>
                 <button type="button" id="rp-sync" hidden>Back to now playing</button>
+                <label for="rp-queue" title="The Spotify playlist ＋ adds tracks to">Your queue
+                    <select id="rp-queue"><option value="">Choose a playlist…</option></select></label>
+                <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}" data-turbo="false">Log out of Spotify</a>
             </div>
             <div class="rp-scroll" id="rp-scroll"><ol class="radio-set" id="rp-list"></ol></div>
         </div>
@@ -102,8 +105,9 @@
             <button type="button" id="rp-play" disabled aria-label="Play">▶</button>
             <button type="button" id="rp-next" hidden aria-label="Next track">⏭</button>
             <span id="rp-now" class="rp-now">Connecting to Spotify…</span>
+            <button type="button" id="rp-like" hidden aria-pressed="false" aria-label="Save to your Liked Songs" title="Save to your Liked Songs">♡</button>
+            <button type="button" id="rp-add" hidden aria-label="Add to your queue playlist" title="Add to your queue playlist">＋</button>
             <button type="button" id="rp-toggle" aria-expanded="false" aria-controls="rp-drawer">Tracks ▴</button>
-            <a class="rp-account" href="{{ url_for('spotify_logout', next=request.full_path) }}" data-turbo="false">Log out</a>
         </div>
     </div>
     {% endif %}

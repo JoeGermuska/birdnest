@@ -587,13 +587,26 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 .radio-player { display: none; }
 :root.radio-bar .radio-player { display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
     background: #f3f1ec; border-top: 1px solid #ddd8cc; box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06); }
-:root.radio-bar body { padding-bottom: 72px; }
-.rp-bar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+:root.radio-bar body { padding-bottom: var(--radio-bar-h, 72px); }  /* the bar's real height, set by radio-player.js */
+.rp-bar { display: flex; gap: 8px; align-items: center; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+#radio-login .rp-bar { flex-wrap: wrap; gap: 4px 12px; }
 .radio-player button { font: inherit; padding: 4px 12px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
 .radio-player button:disabled { opacity: 0.5; cursor: default; }
 #rp-play, #rp-next { min-width: 2.6em; }
-.rp-now { flex: 1; min-width: 12rem; }
-.rp-account { font-size: 0.85rem; color: #777; }
+.rp-now { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-account { font-size: 0.85rem; color: #777; margin-left: auto; }
+#rp-like[aria-pressed="true"] { color: #c0392b; border-color: #c0392b; }
+#rp-like, #rp-add { min-width: 2.4em; }
+.rp-drawer-head select { font: inherit; max-width: 14rem; }
+/* phones: one tight row, so the bar stays short */
+@media (max-width: 600px) {
+    .rp-bar { gap: 6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)); }
+    .radio-player button { padding: 4px 8px; }
+    .rp-drawer-head { padding: 8px 10px 6px; gap: 6px 10px; font-size: 0.85rem; }
+    .rp-drawer-head .scale { display: none; }
+    .rp-scroll { margin: 0 10px 8px; max-height: 45vh; }
+    .rp-note { font-size: 0.8rem; }
+}
 .rp-login { font-weight: 600; }
 .rp-note { font-size: 0.85rem; color: #777; }
 .rp-drawer { border-bottom: 1px solid #ddd8cc; }
@@ -603,3 +616,13 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 .rp-from { font-weight: 600; flex-basis: 100%; }
 .rp-scroll { max-height: min(24rem, 50vh); overflow-y: auto; background: #fff; margin: 0 16px 10px; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0 8px; }
 .rp-scroll .radio-set { margin: 0; }
+
+/* phones: wide track tables scroll sideways in their own box rather than widening the page (which also
+   pushed the fixed radio bar off screen). A proper narrow layout for tables is in notes/plan.md. */
+@media (max-width: 700px) {
+    table.show-tracks { display: block; max-width: 100%; overflow-x: auto; }
+}
+@media (max-width: 700px) {
+    .show-header > div { min-width: 0; }
+    .novelty, .mix { flex-wrap: wrap; }
+}

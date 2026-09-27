@@ -286,8 +286,10 @@ def _pick_json(p):
 
 
 # playing in the page (Web Playback SDK, Premium only) and saving sets as playlists
+# ...plus ♥ (Liked Songs) and ＋ (adding to a playlist of your own you've chosen as your queue)
 SPOTIFY_SCOPES = ('streaming user-read-email user-read-private user-read-playback-state '
-                  'user-modify-playback-state playlist-modify-private')
+                  'user-modify-playback-state playlist-modify-private playlist-modify-public '
+                  'playlist-read-private playlist-read-collaborative user-library-read user-library-modify')
 
 
 def _spotify_configured():

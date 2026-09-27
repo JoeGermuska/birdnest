@@ -29,7 +29,7 @@
         if (!fresh && S.token && Date.now() - S.tokenAt < 20 * 60 * 1000) return S.token;
         const resp = await fetch('/spotify/token');
         if (!resp.ok) {
-            status(`Your Spotify login expired. <a href="${loginLink()}" data-turbo="false">Log in again</a>`);
+            status(`Your Spotify login needs renewing. <a href="${loginLink()}" data-turbo="false">Log in again</a>`);
             throw new Error('no token');
         }
         S.token = (await resp.json()).access_token;
@@ -41,6 +41,8 @@
             headers: {'Authorization': 'Bearer ' + await getToken(), 'Content-Type': 'application/json'},
             body: body ? JSON.stringify(body) : undefined});
         if (!resp.ok) throw Object.assign(new Error(`Spotify said ${resp.status}`), {status: resp.status});
+        const text = await resp.text();
+        return text ? JSON.parse(text) : null;
     }
     // play on this page's device; Spotify answers 404 until the device has been made the active one
     async function playOnDevice(body) {
@@ -127,7 +129,64 @@
         $('rp-toggle').setAttribute('aria-expanded', String(open));
         $('rp-toggle').textContent = open ? 'Tracks ▾' : 'Tracks ▴';
         try { localStorage.setItem('radio-drawer', open ? '1' : '0'); } catch (e) {}
-        if (open) { S.browsing = false; $('rp-sync').hidden = true; follow(); }
+        if (open) { S.browsing = false; $('rp-sync').hidden = true; follow(); loadQueues(); }
+    }
+
+    // ---- ♥ and ＋: save what's playing to your Liked Songs, or add it to the playlist you use as your queue ----
+    async function showLiked() {
+        const like = $('rp-like'), id = S.trackId;
+        like.hidden = false;
+        try {
+            const [liked] = await api('GET', `/me/tracks/contains?ids=${id}`);
+            if (id === S.trackId) setLiked(liked);
+        } catch (e) {}
+    }
+    function setLiked(liked) {
+        $('rp-like').textContent = liked ? '♥' : '♡';
+        $('rp-like').setAttribute('aria-pressed', String(liked));
+        $('rp-like').title = liked ? 'In your Liked Songs (click to remove)' : 'Save to your Liked Songs';
+    }
+    async function toggleLike() {
+        const liked = $('rp-like').getAttribute('aria-pressed') === 'true', id = S.trackId;
+        setLiked(!liked);
+        try { await api(liked ? 'DELETE' : 'PUT', `/me/tracks?ids=${id}`); }
+        catch (e) { setLiked(liked); status(`Couldn't update your Liked Songs (${esc(e.message)}).`); }
+    }
+    const savedQueue = () => { try { return JSON.parse(localStorage.getItem('radio-queue') || 'null'); } catch (e) { return null; } };
+    let queuesLoaded = false;
+    // your playlists you can add to (your own, and collaborative ones), for choosing a queue
+    async function loadQueues() {
+        if (queuesLoaded || !S.ready) return;
+        queuesLoaded = true;
+        const select = $('rp-queue'), chosen = savedQueue();
+        try {
+            const me = await api('GET', '/me');
+            const lists = [];
+            for (let offset = 0; offset < 500; offset += 50) {
+                const page = await api('GET', `/me/playlists?limit=50&offset=${offset}`);
+                lists.push(...page.items.filter(pl => pl && (pl.owner.id === me.id || pl.collaborative)));
+                if (!page.next) break;
+            }
+            select.innerHTML = '<option value="">Choose a playlist…</option>' + lists.map(pl =>
+                `<option value="${esc(pl.id)}"${chosen && chosen.id === pl.id ? ' selected' : ''}>${esc(pl.name)}</option>`).join('');
+        } catch (e) { queuesLoaded = false; }
+    }
+    async function addToQueue() {
+        const q = savedQueue(), add = $('rp-add');
+        if (!q) {  // no queue yet: show where to choose one
+            openDrawer(true);
+            $('rp-queue').focus();
+            status('Choose the playlist you use as your queue, then press ＋ again.');
+            return;
+        }
+        try {
+            await api('POST', `/playlists/${q.id}/items`, {uris: [uri(S.trackId)]})
+                .catch(e => { if (e.status === 404) return api('POST', `/playlists/${q.id}/tracks`, {uris: [uri(S.trackId)]}); throw e; });
+            if (S.nowHtml) status(S.nowHtml);
+            add.textContent = '✓';
+            add.title = `Added to ${q.name}`;
+            setTimeout(() => { add.textContent = '＋'; add.title = 'Add to your queue playlist'; }, 2500);
+        } catch (e) { status(`Couldn't add to ${esc(q.name)} (${esc(e.message)}).`); }
     }
 
     // ---- playing ----
@@ -211,6 +270,7 @@
                 S.deviceId = device_id;
                 S.ready = true;
                 S.frame = [...document.querySelectorAll('body > iframe')].find(isSpotifyFrame) || S.frame;
+                if (!$('rp-drawer').hidden) loadQueues();
                 readyWaiters.forEach(r => r());
                 readyWaiters = [];
                 $('rp-play').disabled = false;
@@ -230,7 +290,14 @@
                 if (!state) return;
                 const t = state.track_window.current_track;
                 const id = (t.linked_from && t.linked_from.id) || t.id;
-                status(`${state.paused ? 'Paused' : 'Now playing'}: <strong>${esc(t.name)}</strong> · ${esc(t.artists.map(a => a.name).join(', '))}`);
+                if (id !== S.trackId) {
+                    S.trackId = id;
+                    showLiked();
+                    $('rp-add').hidden = false;
+                    $('rp-add').title = savedQueue() ? `Add to ${savedQueue().name}` : 'Add to your queue playlist';
+                }
+                S.nowHtml = `${state.paused ? 'Paused' : 'Now playing'}: <strong>${esc(t.name)}</strong> · ${esc(t.artists.map(a => a.name).join(', '))}`;
+                status(S.nowHtml);
                 $('rp-play').textContent = state.paused ? '▶' : '⏸';
                 $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
                 if (S.stale.has(id) && !state.paused) { S.stale.delete(id); p.nextTrack(); return; }
@@ -359,6 +426,10 @@
             retune(false);
         } else if (e.target.closest('#rp-random')) {
             retune(true);
+        } else if (e.target.closest('#rp-like') && S.trackId) {
+            toggleLike();
+        } else if (e.target.closest('#rp-add') && S.trackId) {
+            addToQueue();
         }
     });
     document.addEventListener('change', e => {
@@ -367,6 +438,13 @@
             if (e.target.checked && S.active) keepGoing();
         } else if (e.target.id === 'rp-adventure') {
             retune(false);
+        } else if (e.target.id === 'rp-queue') {
+            const opt = e.target.selectedOptions[0];
+            try {
+                if (opt.value) localStorage.setItem('radio-queue', JSON.stringify({id: opt.value, name: opt.textContent}));
+                else localStorage.removeItem('radio-queue');
+            } catch (err) {}
+            $('rp-add').title = opt.value ? `Add to ${opt.textContent}` : 'Add to your queue playlist';
         }
     });
 
@@ -397,8 +475,19 @@
                 $('rp-scroll').addEventListener(ev, () => { if (S.active) { S.browsing = true; $('rp-sync').hidden = false; } }, {passive: true});
             }
             S.bar = bar;
+            const q = savedQueue();  // show the chosen queue before the full list of playlists is loaded
+            if (q) $('rp-queue').insertAdjacentHTML('beforeend', `<option value="${esc(q.id)}" selected>${esc(q.name)}</option>`);
             restore();
             connect();
+        }
+        // reserve the bar's real height at the bottom of the page (it changes with the drawer and on phones)
+        const shown = document.querySelector('.radio-player');
+        if (shown && shown !== S.measured) {
+            S.measured = shown;
+            if (!S.sizer) S.sizer = new ResizeObserver(([entry]) =>
+                document.documentElement.style.setProperty('--radio-bar-h', `${Math.ceil(entry.target.offsetHeight)}px`));
+            S.sizer.disconnect();
+            S.sizer.observe(shown);
         }
         bindRadioPage();
     });
