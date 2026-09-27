@@ -37,6 +37,12 @@ def radio_bar():
     # the site-wide player bar; checking the session is enough here, /spotify/token refreshes as needed
     return {'radio_available': _spotify_configured(), 'radio_listener': _spotify_configured() and 'token_info' in session}
 
+@app.errorhandler(404)
+@app.errorhandler(500)
+def error_page(e):
+    # in the site's own template, so moving through an error page keeps the radio and its scripts intact
+    return render_template('error.html', code=getattr(e, 'code', 500)), getattr(e, 'code', 500)
+
 @app.route('/')
 def index():
     history = factoids.get_history()
@@ -171,11 +177,11 @@ def show_playlist(date_str):
     try:
         playlist_date = date.fromisoformat(date_str)
     except ValueError:
-        return "Invalid playlist URL", 400
+        abort(404)
     history = factoids.get_history()
     pid = history.pid_by_date.get(playlist_date)
     if pid is None:
-        return f"No playlist for {date_str}", 404
+        abort(404)
     prev_date, next_date = history.neighbors(pid)
     return render_template("playlist.html", date=playlist_date, show=history.shows[pid],
                            rows=history.show_rows(pid),

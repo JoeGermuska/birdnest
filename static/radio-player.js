@@ -5,6 +5,9 @@
 // Spotify is handed one track at a time (play, then queue the next as each starts), so changing what's
 // coming never touches what's playing. Any Birds radio link on the site starts that set here, in place.
 (function () {
+    // once per page load: if Turbo ever re-runs this script, a second copy would start a second player
+    if (window.birdsRadioLoaded) return;
+    window.birdsRadioLoaded = true;
     const S = {
         player: null, deviceId: null, token: null, tokenAt: 0, sdkRequested: false, ready: false,
         queue: [],      // [{id, html, ms}] in play order
@@ -46,10 +49,46 @@
             await play();
         } catch (e) {
             if (e.status !== 404) throw e;
-            await api('PUT', '/me/player', {device_ids: [S.deviceId], play: false});
+            await api('PUT', '/me/player', {device_ids: [S.deviceId], play: false}).catch(() => {});
             await new Promise(r => setTimeout(r, 800));
-            await play();
+            try {
+                await play();
+            } catch (e2) {
+                if (e2.status !== 404) throw e2;
+                // still unknown: the device went away (the browser suspended it, say); reconnect and try once more
+                await reconnect();
+                await api('PUT', '/me/player', {device_ids: [S.deviceId], play: false}).catch(() => {});
+                await new Promise(r => setTimeout(r, 800));
+                await play();
+            }
         }
+    }
+    let readyWaiters = [];
+    async function reconnect() {
+        status('Reconnecting to Spotify…');
+        S.ready = false;
+        S.player.disconnect();
+        const ready = new Promise(r => readyWaiters.push(r));
+        await S.player.connect();
+        await Promise.race([ready, new Promise((_, no) => setTimeout(() => no(new Error("Spotify didn't reconnect")), 10000))]);
+    }
+
+    // The set survives a reload (browsers, iOS especially, reload tabs they've put to sleep): keep it in the tab
+    function save() {
+        try {
+            sessionStorage.setItem('radio-set', JSON.stringify({queue: S.queue, current: S.current, from: $('rp-from').textContent}));
+        } catch (e) {}
+    }
+    function restore() {
+        try {
+            const saved = JSON.parse(sessionStorage.getItem('radio-set') || 'null');
+            if (!saved || !saved.queue.length) return;
+            S.queue = saved.queue;
+            S.current = saved.current;
+            $('rp-from').textContent = saved.from;
+            draw();
+            S.resume = Math.max(0, saved.current);
+        } catch (e) {}
     }
 
     // ---- the live list, in the player's drawer ----
@@ -58,6 +97,7 @@
         $('rp-list').innerHTML = S.queue.map(p => p.html).join('');
         if (flashFrom != null) liveRows().slice(flashFrom).forEach(li => li.classList.add('fresh'));
         mark();
+        save();
     }
     function mark() {
         liveRows().forEach((li, i) => {
@@ -80,6 +120,7 @@
         $('rp-list').insertAdjacentHTML('beforeend', picks.map(p => p.html).join(''));
         if (flash) liveRows().slice(count).forEach(li => li.classList.add('fresh'));
         mark();
+        save();
     }
     function openDrawer(open) {
         $('rp-drawer').hidden = !open;
@@ -163,16 +204,21 @@
 
     function connect() {
         window.onSpotifyWebPlaybackSDKReady = () => {
+            if (S.player) return;  // one player per page load, however often the SDK script runs
             const p = S.player = new Spotify.Player({name: 'Birds radio', volume: 0.8,
                                                      getOAuthToken: cb => getToken(true).then(cb, () => {})});
             p.addListener('ready', ({device_id}) => {
                 S.deviceId = device_id;
                 S.ready = true;
+                S.frame = [...document.querySelectorAll('body > iframe')].find(isSpotifyFrame) || S.frame;
+                readyWaiters.forEach(r => r());
+                readyWaiters = [];
                 $('rp-play').disabled = false;
-                if (!S.active) status('Ready. Press ▶ on any track, or a radio link, to start.');
+                if (!S.active) status(S.resume != null ? 'Ready. Press ▶ to pick up where you left off.'
+                                                       : 'Ready. Press ▶ on any track, or a radio link, to start.');
                 document.documentElement.classList.add('player-ready');
             });
-            p.addListener('not_ready', () => { S.ready = false; status('Spotify player went offline.'); });
+            p.addListener('not_ready', () => { S.ready = false; if (!readyWaiters.length) status('Spotify player went offline. Press ▶ to reconnect.'); });
             p.addListener('account_error', () => {
                 status('Playing here needs Spotify Premium. You can still save a set as a playlist on the radio page.');
                 $('rp-play').disabled = true;
@@ -189,7 +235,7 @@
                 $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
                 if (S.stale.has(id) && !state.paused) { S.stale.delete(id); p.nextTrack(); return; }
                 const i = S.queue.findIndex(q => q.id === id);
-                if (i >= 0 && i !== S.current) { S.current = i; mark(); }
+                if (i >= 0 && i !== S.current) { S.current = i; mark(); save(); }
                 if (i >= 0) keepGoing();
             });
             p.connect();
@@ -197,6 +243,8 @@
         const script = document.createElement('script');
         script.src = 'https://sdk.scdn.co/spotify-player.js';
         script.async = true;
+        // Turbo would otherwise run it again when a cached page's <head> comes back, making a second player
+        script.setAttribute('data-turbo-eval', 'false');
         document.head.appendChild(script);
         S.sdkRequested = true;
     }
@@ -207,7 +255,11 @@
     const isSpotifyFrame = el => el.tagName === 'IFRAME' && /scdn\.co|spotify\.com/.test(el.src || '');
     document.addEventListener('turbo:before-render', e => {
         e.detail.render = (current, next) => {
-            [...current.childNodes].forEach(node => { if (!isSpotifyFrame(node)) node.remove(); });
+            // the player that's here stays, with its set, whatever the new page brings: a page without one (an
+            // error page, say) mustn't take it away, and a page with one mustn't add a second
+            const bar = current.querySelector('#radio-player'), incoming = next.querySelector('#radio-player');
+            if (bar && incoming && incoming !== bar) incoming.remove();
+            [...current.childNodes].forEach(node => { if (!isSpotifyFrame(node) && node !== bar) node.remove(); });
             for (const a of [...current.attributes]) current.removeAttribute(a.name);
             for (const a of [...next.attributes]) current.setAttribute(a.name, a.value);
             // pages restored from Turbo's cache carry copies of the frame; the live one is already here
@@ -259,6 +311,12 @@
     }
 
     document.addEventListener('click', e => {
+        // links off the site open in a new tab, so leaving never stops the radio
+        const out = e.target.closest('a[href]');
+        if (out && !out.target && new URL(out.href, location.href).origin !== location.origin && /^https?:/.test(out.href)) {
+            out.target = '_blank';
+            out.rel = 'noopener';
+        }
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         const link = radioLink(e.target.closest('a'));
         if (link) { e.preventDefault(); startRadio(link); return; }
@@ -282,7 +340,11 @@
         if (e.target.closest('#radio-play-set')) {
             playFrom(0, pageSet(), pageLabel());
         } else if (e.target.closest('#rp-play')) {
-            if (S.active) S.player.togglePlay();
+            if (S.active && S.ready) S.player.togglePlay();
+            else if (S.queue.length) {  // picking up after a reload, or after the player dropped out
+                const at = S.active ? Math.max(0, S.current) : S.resume;
+                (S.ready ? Promise.resolve() : reconnect()).then(() => playFrom(at || 0)).catch(e => status(esc(e.message)));
+            }
             else if (pageRows().length) playFrom(0, pageSet(), pageLabel());
             else startRadio('/radio');
         } else if (e.target.closest('#rp-next')) {
@@ -308,6 +370,18 @@
         }
     });
 
+    // Belt and braces: Turbo's own permanent-element handling can put a copy of the bar back after the render
+    // above (seen after error pages and back/forward), and cached pages bring copies of Spotify's frame. After
+    // every render, keep the live bar and frame and drop any copies.
+    document.addEventListener('turbo:render', () => {
+        const bars = [...document.querySelectorAll('#radio-player')];
+        if (!S.bar || !S.bar.isConnected) S.bar = bars[0];
+        bars.forEach(el => { if (el !== S.bar) el.remove(); });
+        const frames = [...document.querySelectorAll('body > iframe')].filter(isSpotifyFrame);
+        if (!S.frame || !S.frame.isConnected) S.frame = frames[0];
+        frames.forEach(el => { if (el !== S.frame) el.remove(); });
+    });
+
     // every page view, the first one included
     document.addEventListener('turbo:load', () => {
         const bar = $('radio-player');
@@ -322,6 +396,8 @@
             for (const ev of ['wheel', 'touchmove', 'keydown']) {
                 $('rp-scroll').addEventListener(ev, () => { if (S.active) { S.browsing = true; $('rp-sync').hidden = false; } }, {passive: true});
             }
+            S.bar = bar;
+            restore();
             connect();
         }
         bindRadioPage();

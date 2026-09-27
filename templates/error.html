@@ -1,0 +1,9 @@
+{% extends "_base.html" %}
+{% block title %}{{ 'Not found' if code == 404 else 'Something went wrong' }}{% endblock title %}
+{% block content %}
+<section class="detail">
+    <h1>{{ 'Nothing here' if code == 404 else 'Something went wrong' }}</h1>
+    <p class="detail-meta">{% if code == 404 %}That page doesn't exist, or the show or artist isn't in the archive.{% else %}The site hit an error. Try again in a moment.{% endif %}
+        <a href="{{ url_for('index') }}">Back to all the shows</a>.</p>
+</section>
+{% endblock content %}
