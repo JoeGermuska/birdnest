@@ -12,6 +12,7 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 
 ## Notes
 
+- `notes/genres.md`: open questions and an experiment idea for genre tagging.
 - `notes/plan.md`: the current plan for the design pass and new ways into the home page, with `notes/design-pass.md` and `notes/home-page-options.md` behind it.
 
 ## Front end
