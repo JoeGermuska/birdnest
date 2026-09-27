@@ -504,7 +504,13 @@ a.more:hover { color: #222 !important; }
 .year-filter button[aria-pressed="true"] { background: #333; color: #fff; }
 .treemap, .family-mix { margin: 0; }
 .treemap svg, .family-mix svg { display: block; max-width: 100%; }
-.treemap .family-label { font-size: 12px; font-weight: bold; fill: #333; }
+.treemap .family-label { font-size: 12px; font-weight: bold; fill: #333; pointer-events: none; }
+.treemap .family-head { cursor: zoom-in; }
+.treemap svg.zoomed .family-head { cursor: zoom-out; }
+.treemap .family-head rect { fill: transparent; }
+.treemap .family-head:hover rect, .treemap .family-head:focus-visible rect { fill: rgba(0, 0, 0, 0.06); }
+.treemap .family-head:focus { outline: none; }
+.family-filter .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .treemap .tile-label { font-size: 11px; pointer-events: none; }
 .treemap a:hover .tile { filter: brightness(0.88); }
 .family-mix .axis text { font-size: 11px; fill: #666; }

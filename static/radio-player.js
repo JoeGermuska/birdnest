@@ -385,6 +385,18 @@
             out.rel = 'noopener';
         }
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        // Turbo only follows HTML links; links inside charts (SVG <a>: the genre map, timeline ticks) would
+        // load a whole new page and stop the radio, so send those through Turbo too
+        const svgLink = e.target.closest('a');
+        if (svgLink instanceof SVGAElement && window.Turbo) {
+            const href = svgLink.getAttribute('href') || svgLink.getAttribute('xlink:href');
+            const url = href && new URL(href, location.href);
+            if (url && url.origin === location.origin && !svgLink.getAttribute('target')) {
+                e.preventDefault();
+                Turbo.visit(url.href);
+                return;
+            }
+        }
         const link = radioLink(e.target.closest('a'));
         if (link) { e.preventDefault(); startRadio(link); return; }
         const play = e.target.closest('.play-from');

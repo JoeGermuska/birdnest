@@ -7,11 +7,15 @@
 <section class="detail genre-map viz-root">
     <h1>Genre map</h1>
     <p class="detail-meta">Every play, split evenly across the Spotify genres of its artists and grouped into
-        families. Box size is plays. Click a genre to open it. Plays by artists with no genres
+        families. Box size is plays. Pick a family, or click its name on the map, to zoom in; click a genre to open it. Plays by artists with no genres
         (<span id="untagged"></span>) are left out.</p>
-    <div class="year-filter" role="group" aria-label="Year">
+    <div class="year-filter" id="year-filter" role="group" aria-label="Year">
         <button type="button" data-year="all" aria-pressed="true">All years</button>
         {% for y in tree.years %}<button type="button" data-year="{{ loop.index0 }}" aria-pressed="false">{{ y }}</button>{% endfor %}
+    </div>
+    <div class="year-filter family-filter" id="family-filter" role="group" aria-label="Family">
+        <button type="button" data-family="" aria-pressed="true">All families</button>
+        {% for f in tree.families %}<button type="button" data-family="{{ f.name }}" aria-pressed="false"><span class="swatch" style="background: {{ colors[f.name][0] }}"></span>{{ f.name }}</button>{% endfor %}
     </div>
     <figure class="treemap"><svg id="treemap" role="img" aria-label="Treemap of plays by genre family and genre"></svg></figure>
 
@@ -46,16 +50,25 @@ function drawTreemap(yearIndex) {
     const width = svg.node().parentNode.clientWidth, height = Math.max(420, Math.min(640, width * 0.6));
     svg.attr('viewBox', `0 0 ${width} ${height}`).attr('width', width).attr('height', height).selectAll('*').remove();
     const value = g => yearIndex === 'all' ? g.plays.reduce((a, b) => a + b, 0) : g.plays[yearIndex];
-    const root = d3.hierarchy({children: TREE.families.map(f => ({name: f.name, children: f.genres}))})
+    const families = focus ? TREE.families.filter(f => f.name === focus) : TREE.families;
+    svg.classed('zoomed', !!focus);
+    const root = d3.hierarchy({children: families.map(f => ({name: f.name, children: f.genres}))})
         .sum(d => d.plays ? value(d) : 0)
         .sort((a, b) => b.value - a.value);
     d3.treemap().size([width, height]).paddingOuter(2).paddingTop(20).paddingInner(2).round(true)(root);
     const total = root.value;
 
     const fam = svg.selectAll('g.family').data(root.children || []).join('g').attr('class', 'family');
-    fam.append('text').attr('class', 'family-label')
+    // the strip with the family's name zooms in (and, zoomed in, back out)
+    const head = fam.append('g').attr('class', 'family-head').attr('role', 'button').attr('tabindex', 0)
+        .attr('aria-label', d => focus ? 'Back to all families' : `Zoom in on ${d.data.name}`)
+        .on('click', (evt, d) => setFocus(focus ? null : d.data.name))
+        .on('keydown', (evt, d) => { if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); setFocus(focus ? null : d.data.name); } });
+    head.append('rect').attr('x', d => d.x0).attr('y', d => d.y0).attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', 20);
+    head.append('text').attr('class', 'family-label')
         .attr('x', d => d.x0 + 4).attr('y', d => d.y0 + 14)
-        .text(d => (d.x1 - d.x0 > 60 ? d.data.name : '') + (d.x1 - d.x0 > 160 ? ` · ${Math.round(d.value / total * 100)}%` : ''));
+        .text(d => focus ? `← All families · ${d.data.name} · ${d.leaves().length} genres`
+                         : (d.x1 - d.x0 > 60 ? d.data.name : '') + (d.x1 - d.x0 > 160 ? ` · ${Math.round(d.value / total * 100)}%` : ''));
 
     const leaf = fam.selectAll('a').data(d => d.leaves()).join('a').attr('href', d => genreUrl(d.data.name));
     leaf.append('rect').attr('class', 'tile')
@@ -106,10 +119,17 @@ function drawMix() {
         .html(n => `<span class="swatch" style="background:${COLORS[n][0]}"></span>${n}`);
 }
 
-let year = 'all';
-document.querySelectorAll('.year-filter button').forEach(btn => btn.addEventListener('click', () => {
+let year = 'all', focus = null;
+function setFocus(name) {
+    focus = name || null;
+    document.querySelectorAll('#family-filter button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.family || null) === focus)));
+    hideTip();
+    drawTreemap(year);
+}
+document.querySelectorAll('#family-filter button').forEach(btn => btn.addEventListener('click', () => setFocus(btn.dataset.family)));
+document.querySelectorAll('#year-filter button').forEach(btn => btn.addEventListener('click', () => {
     year = btn.dataset.year === 'all' ? 'all' : +btn.dataset.year;
-    document.querySelectorAll('.year-filter button').forEach(b => b.setAttribute('aria-pressed', b === btn));
+    document.querySelectorAll('#year-filter button').forEach(b => b.setAttribute('aria-pressed', b === btn));
     drawTreemap(year);
 }));
 drawTreemap(year); drawMix();
