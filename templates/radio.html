@@ -47,7 +47,7 @@
     </form>
 
 
-    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}" data-genre="{{ genre or '' }}" data-label="From {{ start_label }}">
+    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}" data-genre="{{ genre or '' }}" data-lean='{{ lean|tojson }}' data-label="From {{ start_label }}">
         {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track'), 'genre': request.args.get('genre')}|dictsort|selectattr(1)|list %}
         <dl class="radio-start">
             <div><dt>Starting from</dt>

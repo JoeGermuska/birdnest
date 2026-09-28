@@ -225,12 +225,13 @@ def _radio_set(args, seed):
     history = factoids.get_history()
     adventure = min(100, max(0, args.get('adventure', type=int, default=30)))
     n = min(60, max(5, args.get('n', type=int, default=20)))
-    start = start_label = start_url = None
+    start = start_label = start_url = lean = None
     start_kind = 'random'
     if args.get('artist'):
         artist = next((a for a in history.artists.values() if a['spotify_id'] == args['artist']), None)
         if artist:
             start, start_label = radio.start_for_artist(artist['artist_id']), artist['name']
+            lean = ['artist', artist['artist_id']]
             start_url = url_for('artist', spotify_id=artist['spotify_id'])
             start_kind = 'artist'
     elif args.get('track'):
@@ -251,19 +252,22 @@ def _radio_set(args, seed):
             pid = None
         if pid is not None:
             d = date.fromisoformat(args['show'])
-            start, start_label = radio.start_for_show(pid), f"the show of {d:%B} {d.day}, {d.year}"
+            start, start_label = radio.start_for_show(pid, random.Random(seed)), f"the show of {d:%B} {d.day}, {d.year}"
+            lean = ['show', pid]
             start_url = url_for('show_playlist', date_str=args['show'])
             start_kind = 'show'
     if start is None:
         start = radio.random_start(random.Random(seed))
     genre = args['genre'] if start_kind == 'genre' else None
-    picks = radio.sequence(start, n, adventure / 100, seed, genre=genre)
+    if genre:
+        lean = ['genre', genre]
+    picks = radio.sequence(start, n, adventure / 100, seed, lean=tuple(lean) if lean else None)
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
     start_label = start_label or f"{', '.join(a['name'] for a in picks[0]['artists'])}, “{picks[0]['track']['name']}”"
     if not start_url and picks[0]['artists'][0]['spotify_id']:
         start_url = url_for('artist', spotify_id=picks[0]['artists'][0]['spotify_id'])
-    return {'picks': picks, 'start_label': start_label, 'start_url': start_url, 'start_kind': start_kind, 'genre': genre,
+    return {'picks': picks, 'start_label': start_label, 'start_url': start_url, 'start_kind': start_kind, 'genre': genre, 'lean': lean,
             'adventure': adventure, 'n': n, 'seed': seed}
 
 
@@ -283,7 +287,19 @@ def radio_page():
 def radio_set():
     """The same set as JSON, for the player: {'label', 'picks': [{'spotify_id', 'ms', 'html'}]}"""
     s = _radio_set(request.args, request.args.get('seed', type=int, default=random.randrange(10 ** 6)))
-    return jsonify({'label': s['start_label'], 'genre': s['genre'], 'picks': [_pick_json(p) for p in s['picks']]})
+    return jsonify({'label': s['start_label'], 'genre': s['genre'], 'lean': s['lean'], 'picks': [_pick_json(p) for p in s['picks']]})
+
+
+def _lean(body):
+    """The (kind, key) a set leans toward, as the player sends it back: ['show', 123], ['genre', 'shoegaze'], ..."""
+    lean = body.get('lean') or (['genre', body['genre']] if body.get('genre') else None)
+    history = factoids.get_history()
+    if not lean or len(lean) != 2:
+        return None
+    kind, key = lean
+    ok = {'genre': lambda: key in history.genre_artists, 'show': lambda: key in history.show_tracks,
+          'artist': lambda: key in history.artist_shows}
+    return (kind, key) if kind in ok and ok[kind]() else None
 
 
 def _pick_json(p):
@@ -413,7 +429,7 @@ def radio_more():
         first[0]['reason'] = 'a random new start'
         picks = first + radio.sequence(jump, n - 1, adventure, seed, played=[*played, jump])
     else:
-        picks = radio.sequence(start, n, adventure, seed, played=played, genre=body.get('genre') or None)
+        picks = radio.sequence(start, n, adventure, seed, played=played, lean=_lean(body))
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
     return jsonify({'picks': [_pick_json(p) for p in picks]})

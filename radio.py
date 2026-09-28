@@ -129,12 +129,42 @@ def genre_recs(genre):
     return cat.genre_cache[genre]
 
 
-def sequence(start, n=20, adventure=0.3, seed=None, played=(), genre=None):
+def lean_recs(lean):
+    """(recordings, reason) a set leans toward. lean is (kind, key):
+    ('genre', name): artists tagged with the genre;
+    ('show', playlist_id): that night's tracks and the other recordings of its artists;
+    ('artist', artist_id): the artist and the artists who turn up in their shows more than chance would suggest."""
+    cat = catalog()
+    if lean in cat.genre_cache:
+        return cat.genre_cache[lean]
+    kind, key = lean
+    h = cat.history
+    if kind == 'genre':
+        recs, reason = set(genre_recs(key)), f"more {key}"
+    elif kind == 'show':
+        artists = h.show_artists.get(key, set())
+        recs = {r for r in cat.show_recs.get(key, [])} | {r for r in cat.all_recs if set(cat.rec_artists[r]) & artists}
+        d = h.show_dates[key]
+        reason = f"more from the show of {d:%B} {d.day}, {d.year}"
+    elif kind == 'artist':
+        circle = {key} | {a for a, _ in h._over_represented(h.artist_shows.get(key, set()), h.artist_shows, min_k=2, limit=30)}
+        recs = {r for r in cat.all_recs if set(cat.rec_artists[r]) & circle}
+        reason = f"more from around {h.artists[key]['name']}"
+    else:
+        recs, reason = set(), ''
+    cat.genre_cache[lean] = (recs & set(cat.rec_track), reason)
+    return cat.genre_cache[lean]
+
+
+def sequence(start, n=20, adventure=0.3, seed=None, played=(), genre=None, lean=None):
     """[{'rec', 'track', 'reason'}] starting with recording start. With played (recordings
     already heard, oldest first), continue after start instead: start itself is left out and
-    nothing in played repeats. With genre, the set leans toward artists tagged with it (genre radio)."""
+    nothing in played repeats. With lean (see lean_recs) the set leans toward a genre, a show or an
+    artist's circle, while still following the show's connections; genre=name is short for ('genre', name)."""
     cat = catalog()
-    in_genre = set(genre_recs(genre)) if genre else set()
+    if genre and not lean:
+        lean = ('genre', genre)
+    in_genre, lean_reason = lean_recs(lean) if lean else (set(), '')
     rng = random.Random(seed)
     picks = [{'rec': start, 'reason': 'where we start'}]
     used = {start, *played}
@@ -149,7 +179,7 @@ def sequence(start, n=20, adventure=0.3, seed=None, played=(), genre=None):
         options = candidates(cat, cur, adventure, rng)
         if in_genre:  # genre radio: always some of the genre on offer, even without a connection
             for rec in rng.sample(sorted(in_genre), min(25, len(in_genre))):
-                options[rec].append((0.3, f"more {genre}", []))
+                options[rec].append((0.3, lean_reason, []))
         for rec, parts in options.items():
             if rec in used or rec not in cat.rec_track:
                 continue
@@ -195,9 +225,13 @@ def start_for_artist(artist_id):
     return max(recs, key=lambda r: (cat.plays[r], r)) if recs else None
 
 
-def start_for_show(playlist_id):
+def start_for_show(playlist_id, rng=None):
+    """A track from the show: the first one, or with rng a random one."""
     cat = catalog()
-    return next((r for r in cat.show_recs.get(playlist_id, []) if r in cat.rec_track), None)
+    recs = [r for r in cat.show_recs.get(playlist_id, []) if r in cat.rec_track]
+    if not recs:
+        return None
+    return rng.choice(recs) if rng else recs[0]
 
 
 def start_for_genre(genre, rng):

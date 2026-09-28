@@ -209,3 +209,21 @@ def test_queue_toggle(page, server):
     calls = [(c['method'], c['path']) for c in fake(page, 'calls') if c['path'].startswith('/playlists/q1')]
     assert ('POST', '/playlists/q1/items') in calls and ('DELETE', '/playlists/q1/items') in calls
     assert track
+
+
+def test_show_radio_keeps_leaning_as_it_continues(page, server):
+    """Radio from a show carries the show along when the set grows or is retuned."""
+    page.goto(server + SHOW)
+    page.wait_for_function('window.FakeSpotify && document.documentElement.classList.contains("player-ready")')
+    bodies = []
+    page.on('request', lambda r: bodies.append(r.post_data_json) if r.url.endswith('/radio/more') else None)
+    page.click('a.radio-start-link')  # "Birds radio" for this show
+    page.wait_for_function('FakeSpotify.track !== null')
+    assert 'show of March 4, 2021' in page.eval_on_selector('#rp-from', 'e => e.textContent')
+    page.click('#rp-toggle')
+    page.click('#rp-reshuffle')
+    page.wait_for_load_state('networkidle')
+    assert bodies and bodies[-1]['lean'][0] == 'show'
+    page.click('#rp-random')
+    page.wait_for_load_state('networkidle')
+    assert bodies[-1]['lean'] is None, 'a random new start drops the lean'

@@ -282,14 +282,14 @@
             const resp = await fetch('/radio/set?' + params);
             if (!resp.ok) throw new Error(resp.status);
             const set = await resp.json();
-            S.genre = set.genre || null;
+            S.lean = set.lean || null;
             await playAt(0, set.picks.map(p => ({id: p.spotify_id, html: p.html, ms: p.ms})), `From ${set.label}`);
         } catch (e) { status(`Couldn't start that set (${esc(e.message)}).`); }
     }
     async function more(afterIndex, n, random) {
         const resp = await fetch('/radio/more', {method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({after: S.queue[afterIndex].id, played: S.queue.slice(0, afterIndex + 1).map(p => p.id),
-                                  n, random: !!random, genre: random ? null : S.genre,
+                                  n, random: !!random, lean: random ? null : S.lean,
                                   seed: Math.floor(Math.random() * 1e6), adventure: adventure()})});
         if (!resp.ok) throw new Error(resp.status);
         return (await resp.json()).picks;
@@ -327,7 +327,7 @@
         const keep = S.current;
         try {
             replaceAfter(keep, await more(keep, 15, random), true);
-            if (random) { $('rp-from').textContent = 'From a random new start'; S.genre = null; }
+            if (random) { $('rp-from').textContent = 'From a random new start'; S.lean = null; }
             keepGoing();
         } catch (e) { status(`Couldn't change what's next (${esc(e.message)}).`); }
     }
@@ -444,7 +444,7 @@
     const pageRows = () => [...document.querySelectorAll('#radio-list li')];
     const pageSet = () => pageRows().map(li => ({id: li.dataset.spotify, ms: +li.dataset.ms || 0, html: li.outerHTML}));
     const pageLabel = () => $('radio-result') ? $('radio-result').dataset.label : null;
-    const pageGenre = () => $('radio-result') && $('radio-result').dataset.genre || null;
+    const pageLean = () => { try { return JSON.parse($('radio-result').dataset.lean || 'null'); } catch (e) { return null; } };
     let latest = 0, timer = null;
     async function loadSet(url) {
         const mine = ++latest, result = $('radio-result'), form = $('radio-controls');
@@ -510,7 +510,7 @@
         if (play && S.player) {
             const li = play.closest('li');
             if (li.closest('#rp-list')) playAt(liveRows().indexOf(li));
-            else { S.genre = pageGenre(); playAt(pageRows().indexOf(li), pageSet(), pageLabel()); }
+            else { S.lean = pageLean(); playAt(pageRows().indexOf(li), pageSet(), pageLabel()); }
             return;
         }
         const nav = e.target.closest('.radio-nav a');
@@ -524,7 +524,7 @@
         }
         if (!S.player) return;
         if (e.target.closest('#radio-play-set')) {
-            S.genre = pageGenre();
+            S.lean = pageLean();
             playAt(0, pageSet(), pageLabel());
         } else if (e.target.closest('#rp-play')) {
             if (S.active && S.ready) S.player.togglePlay();
@@ -533,7 +533,7 @@
                 S.resume = null;
                 (S.ready ? Promise.resolve() : reconnect()).then(() => playAt(at)).catch(e => status(esc(e.message)));
             }
-            else if (pageRows().length) { S.genre = pageGenre(); playAt(0, pageSet(), pageLabel()); }
+            else if (pageRows().length) { S.lean = pageLean(); playAt(0, pageSet(), pageLabel()); }
             else startRadio('/radio');
         } else if (e.target.closest('#rp-next')) {
             if (S.active) advance(S.current);
