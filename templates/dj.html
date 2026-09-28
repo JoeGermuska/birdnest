@@ -5,7 +5,7 @@
 <section class="detail dj">
     <header class="detail-header">
         <div>
-            <h1>{{ profile.dj.name }}</h1>
+            <hgroup class="title-unit"><h1>{{ profile.dj.name }}</h1></hgroup>
             {{ action_row(url_for('radio_page', dj=profile.dj.slug)) }}
             <p class="detail-meta">
                 {{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} ({{ (profile.share * 100)|round|int }}% of all) ·

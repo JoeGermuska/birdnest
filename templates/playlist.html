@@ -12,9 +12,11 @@
         <header class="show-header">
             <img class='playlist-image' src="{{ url_for('playlist_image', date_str=date) }}" alt="" onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/vinyl-placeholder.png') }}'">
             <div>
-                <p class="eyebrow">No. {{ number }} of {{ n_shows }} · {{ date.strftime('%A') }}</p>
-                <h1>{{ date.strftime('%B') }} {{ date.day }}, {{ date.year }}</h1>
-                {% if caption.image %}<p class="show-cover">{{ caption.image }}</p>{% endif %}
+                <hgroup class="title-unit">
+                    <p class="eyebrow">No. {{ number }} of {{ n_shows }} · {{ date.strftime('%A') }}</p>
+                    <h1>{{ date.strftime('%B') }} {{ date.day }}, {{ date.year }}</h1>
+                    {% if caption.image %}<p class="show-cover">{{ caption.image }}</p>{% endif %}
+                </hgroup>
                 {% if caption.note %}<p class="show-description">{{ caption.note }}</p>{% endif %}
                 {{ action_row(url_for('radio_page', show=date.isoformat()), [('Spotify', show.spotify_url)]) }}
                 {% if room %}<p class="show-room" title="In the order they joined. We don't know who picked which track."><span class="novelty-label">In the room</span> {{ room_list(room) }}</p>{% endif %}

@@ -641,5 +641,9 @@ a.radio-start-link .radio-icon, .rp-now .radio-icon { vertical-align: -2px; colo
 /* the row under the title of a show, artist, genre or DJ page: Birds radio first, then elsewhere */
 .action-row { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: 6px 0 10px; font-size: 0.95rem; }
 .action-row a.radio-start-link { font-weight: 600; color: #7a2e5e; }
-.show-header .eyebrow { margin: 0 0 2px; }
-.show-cover { margin: -4px 0 8px; font-style: italic; color: #555; font-size: 0.95rem; }
+/* the title and what names it (eyebrow above, a line below) read as one unit, set apart from what you do with it */
+.title-unit { margin: 0 0 18px; }
+.title-unit .eyebrow { margin: 0 0 2px; }
+.title-unit h1, section.detail .title-unit h1, .show-header .title-unit h1 { margin: 0; line-height: 1.1; }
+.title-unit .show-cover { margin: 4px 0 0; font-style: italic; color: #555; font-size: 0.95rem; }
+.title-unit + .action-row { margin-top: 0; }

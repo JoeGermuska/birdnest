@@ -8,7 +8,7 @@
         {% if image %}<img class="detail-image" src="{{ image }}" alt="">{% endif %}
         {% endwith %}
         <div>
-            <h1>{{ artist.name }}</h1>
+            <hgroup class="title-unit"><h1>{{ artist.name }}</h1></hgroup>
             {% set links = [('Spotify', artist.spotify_url)] + ((profile.links|list) if profile and profile.links else []) %}
             {% if profile %}{{ action_row(url_for('radio_page', artist=artist.spotify_id), links) }}{% endif %}
             <p class="detail-meta">

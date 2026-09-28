@@ -4,7 +4,7 @@
 {% block content %}
 <section class="detail genre">
     <header>
-        <h1>{{ genre_name }}</h1>
+        <hgroup class="title-unit"><h1>{{ genre_name }}</h1></hgroup>
         {{ action_row(url_for('radio_page', genre=genre_name), [('Every Noise', 'https://everynoise.com/research.cgi?mode=genre&name=' ~ genre_name|urlencode)]) }}
         <p class="detail-meta">
             {{ profile.artists|length }} artists · {{ profile.n_plays }} plays across {{ profile.n_shows }} shows
