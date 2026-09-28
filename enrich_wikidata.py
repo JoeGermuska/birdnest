@@ -6,9 +6,11 @@ for them (see enrich_musicbrainz.py); links MusicBrainz knows about fill in
 anything Wikidata lacks.
 
 Incremental: only artists not looked up before are queried (wikidata_checked
-records who has been). Pass --all to re-query everyone, e.g. to pick up
+records who has been). Pass --no-data to also re-query artists looked up
+before with no Wikidata item found, e.g. after adding their Spotify IDs to
+Wikidata from /todo/wikidata; pass --all to re-query everyone, e.g. to pick up
 pages created on Wikipedia since.
-    python enrich_wikidata.py [--all] [path/to/birdnest.db]
+    python enrich_wikidata.py [--no-data | --all] [path/to/birdnest.db]
 """
 import json
 import sqlite3
@@ -88,7 +90,7 @@ def fetch(binding, key_to_artist, links):
         time.sleep(1)
 
 
-def main(db_path='birdnest.db', refresh_all=False):
+def main(db_path='birdnest.db', refresh_all=False, no_data=False):
     con = sqlite3.connect(db_path)
     con.execute("""create table if not exists artist_link (
         artist_id integer references artist(artist_id), source varchar, url varchar)""")
@@ -103,7 +105,9 @@ def main(db_path='birdnest.db', refresh_all=False):
 
     todo = dict(con.execute("select spotify_id, artist_id from artist where spotify_id is not null" +
                             ("" if refresh_all else
-                             " and artist_id not in (select artist_id from wikidata_checked)")))
+                             " and (artist_id not in (select artist_id from wikidata_checked)" +
+                             (" or artist_id not in (select artist_id from artist_link where source = 'wikidata')"
+                              if no_data else "") + ")")))
     targets = set(todo.values())
     print(f"{len(targets)} artists to look up on Wikidata")
     if not targets:
@@ -134,4 +138,4 @@ def main(db_path='birdnest.db', refresh_all=False):
 
 if __name__ == '__main__':
     args = sys.argv[1:]
-    main(*[a for a in args if a != '--all'], refresh_all='--all' in args)
+    main(*[a for a in args if not a.startswith('--')], refresh_all='--all' in args, no_data='--no-data' in args)
