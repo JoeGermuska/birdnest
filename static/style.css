@@ -637,3 +637,9 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 a.radio-start-link { white-space: nowrap; }
 a.radio-start-link .radio-icon, .rp-now .radio-icon { vertical-align: -2px; color: #7a2e5e; }
 .rp-off { color: #8a5a00; font-size: 0.85em; }
+
+/* the row under the title of a show, artist, genre or DJ page: Birds radio first, then elsewhere */
+.action-row { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: 6px 0 10px; font-size: 0.95rem; }
+.action-row a.radio-start-link { font-weight: 600; color: #7a2e5e; }
+.show-header .eyebrow { margin: 0 0 2px; }
+.show-cover { margin: -4px 0 8px; font-style: italic; color: #555; font-size: 0.95rem; }

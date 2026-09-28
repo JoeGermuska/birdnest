@@ -133,7 +133,8 @@ def lean_recs(lean):
     """(recordings, reason) a set leans toward. lean is (kind, key):
     ('genre', name): artists tagged with the genre;
     ('show', playlist_id): that night's tracks and the other recordings of its artists;
-    ('artist', artist_id): the artist and the artists who turn up in their shows more than chance would suggest."""
+    ('artist', artist_id): the artist and the artists who turn up in their shows more than chance would suggest;
+    ('dj', dj_id): the artists who turn up more than chance would suggest in shows that DJ was in the room for."""
     cat = catalog()
     if lean in cat.genre_cache:
         return cat.genre_cache[lean]
@@ -150,6 +151,21 @@ def lean_recs(lean):
         circle = {key} | {a for a, _ in h._over_represented(h.artist_shows.get(key, set()), h.artist_shows, min_k=2, limit=30)}
         recs = {r for r in cat.all_recs if set(cat.rec_artists[r]) & circle}
         reason = f"more from around {h.artists[key]['name']}"
+    elif kind == 'dj':
+        # regulars in the room are in most shows, so "more than chance" has to be gentler than elsewhere:
+        # rank artists by how much more often they turn up with this DJ, and keep the top ones
+        pids, total = h.dj_shows.get(key, set()), len(h.show_tracks)
+        scored = []
+        for a, shows in h.artist_shows.items():
+            k = len(shows & pids)
+            lift = k / (len(pids) * len(shows) / total) if pids else 0
+            if k >= 2 and lift > 1.1:
+                scored.append((k * math.log(lift), a))
+        leaning = {a for _, a in sorted(scored, reverse=True)[:60]}
+        recs = {r for r in cat.all_recs if set(cat.rec_artists[r]) & leaning}
+        if not recs and len(pids) <= 5:  # too few shows for anything to stand out: those nights themselves
+            recs = {r for p in pids for r in cat.show_recs.get(p, [])}
+        reason = f"more from {h.djs[key]['name']}'s nights"
     else:
         recs, reason = set(), ''
     cat.genre_cache[lean] = (recs & set(cat.rec_track), reason)
@@ -237,6 +253,15 @@ def start_for_show(playlist_id, rng=None):
 def start_for_genre(genre, rng):
     """A recording in the genre, favoring ones played more often."""
     recs = genre_recs(genre)
+    if not recs:
+        return None
+    cat = catalog()
+    return rng.choices(recs, [cat.plays[r] for r in recs])[0]
+
+
+def start_for_lean(lean, rng):
+    """A recording the lean favors, the more played the likelier."""
+    recs = sorted(lean_recs(lean)[0])
     if not recs:
         return None
     cat = catalog()

@@ -97,3 +97,24 @@ def test_lean_goes_round_trip_through_the_endpoints(app_module):
     assert len(more['picks']) == 4
     bad = client.post('/radio/more', json={'after': ids[-1], 'played': ids, 'n': 2, 'lean': ['show', -1]}).get_json()
     assert len(bad['picks']) == 2, 'an unknown lean is ignored, not an error'
+
+
+def test_dj_radio(app_module):
+    client = app_module.app.test_client()
+    chris = client.get('/radio/set?dj=chris&n=6&seed=1').get_json()
+    assert chris['label'] == "Chris's nights" and chris['lean'][0] == 'dj' and len(chris['picks']) == 6
+    joe = client.get('/radio/set?dj=joe&n=6&seed=1').get_json()  # in the room nearly every week: whole archive
+    assert joe['lean'] is None and len(joe['picks']) == 6
+
+
+def test_subject_pages_lead_with_birds_radio(app_module):
+    import re
+    client = app_module.app.test_client()
+    for path, radio in [('/playlist/2021-03-04', 'show=2021-03-04'), ('/artist/4TMHGUX5WI7OOm53PqSDAT', 'artist='),
+                        ('/genre/shoegaze', 'genre=shoegaze'), ('/dj/chris', 'dj=chris')]:
+        html = client.get(path).get_data(as_text=True)
+        row = re.search(r'<p class="action-row">(.*?)</p>', html, re.S)
+        assert row, path
+        assert re.match(r'\s*<a class="radio-start-link" href="/radio\?[^"]*' + re.escape(radio), row.group(1)), path
+    show = client.get('/playlist/2021-03-04').get_data(as_text=True)
+    assert 'No. 46 of' in show and '<h1>March 4, 2021</h1>' in show

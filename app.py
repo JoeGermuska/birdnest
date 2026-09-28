@@ -183,7 +183,9 @@ def show_playlist(date_str):
     if pid is None:
         abort(404)
     prev_date, next_date = history.neighbors(pid)
+    ordered = sorted(history.show_tracks, key=history.show_dates.get)
     return render_template("playlist.html", date=playlist_date, show=history.shows[pid],
+                           number=ordered.index(pid) + 1, n_shows=len(ordered), caption=history.show_caption(pid),
                            rows=history.show_rows(pid),
                            room=history.show_room(pid),
                            stats=history.show_stats(pid),
@@ -245,6 +247,13 @@ def _radio_set(args, seed):
         if start is not None:
             start_label, start_kind = args['genre'], 'genre'
             start_url = url_for('genre', genre_name=args['genre'])
+    elif args.get('dj') and args['dj'] in history.dj_by_slug:
+        dj_id = history.dj_by_slug[args['dj']]
+        # someone in the room nearly every week leans toward nothing in particular: then it's the whole archive
+        start = radio.start_for_lean(('dj', dj_id), random.Random(seed))
+        start_label, start_kind = f"{history.djs[dj_id]['name']}'s nights", 'dj'
+        start_url = url_for('dj', slug=args['dj'])
+        lean = ['dj', dj_id] if start is not None else None
     elif args.get('show'):
         try:
             pid = history.pid_by_date.get(date.fromisoformat(args['show']))
@@ -298,7 +307,7 @@ def _lean(body):
         return None
     kind, key = lean
     ok = {'genre': lambda: key in history.genre_artists, 'show': lambda: key in history.show_tracks,
-          'artist': lambda: key in history.artist_shows}
+          'artist': lambda: key in history.artist_shows, 'dj': lambda: key in history.djs}
     return (kind, key) if kind in ok and ok[kind]() else None
 
 

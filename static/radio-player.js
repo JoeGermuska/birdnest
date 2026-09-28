@@ -378,7 +378,7 @@
                 readyWaiters = [];
                 $('rp-play').disabled = false;
                 if (!S.active) status(S.resume != null ? 'Ready. Press ▶ to pick up where you left off.'
-                                                       : `Ready. Press ▶ for a random set, or ${RADIO_ICON} next to any track, artist, show or genre.`);
+                                                       : `Ready. Press ▶ for a random set, or ${RADIO_ICON} next to any track, artist, show, genre or DJ.`);
                 loadQueueIds();
                 document.documentElement.classList.add('player-ready');
             });
@@ -456,7 +456,7 @@
             if (mine !== latest) return;  // a newer request is on its way
             const fresh = doc.getElementById('radio-result');
             result.replaceWith(fresh);
-            for (const key of ['seed', 'artist', 'show', 'track', 'genre']) {
+            for (const key of ['seed', 'artist', 'show', 'track', 'genre', 'dj']) {
                 form.elements[key].value = fresh.dataset[key];
                 form.elements[key].disabled = !fresh.dataset[key];
             }
@@ -481,7 +481,7 @@
         if (!a || !S.ready || a.closest('.radio-nav')) return null;
         const url = new URL(a.href, location.href);
         if (url.origin !== location.origin || url.pathname !== '/radio') return null;
-        return ['artist', 'show', 'track', 'genre'].some(k => url.searchParams.get(k)) ? url : null;
+        return ['artist', 'show', 'track', 'genre', 'dj'].some(k => url.searchParams.get(k)) ? url : null;
     }
 
     document.addEventListener('click', e => {

@@ -55,6 +55,13 @@
 <a class="radio-start-link" href="{{ url }}">{{ radio_icon() }} {{ text }}</a>
 {%- endmacro %}
 
+{# The row under the title of a show, artist, genre or DJ page: Birds radio first, then where else to find it.
+   links: [(label, url)]; a label of 'Spotify' gets the Spotify icon. #}
+{% macro action_row(radio_url, links=()) -%}
+<p class="action-row">{{ radio_button('Birds radio', radio_url) }}
+{%- for label, url in links %}<a href="{{ url }}">{% if label == 'Spotify' %}<i class="fab fa-spotify"></i> {% endif %}{{ label }}</a>{% endfor %}</p>
+{%- endmacro %}
+
 {% macro radio_link(url, title) -%}
 {%- if url -%}
 <a class="radio-link" href="{{ url_for('radio_page', track=url.rsplit('/', 1)[-1]) }}" title="Birds radio from “{{ title }}”" aria-label="Birds radio from this track">{{ radio_icon() }}</a>

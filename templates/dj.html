@@ -1,11 +1,12 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, room_list %}
+{% from "_macros.html" import factoids, room_list, action_row %}
 {% block title %}{{ profile.dj.name }}{% endblock title %}
 {% block content %}
 <section class="detail dj">
     <header class="detail-header">
         <div>
             <h1>{{ profile.dj.name }}</h1>
+            {{ action_row(url_for('radio_page', dj=profile.dj.slug)) }}
             <p class="detail-meta">
                 {{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} ({{ (profile.share * 100)|round|int }}% of all) ·
                 {% if profile.n_shows > 1 %}{{ profile.first }} to {{ profile.last }}{% else %}{{ profile.first }}{% endif %} ·
