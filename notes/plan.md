@@ -11,8 +11,10 @@ ways in are done together, and the design pass fits around them.
    - [x] Pages no longer widen past a phone screen (show page header wraps; track tables scroll in their own box for now).
 2. [x] **Home page**: tile wall as a CSS grid, plus option A (latest show big, then "this week in past years") and
    option B (note cards mixed into the wall). Done (8821c76).
-3. **Banner**: compact `_nav.html`, working at phone width; room for any new entry points.
-4. **Design pass on the other pages**: shared colors/type tokens, **dark and light mode** (built on those tokens), tables on phones, before/after screenshots.
+3. [x] **Banner**: a paper masthead (`_nav.html`), two rows on phones with the links scrolling sideways if they outgrow it.
+   With it, new type: Alegreya Sans for titles, labels and controls, David Libre for reading (quote marks from
+   Alegreya), as `--font-display`/`--font-body` and a few color tokens on `:root` in `style.css`.
+4. **Design pass on the other pages**: shared colors/type tokens (fonts done; move the remaining colors and the scattered 0.7–0.85rem sizes onto tokens; links site-wide in ink like `.latest-links` instead of browser blue), **dark and light mode** (built on those tokens), tables on phones, before/after screenshots.
 5. **Later**: option C (sort/filter the wall) as its own browse page; Apple Music in the radio player.
 
 ## Birds radio player

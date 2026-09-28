@@ -1,30 +1,65 @@
- @import url('https://fonts.googleapis.com/css2?family=David+Libre&display=swap');
- body {
-     font-family: Arial, Helvetica, sans-serif;
- }
- 
- nav#topbar {
-     background-color: #333;
-     color: #ddd;
-     display: flex;
-     justify-content: space-between;
-     align-items: center;
-     font-size: 1.25rem;
- }
- 
- nav#topbar form#search {
-     margin: 10px;
- }
- 
- nav#topbar h1 {
-     margin: 10px;
- }
- 
- nav#topbar a {
-     text-decoration: none;
-     color: inherit;
- }
- 
+/* Fonts are loaded in _base.html. Alegreya Sans for titles, labels and controls; David Libre for reading. */
+:root {
+    --font-display: 'Alegreya Sans', 'Gill Sans', 'Trebuchet MS', sans-serif;
+    /* 'Alegreya' is loaded with only its quote marks and apostrophes, so it supplies those and David Libre everything else */
+    --font-body: 'Alegreya', 'David Libre', Georgia, serif;
+    --ink: #2b2620;
+    --ink-soft: #6b5f4f;
+    --paper: #f7f2e6;
+    --paper-rule: #d9cfbc;
+    --accent: #c0392b;
+}
+
+body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.45;
+}
+
+/* Banner: a paper masthead. Phones: title and search, then the links on their own row (scrolling sideways if they outgrow it). */
+nav#topbar {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 10px 20px;
+    background: var(--paper);
+    color: var(--ink);
+    border-bottom: 1px solid var(--paper-rule);
+}
+nav#topbar a { text-decoration: none; color: inherit; }
+nav#topbar h1 { margin: 0; font-size: 1.6rem; white-space: nowrap; }
+nav#topbar .nav-links { display: flex; gap: 22px; margin-right: auto; font-size: 0.8rem; text-transform: uppercase; }
+nav#topbar .nav-links a { color: var(--ink-soft); }
+nav#topbar .nav-links a:hover { color: var(--ink); box-shadow: inset 0 -2px var(--accent); }
+nav#topbar form#search { margin: 0; }
+nav#topbar .autocomplete-container { display: block; }
+nav#topbar .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; color: var(--ink-soft); pointer-events: none; }
+nav#topbar #q {
+    box-sizing: border-box;
+    width: 15rem;
+    padding: 6px 12px 6px 30px;
+    font: inherit;
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--paper-rule);
+    border-radius: 999px;
+}
+nav#topbar #q:focus { outline: 2px solid var(--ink-soft); outline-offset: 1px; }
+@media (max-width: 700px) {
+    nav#topbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px 0; }
+    nav#topbar h1 { font-size: 1.25rem; }
+    nav#topbar form#search { flex: 1 1 7rem; min-width: 0; }
+    nav#topbar #q { width: 100%; }
+    nav#topbar .nav-links { order: 3; flex-basis: 100%; overflow-x: auto; white-space: nowrap; padding: 6px 0 10px; font-size: 0.75rem; gap: 18px; }
+}
+
+section.playlist { padding: 0 16px; }
+
  section.playlist img.playlist-image {
      width: 200px;
      height: 200px;
@@ -96,15 +131,19 @@
 section.home { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
 .home-latest { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .home-latest .playlist-tile .tile-date { display: none; }
-.latest-info h1 { font-family: 'David Libre', serif; font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 0 0 10px; }
+.latest-info h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 0 0 10px; }
 .latest-info h1 a { color: inherit; text-decoration: none; }
-.eyebrow { margin: 0 0 4px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #777; }
+.eyebrow { margin: 0 0 4px; font-size: 0.8rem; text-transform: uppercase; color: #777; }
 .latest-note { color: #444; max-width: 60ch; }
 .latest-info .show-meta { color: #555; }
 .latest-info .factoids { margin-top: 14px; }
-.latest-links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 16px; }
-.home-head { font-family: 'David Libre', serif; font-size: 1.5rem; margin: 34px 0 10px; }
-.home-head .muted { font-family: Arial, Helvetica, sans-serif; font-size: 0.9rem; margin-left: 8px; }
+.latest-links { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 16px; font-family: var(--font-display); font-weight: 500; font-size: 1.05rem; }
+.latest-links a { color: var(--ink); text-decoration: underline 2px var(--paper-rule); text-underline-offset: 4px; }
+.latest-links a:hover { text-decoration-color: var(--accent); }
+.latest-links a.radio-start-link { color: #7a2e5e; text-decoration-color: #e2cfd9; }
+.latest-links a.radio-start-link:hover { text-decoration-color: #7a2e5e; }
+.home-head { font-size: 1.5rem; margin: 34px 0 10px; }
+.home-head .muted { font-size: 0.9rem; font-weight: normal; margin-left: 8px; }
 .tile-row, .tile-grid { display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(min(45%, 170px), 1fr)); }
 .tile-row .tile-date { font-size: 1rem; }
 @media (max-width: 700px) { .home-latest { grid-template-columns: 1fr; } }
@@ -117,13 +156,13 @@ section.home { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
   background: #f7f2e6;
   border: 1px solid #e3dccb;
   transform: rotate(var(--tilt, 0deg));
-  font-family: 'David Libre', serif; font-size: clamp(1rem, 1.5vw, 1.2rem); line-height: 1.3;
+  font-size: clamp(1rem, 1.5vw, 1.2rem); line-height: 1.3;
   overflow: hidden;
 }
 .note-card p { margin: 0; }
 .note-card a { color: #222; }
-.note-card .more { margin-top: auto; font-family: Arial, Helvetica, sans-serif; font-size: 0.8rem; color: #777; }
-.note-label { font-family: Arial, Helvetica, sans-serif; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #777; display: flex; align-items: center; gap: 6px; }
+.note-card .more { margin-top: auto; font-size: 0.85rem; color: #777; }
+.note-label { font-size: 0.75rem; text-transform: uppercase; color: #777; display: flex; align-items: center; gap: 6px; }
 .note-label::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #999; }
 .note-theme .note-label::before { background: #c0392b; }
 .note-repeat .note-label::before { background: #2e86c1; }
@@ -169,13 +208,6 @@ section.home { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
     border-bottom: none;
 }
 
-#search input[type="text"] {
-    padding: 5px;
-    font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-}
-
 /* Show page */
 section.show {
     max-width: 1100px;
@@ -197,7 +229,6 @@ section.show {
 
 .show-header h1 {
     margin-top: 0;
-    font-family: 'David Libre', serif;
 }
 
 .show-description {
@@ -221,9 +252,8 @@ section.show {
 }
 
 .novelty-label {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 
 .novelty-value {
@@ -231,7 +261,7 @@ section.show {
     color: #222;
     min-width: 2ch;
     text-align: right;
-    font-variant-numeric: tabular-nums;
+    font-variant-numeric: lining-nums tabular-nums;
 }
 
 .novelty-strip line { stroke: #ddd; }
@@ -254,9 +284,8 @@ section.show {
 }
 
 .factoid dt {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: #666;
     padding-top: 3px;
 }
@@ -352,7 +381,6 @@ section.detail {
 }
 
 section.detail h1 {
-    font-family: 'David Libre', serif;
     margin: 16px 0 4px;
 }
 
@@ -403,13 +431,13 @@ section.detail h2 {
 .timeline figcaption span { position: absolute; }
 
 .year-bars { margin: 20px 0; }
-.year-bars figcaption { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #666; margin-bottom: 6px; }
+.year-bars figcaption { font-size: 0.8rem; text-transform: uppercase; color: #666; margin-bottom: 6px; }
 .year-bars .bars { display: flex; gap: 2px; height: 140px; align-items: stretch; max-width: 480px; }
 .year-bars .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; text-align: center; }
 .year-bars .bar-track { flex: 1; position: relative; }
 .year-bars .bar-fill { position: absolute; bottom: 0; left: 0; right: 0; background: #229954; border-radius: 4px 4px 0 0; min-height: 1px; }
 .year-bars .bar:hover .bar-fill { background: #1a7340; }
-.year-bars .bar-value { font-size: 0.7rem; color: #555; font-variant-numeric: tabular-nums; }
+.year-bars .bar-value { font-size: 0.75rem; color: #555; font-variant-numeric: lining-nums tabular-nums; }
 .year-bars .bar-label { font-size: 0.75rem; color: #777; border-top: 1px solid #bbb; padding-top: 2px; }
 
 @media (max-width: 700px) {
@@ -449,7 +477,7 @@ a.more:hover { color: #222 !important; }
 .rank-row:target, .rank-row.is-highlight { background: #fbeee6; }
 .rank-head { position: sticky; top: 0; background: #fff; padding-bottom: 4px; z-index: 1; }
 .rank-head:hover { background: #fff; }
-.rank-num { text-align: right; color: #999; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.rank-num { text-align: right; color: #999; font-size: 0.8rem; font-variant-numeric: lining-nums tabular-nums; }
 .rank-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
 .rank-label a { color: #222; text-decoration: none; }
 .rank-label a:hover { text-decoration: underline dotted; }
@@ -459,7 +487,7 @@ a.more:hover { color: #222 !important; }
 .rank-strip a:hover .mark { stroke: #222; stroke-width: 2.5; }
 .rank-strip .hit { fill: transparent; }
 .rank-strip .gap { fill: #8e44ad; fill-opacity: 0.35; }
-.rank-value { text-align: right; font-size: 0.8rem; color: #555; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rank-value { text-align: right; font-size: 0.8rem; color: #555; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
 .rank-gap { text-align: center; color: #999; }
 
 .novelty-chart { margin: 16px 0; }
@@ -517,18 +545,6 @@ a.more:hover { color: #222 !important; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; padding: 0; font-size: 0.85rem; color: #333; }
 .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 .viz-tip { position: absolute; pointer-events: none; background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 6px 8px; font-size: 0.8rem; color: #222; box-shadow: 0 2px 6px rgba(0,0,0,0.12); max-width: 260px; z-index: 10; }
-
-nav#topbar .nav-links { display: flex; gap: 18px; font-size: 1rem; margin-right: auto; margin-left: 24px; }
-nav#topbar .nav-links a { color: #ccc; }
-nav#topbar .nav-links a:hover { color: #fff; }
-/* phones: let the banner wrap instead of running off the side (a fuller banner redesign is in notes/plan.md) */
-@media (max-width: 700px) {
-    nav#topbar { flex-wrap: wrap; font-size: 1rem; }
-    nav#topbar h1 { font-size: 1.4rem; margin: 10px 12px 4px; flex-basis: 100%; }
-    nav#topbar .nav-links { margin-left: 12px; gap: 14px; }
-    nav#topbar form#search { margin: 6px 12px 10px; display: flex; gap: 6px; align-items: center; }
-    nav#topbar form#search input { width: 11rem; }
-}
 
 /* Show page genre-family mix */
 .mix { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.9rem; color: #555; }
@@ -647,3 +663,18 @@ a.radio-start-link .radio-icon, .rp-now .radio-icon { vertical-align: -2px; colo
 .title-unit h1, section.detail .title-unit h1, .show-header .title-unit h1 { margin: 0; line-height: 1.1; }
 .title-unit .show-cover { margin: 4px 0 0; font-style: italic; color: #555; font-size: 0.95rem; }
 .title-unit + .action-row { margin-top: 0; }
+
+/* Type roles. Alegreya Sans: titles, small-caps labels, controls, chart text and figures shown as data.
+   Everything else reads in David Libre (body). Uppercase labels share one tracking. */
+h1, h2, h3, .home-head, nav#topbar h1 { font-family: var(--font-display); font-weight: 700; line-height: 1.1; }
+.eyebrow, .novelty-label, .factoid dt, .note-label, .year-bars figcaption, .radio-start dt, .wd-state, nav#topbar .nav-links {
+    font-family: var(--font-display); font-weight: 500; letter-spacing: 0.08em; font-variant-numeric: lining-nums; }
+th { font-family: var(--font-display); font-weight: 500; letter-spacing: 0.02em; }
+button, input, select, textarea, .radio-player, .autocomplete-dropdown, .chip, .badge, .ranking-tabs, .show-meta, .home-head .muted,
+.note-card .more, .rank-num, .rank-value, .novelty-value, .year-bars .bar-value, .year-bars .bar-label, .timeline figcaption, .year-axis,
+.novelty-chart .tick, .family-mix .axis text, .treemap, .legend, .viz-tip, .mix-key, .tile-date {
+    font-family: var(--font-display); }
+.show-meta, .tile-date { font-variant-numeric: lining-nums; }
+/* the Sortable theme (genres list, track tables) sets its own Helvetica and bold headers; keep ours */
+body table[data-sortable].sortable-theme-bootstrap { font-family: inherit; font-size: inherit; line-height: inherit; }
+body table[data-sortable] th { font-weight: 500; }
