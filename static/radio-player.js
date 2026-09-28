@@ -277,10 +277,44 @@
         // playing the last track Spotify knows: hand it the next one
         if (!S.queueing && S.current === S.sent && S.sent < S.queue.length - 1) {
             S.queueing = true;
-            try { await api('POST', `/me/player/queue?device_id=${S.deviceId}&uri=${encodeURIComponent(uri(S.queue[S.sent + 1].id))}`); S.sent++; }
-            catch (e) {}
+            await queueNext();
             S.queueing = false;
         }
+    }
+    // hand Spotify the set's next track; retry once, and say so if it doesn't take (otherwise Spotify's own
+    // autoplay quietly takes over when this track ends)
+    async function queueNext() {
+        const next = S.queue[S.sent + 1];
+        const post = () => api('POST', `/me/player/queue?device_id=${S.deviceId}&uri=${encodeURIComponent(uri(next.id))}`);
+        try {
+            await post().catch(() => new Promise(r => setTimeout(r, 2000)).then(post));
+            S.sent++;
+        } catch (e) {
+            status(`Couldn't line up the next track (${esc(e.message)}). Press ⏭ or ▶ on a track to carry on.`);
+        }
+    }
+    // Which track in the set is this? By id, or, since Spotify sometimes plays another release of the same
+    // recording under a different id, by name for the track we just queued (or the next few).
+    const baseName = n => (n || '').toLowerCase().replace(/\s*[-(\[].*$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const nameOf = q => { const m = /data-name="([^"]*)"/.exec(q.html || ''); return m ? new DOMParser().parseFromString(m[1], 'text/html').body.textContent : ''; };
+    function whichInSet(id, name) {
+        const i = S.queue.findIndex(q => q.id === id || q.alt === id);
+        if (i >= 0) return i;
+        for (let j = Math.max(0, S.current + 1); j <= Math.min(S.queue.length - 1, S.sent + 2); j++) {
+            if (baseName(nameOf(S.queue[j])) && baseName(nameOf(S.queue[j])) === baseName(name)) {
+                S.queue[j].alt = id;  // remember the other id for next time
+                return j;
+            }
+        }
+        return -1;
+    }
+    // Something outside the set is playing (Spotify's autoplay, or something picked elsewhere): let it play,
+    // make sure the set's next track follows it, and say so.
+    function offTheSet(id) {
+        if (S.offSet === id) return;
+        S.offSet = id;
+        status(`${S.nowHtml} <span class="rp-off">(not from this set; back to it next)</span>`);
+        if (S.sent <= S.current && S.current < S.queue.length - 1) queueNext();
     }
     // what's playing and the track already handed to Spotify stay; the rest is re-sequenced
     // (random: from a random new start instead of from here)
@@ -335,9 +369,10 @@
                 $('rp-play').textContent = state.paused ? '▶' : '⏸';
                 $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
                 if (S.stale.has(id) && !state.paused) { S.stale.delete(id); p.nextTrack(); return; }
-                const i = S.queue.findIndex(q => q.id === id);
+                const i = whichInSet(id, t.name);
                 if (i >= 0 && i !== S.current) { S.current = i; mark(); save(); }
                 if (i >= 0) keepGoing();
+                else if (S.active && !state.paused) offTheSet(id);
             });
             p.connect();
         };

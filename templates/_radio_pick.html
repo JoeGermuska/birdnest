@@ -1,5 +1,5 @@
 {% from "_macros.html" import track_links %}
-<li data-spotify="{{ p.spotify_id }}" data-ms="{{ p.track.duration_ms or 0 }}">
+<li data-spotify="{{ p.spotify_id }}" data-ms="{{ p.track.duration_ms or 0 }}" data-name="{{ p.track.name }}">
     <div class="pick-num"><span class="pick-no"></span><button type="button" class="play-from" title="Play from here" aria-label="Play from here">▶</button>
         {{ track_links(p.track.spotify_url, p.track.name) }}</div>
     <div><span class="track">{{ p.track.name }}</span>
