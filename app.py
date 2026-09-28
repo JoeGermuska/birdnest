@@ -239,6 +239,11 @@ def _radio_set(args, seed):
         if start is not None:
             start_label = f"{cat.artist_names(start)}, {cat.title(start)}"
             start_kind = 'track'
+    elif args.get('genre') and args['genre'] in history.genre_artists:
+        start = radio.start_for_genre(args['genre'], random.Random(seed))
+        if start is not None:
+            start_label, start_kind = args['genre'], 'genre'
+            start_url = url_for('genre', genre_name=args['genre'])
     elif args.get('show'):
         try:
             pid = history.pid_by_date.get(date.fromisoformat(args['show']))
@@ -251,13 +256,14 @@ def _radio_set(args, seed):
             start_kind = 'show'
     if start is None:
         start = radio.random_start(random.Random(seed))
-    picks = radio.sequence(start, n, adventure / 100, seed)
+    genre = args['genre'] if start_kind == 'genre' else None
+    picks = radio.sequence(start, n, adventure / 100, seed, genre=genre)
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
     start_label = start_label or f"{', '.join(a['name'] for a in picks[0]['artists'])}, “{picks[0]['track']['name']}”"
     if not start_url and picks[0]['artists'][0]['spotify_id']:
         start_url = url_for('artist', spotify_id=picks[0]['artists'][0]['spotify_id'])
-    return {'picks': picks, 'start_label': start_label, 'start_url': start_url, 'start_kind': start_kind,
+    return {'picks': picks, 'start_label': start_label, 'start_url': start_url, 'start_kind': start_kind, 'genre': genre,
             'adventure': adventure, 'n': n, 'seed': seed}
 
 
@@ -277,7 +283,7 @@ def radio_page():
 def radio_set():
     """The same set as JSON, for the player: {'label', 'picks': [{'spotify_id', 'ms', 'html'}]}"""
     s = _radio_set(request.args, request.args.get('seed', type=int, default=random.randrange(10 ** 6)))
-    return jsonify({'label': s['start_label'], 'picks': [_pick_json(p) for p in s['picks']]})
+    return jsonify({'label': s['start_label'], 'genre': s['genre'], 'picks': [_pick_json(p) for p in s['picks']]})
 
 
 def _pick_json(p):
@@ -407,7 +413,7 @@ def radio_more():
         first[0]['reason'] = 'a random new start'
         picks = first + radio.sequence(jump, n - 1, adventure, seed, played=[*played, jump])
     else:
-        picks = radio.sequence(start, n, adventure, seed, played=played)
+        picks = radio.sequence(start, n, adventure, seed, played=played, genre=body.get('genre') or None)
     for p in picks:
         p['spotify_id'] = p['track']['spotify_url'].rsplit('/', 1)[-1]
     return jsonify({'picks': [_pick_json(p) for p in picks]})

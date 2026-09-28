@@ -20,11 +20,15 @@ ways in are done together, and the design pass fits around them.
 - [x] **Like**: ♥ on the player saves the playing track to Liked Songs (and shows if it's already there). Maybe on each row later.
   Needs the `user-library-modify` scope (and `user-library-read` to show whether it's already liked), so
   everyone logs in again once.
-- [x] **Add to my queue playlist** (＋ on the player; choose the playlist in the Tracks drawer). Maybe on each row later. Original idea: many of us keep a Spotify playlist of candidates for the next show. Let each
+- [x] **Add to my queue playlist** (＋ on the player; choose the playlist in the Tracks drawer). Shows ✓ when the
+  playing track is already in it; clicking ✓ takes it back out. Maybe on each row later. Original idea: many of us keep a Spotify playlist of candidates for the next show. Let each
   listener **choose a queue** once (pick from their own playlists; needs `playlist-read-private` and
   `playlist-modify-public`/`-private`), then a "+ queue" button on the player and on track rows adds to it.
   Remember the choice in the browser (localStorage) since the deployed database can't take writes; show the
   chosen playlist's name on the player so it's clear where tracks go.
+- [x] **Genre radio**: a Birds radio link on every genre page; the set leans toward the genre (about two-thirds in
+  genre at low adventure), still following show connections. Every Birds radio link now uses the radio icon.
+- [x] Idle player: ▶ with nothing loaded starts a random set.
 - Later: **Play on Spotify** (remote-control mode): besides playing in the page, a "Play on…" device picker so
   the radio drives the listener's Spotify app, phone, speakers etc. via Spotify Connect. Pros: works where the
   in-browser player can't (iPhone Safari), real background audio and lock-screen controls, accurate "now playing"

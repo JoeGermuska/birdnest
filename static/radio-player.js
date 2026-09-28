@@ -22,6 +22,8 @@
     const loginLink = () => `/spotify/login?next=${encodeURIComponent(here())}`;
     const status = html => { const el = $('rp-now'); if (el) el.innerHTML = html; };
     const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+    // the radio icon used next to every Birds radio link (templates/_macros.html radio_icon)
+    const RADIO_ICON = '<svg class="radio-icon" viewBox="0 0 24 24" width="14" height="14" aria-label="radio icon"><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5 5a9.9 9.9 0 0 0 0 14M19 5a9.9 9.9 0 0 1 0 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
     const adventure = () => $('rp-adventure') ? +$('rp-adventure').value : 30;
 
     // ---- Spotify ----
@@ -171,22 +173,51 @@
                 `<option value="${esc(pl.id)}"${chosen && chosen.id === pl.id ? ' selected' : ''}>${esc(pl.name)}</option>`).join('');
         } catch (e) { queuesLoaded = false; }
     }
-    async function addToQueue() {
-        const q = savedQueue(), add = $('rp-add');
+    // which tracks are already in the queue playlist, so ＋ can show ✓ and take them back out
+    async function loadQueueIds() {
+        const q = savedQueue();
+        S.queueIds = null;
+        if (!q) return updateAdd();
+        const ids = new Set();
+        try {
+            for (let offset = 0; offset < 2000; offset += 50) {
+                const page = await api('GET', `/playlists/${q.id}/items?limit=50&offset=${offset}`);
+                for (const it of page.items || []) { const t = it.item || it.track; if (t && t.id) ids.add(t.id); }
+                if (!page.next) break;
+            }
+            if (savedQueue() && savedQueue().id === q.id) S.queueIds = ids;
+        } catch (e) {}
+        updateAdd();
+    }
+    function updateAdd() {
+        const q = savedQueue(), add = $('rp-add'), inQueue = !!(q && S.queueIds && S.queueIds.has(S.trackId));
+        add.textContent = inQueue ? '✓' : '＋';
+        add.setAttribute('aria-pressed', String(inQueue));
+        add.title = !q ? 'Add to your queue playlist' : inQueue ? `In ${q.name} (click to take it out)` : `Add to ${q.name}`;
+        add.setAttribute('aria-label', add.title);
+    }
+    async function toggleQueue() {
+        const q = savedQueue(), id = S.trackId;
         if (!q) {  // no queue yet: show where to choose one
             openDrawer(true);
             $('rp-queue').focus();
             status('Choose the playlist you use as your queue, then press ＋ again.');
             return;
         }
+        const inQueue = !!(S.queueIds && S.queueIds.has(id));
         try {
-            await api('POST', `/playlists/${q.id}/items`, {uris: [uri(S.trackId)]})
-                .catch(e => { if (e.status === 404) return api('POST', `/playlists/${q.id}/tracks`, {uris: [uri(S.trackId)]}); throw e; });
+            if (inQueue) {
+                await api('DELETE', `/playlists/${q.id}/items`, {items: [{uri: uri(id)}]})
+                    .catch(e => { if (e.status === 404) return api('DELETE', `/playlists/${q.id}/tracks`, {tracks: [{uri: uri(id)}]}); throw e; });
+                if (S.queueIds) S.queueIds.delete(id);
+            } else {
+                await api('POST', `/playlists/${q.id}/items`, {uris: [uri(id)]})
+                    .catch(e => { if (e.status === 404) return api('POST', `/playlists/${q.id}/tracks`, {uris: [uri(id)]}); throw e; });
+                (S.queueIds = S.queueIds || new Set()).add(id);
+            }
             if (S.nowHtml) status(S.nowHtml);
-            add.textContent = '✓';
-            add.title = `Added to ${q.name}`;
-            setTimeout(() => { add.textContent = '＋'; add.title = 'Add to your queue playlist'; }, 2500);
-        } catch (e) { status(`Couldn't add to ${esc(q.name)} (${esc(e.message)}).`); }
+            updateAdd();
+        } catch (e) { status(`Couldn't ${inQueue ? 'take it out of' : 'add to'} ${esc(q.name)} (${esc(e.message)}).`); }
     }
 
     // ---- playing ----
@@ -224,12 +255,14 @@
             if (!resp.ok) throw new Error(resp.status);
             const set = await resp.json();
             await playFrom(0, set.picks.map(p => ({id: p.spotify_id, html: p.html, ms: p.ms})), `From ${set.label}`);
+            S.genre = set.genre || null;
         } catch (e) { status(`Couldn't start that set (${esc(e.message)}).`); }
     }
     async function more(afterIndex, n, random) {
         const resp = await fetch('/radio/more', {method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({after: S.queue[afterIndex].id, played: S.queue.slice(0, afterIndex + 1).map(p => p.id),
-                                  n, random: !!random, seed: Math.floor(Math.random() * 1e6), adventure: adventure()})});
+                                  n, random: !!random, genre: random ? null : S.genre,
+                                  seed: Math.floor(Math.random() * 1e6), adventure: adventure()})});
         if (!resp.ok) throw new Error(resp.status);
         return (await resp.json()).picks;
     }
@@ -256,7 +289,7 @@
         const keep = Math.max(S.current, S.sent);
         try {
             replaceAfter(keep, await more(keep, 15, random), true);
-            if (random) $('rp-from').textContent = 'From a random new start';
+            if (random) { $('rp-from').textContent = 'From a random new start'; S.genre = null; }
             keepGoing();
         } catch (e) { status(`Couldn't change what's next (${esc(e.message)}).`); }
     }
@@ -275,7 +308,8 @@
                 readyWaiters = [];
                 $('rp-play').disabled = false;
                 if (!S.active) status(S.resume != null ? 'Ready. Press ▶ to pick up where you left off.'
-                                                       : 'Ready. Press ▶ on any track, or a radio link, to start.');
+                                                       : `Ready. Press ▶ for a random set, or ${RADIO_ICON} next to any track, artist, show or genre.`);
+                loadQueueIds();
                 document.documentElement.classList.add('player-ready');
             });
             p.addListener('not_ready', () => { S.ready = false; if (!readyWaiters.length) status('Spotify player went offline. Press ▶ to reconnect.'); });
@@ -294,7 +328,7 @@
                     S.trackId = id;
                     showLiked();
                     $('rp-add').hidden = false;
-                    $('rp-add').title = savedQueue() ? `Add to ${savedQueue().name}` : 'Add to your queue playlist';
+                    updateAdd();
                 }
                 S.nowHtml = `${state.paused ? 'Paused' : 'Now playing'}: <strong>${esc(t.name)}</strong> · ${esc(t.artists.map(a => a.name).join(', '))}`;
                 status(S.nowHtml);
@@ -338,6 +372,7 @@
     const pageRows = () => [...document.querySelectorAll('#radio-list li')];
     const pageSet = () => pageRows().map(li => ({id: li.dataset.spotify, ms: +li.dataset.ms || 0, html: li.outerHTML}));
     const pageLabel = () => $('radio-result') ? $('radio-result').dataset.label : null;
+    const pageGenre = () => $('radio-result') && $('radio-result').dataset.genre || null;
     let latest = 0, timer = null;
     async function loadSet(url) {
         const mine = ++latest, result = $('radio-result'), form = $('radio-controls');
@@ -349,7 +384,7 @@
             if (mine !== latest) return;  // a newer request is on its way
             const fresh = doc.getElementById('radio-result');
             result.replaceWith(fresh);
-            for (const key of ['seed', 'artist', 'show', 'track']) {
+            for (const key of ['seed', 'artist', 'show', 'track', 'genre']) {
                 form.elements[key].value = fresh.dataset[key];
                 form.elements[key].disabled = !fresh.dataset[key];
             }
@@ -374,7 +409,7 @@
         if (!a || !S.ready || a.closest('.radio-nav')) return null;
         const url = new URL(a.href, location.href);
         if (url.origin !== location.origin || url.pathname !== '/radio') return null;
-        return ['artist', 'show', 'track'].some(k => url.searchParams.get(k)) ? url : null;
+        return ['artist', 'show', 'track', 'genre'].some(k => url.searchParams.get(k)) ? url : null;
     }
 
     document.addEventListener('click', e => {
@@ -403,7 +438,7 @@
         if (play && S.player) {
             const li = play.closest('li');
             if (li.closest('#rp-list')) playFrom(liveRows().indexOf(li));
-            else playFrom(pageRows().indexOf(li), pageSet(), pageLabel());
+            else { playFrom(pageRows().indexOf(li), pageSet(), pageLabel()); S.genre = pageGenre(); }
             return;
         }
         const nav = e.target.closest('.radio-nav a');
@@ -418,13 +453,14 @@
         if (!S.player) return;
         if (e.target.closest('#radio-play-set')) {
             playFrom(0, pageSet(), pageLabel());
+            S.genre = pageGenre();
         } else if (e.target.closest('#rp-play')) {
             if (S.active && S.ready) S.player.togglePlay();
             else if (S.queue.length) {  // picking up after a reload, or after the player dropped out
                 const at = S.active ? Math.max(0, S.current) : S.resume;
                 (S.ready ? Promise.resolve() : reconnect()).then(() => playFrom(at || 0)).catch(e => status(esc(e.message)));
             }
-            else if (pageRows().length) playFrom(0, pageSet(), pageLabel());
+            else if (pageRows().length) { playFrom(0, pageSet(), pageLabel()); S.genre = pageGenre(); }
             else startRadio('/radio');
         } else if (e.target.closest('#rp-next')) {
             S.player.nextTrack();
@@ -441,7 +477,7 @@
         } else if (e.target.closest('#rp-like') && S.trackId) {
             toggleLike();
         } else if (e.target.closest('#rp-add') && S.trackId) {
-            addToQueue();
+            toggleQueue();
         }
     });
     document.addEventListener('change', e => {
@@ -456,7 +492,7 @@
                 if (opt.value) localStorage.setItem('radio-queue', JSON.stringify({id: opt.value, name: opt.textContent}));
                 else localStorage.removeItem('radio-queue');
             } catch (err) {}
-            $('rp-add').title = opt.value ? `Add to ${opt.textContent}` : 'Add to your queue playlist';
+            loadQueueIds();
         }
     });
 

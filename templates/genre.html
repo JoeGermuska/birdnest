@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import timeline_row %}
+{% from "_macros.html" import timeline_row, radio_button %}
 {% block title %}Genre: {{ genre_name }}{% endblock title %}
 {% block content %}
 <section class="detail genre">
@@ -7,7 +7,8 @@
         <h1>{{ genre_name }}</h1>
         <p class="detail-meta">
             {{ profile.artists|length }} artists · {{ profile.n_plays }} plays across {{ profile.n_shows }} shows ·
-            <a href="https://everynoise.com/research.cgi?mode=genre&name={{ genre_name|urlencode }}">Every Noise</a>
+            <a href="https://everynoise.com/research.cgi?mode=genre&name={{ genre_name|urlencode }}">Every Noise</a> ·
+            {{ radio_button('Birds radio', url_for('radio_page', genre=genre_name)) }}
         </p>
     </header>
 

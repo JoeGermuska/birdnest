@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, track_links, room_list %}
+{% from "_macros.html" import factoids, track_links, room_list, radio_button %}
 
 {% block title %}Playlist for {{ date }}{% endblock title %}
 
@@ -18,7 +18,7 @@
                 <p class="show-meta">
                     {{ stats.tracks }} tracks · {{ stats.runtime_min // 60 }}h {{ '%02d' % (stats.runtime_min % 60) }}m · {{ stats.artists }} artists ·
                     <a href="{{ show.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a> ·
-                    <a href="{{ url_for('radio_page', show=date.isoformat()) }}">Birds radio</a>
+                    {{ radio_button('Birds radio', url_for('radio_page', show=date.isoformat())) }}
                 </p>
                 <div class="novelty" title="Share of this show's artists who had never been played before. Dots are the {{ stats.novelty_peers|length }} shows around this one.">
                     <span class="novelty-label">Novelty</span>

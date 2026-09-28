@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, parts, room_list %}
+{% from "_macros.html" import factoids, parts, room_list, radio_button %}
 {% block title %}Home{% endblock title %}
 {% block content %}
 <section class="home">
@@ -20,7 +20,7 @@
             {{ factoids(facts[:3]) }}
             <p class="latest-links">
                 <a href="{{ url_for('show_playlist', date_str=latest.date) }}">The playlist →</a>
-                <a href="{{ url_for('radio_page', show=latest.date.isoformat()) }}">Birds radio from this show</a>
+                {{ radio_button('Birds radio from this show', url_for('radio_page', show=latest.date.isoformat())) }}
                 <a href="{{ url_for('random_show') }}">Pull out a random show</a>
             </p>
         </div>
@@ -40,7 +40,7 @@
         {% else %}{% set n = item.note %}
         <div class="note-card note-{{ n.kind }}" style="--tilt: {{ item.tilt }}deg">
             <span class="note-label">{{ n.label }}</span>
-            <p>{% if n.radio %}{{ parts(n.parts) }}<a href="{{ url_for('radio_page', show=n.radio.isoformat()) }}">{{ n.text }}</a>{% else %}{{ parts(n.parts) }}{% endif %}</p>
+            <p>{% if n.radio %}{{ parts(n.parts) }}{{ radio_button(n.text, url_for('radio_page', show=n.radio.isoformat())) }}{% else %}{{ parts(n.parts) }}{% endif %}</p>
             {% if n.more %}<a class="more" href="{{ url_for('ranking', kind=n.more.ranking, h=n.more.anchor) }}#{{ n.more.anchor }}">see them all →</a>{% endif %}
         </div>
         {% endif %}

@@ -632,3 +632,7 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
     .show-header > div { min-width: 0; }
     .novelty, .mix { flex-wrap: wrap; }
 }
+
+/* Birds radio links with a label (the icon alone is .radio-link, next to tracks) */
+a.radio-start-link { white-space: nowrap; }
+a.radio-start-link .radio-icon, .rp-now .radio-icon { vertical-align: -2px; color: #7a2e5e; }

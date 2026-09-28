@@ -26,15 +26,16 @@
     #radio-result.loading { opacity: 0.45; }
 </style>
 {% endblock extra_head %}
+{% from "_macros.html" import radio_icon %}
 {% block content %}
 <section class="detail">
     <h1>Birds radio</h1>
     <p class="detail-meta">Sets sequenced from everything played on Conference of the Birds. Each pick says why it
         follows the one before: a track the DJs actually played next, one from the same night, or at higher adventure,
-        a wildcard. Start from any artist or show with the "Birds radio" link on its page.</p>
+        a wildcard. Start from any track, artist, show or genre with the {{ radio_icon() }} Birds radio links around the site.</p>
 
     <form class="radio-controls" id="radio-controls" method="get" action="{{ url_for('radio_page') }}">
-        {% for key in ('artist', 'show', 'track') %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key, '') }}" {{ 'disabled' if not request.args.get(key) }}>{% endfor %}
+        {% for key in ('artist', 'show', 'track', 'genre') %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key, '') }}" {{ 'disabled' if not request.args.get(key) }}>{% endfor %}
         <input type="hidden" name="seed" value="{{ seed }}">
         <label for="adventure">Adventure
             <span class="scale">close</span>
@@ -46,8 +47,8 @@
     </form>
 
 
-    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}" data-label="From {{ start_label }}">
-        {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track')}|dictsort|selectattr(1)|list %}
+    <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}" data-genre="{{ genre or '' }}" data-label="From {{ start_label }}">
+        {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track'), 'genre': request.args.get('genre')}|dictsort|selectattr(1)|list %}
         <dl class="radio-start">
             <div><dt>Starting from</dt>
                 <dd>{% if start_url %}<a href="{{ start_url }}">{{ start_label }}</a>{% else %}{{ start_label }}{% endif %}

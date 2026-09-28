@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, track_links %}
+{% from "_macros.html" import factoids, track_links, radio_button %}
 {% block title %}{{ artist.name }}{% endblock title %}
 {% block content %}
 <section class="detail artist">
@@ -14,7 +14,7 @@
                 {% if profile.n_shows > 1 %}{{ profile.first.year }}–{{ profile.last.year }}{% else %}{{ profile.first }}{% endif %} ·{% endif %}
                 {% if artist.followers is not none %}{{ "{:,}".format(artist.followers) }} followers ·{% endif %}
                 <a href="{{ artist.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a>
-                {% if profile %}· <a href="{{ url_for('radio_page', artist=artist.spotify_id) }}">Birds radio</a>{% endif %}
+                {% if profile %}· {{ radio_button('Birds radio', url_for('radio_page', artist=artist.spotify_id)) }}{% endif %}
             </p>
             {% if profile and profile.links %}
             <p class="external-links">{% for label, url in profile.links %}<a href="{{ url }}" rel="noopener">{{ label }}</a>{% endfor %}</p>

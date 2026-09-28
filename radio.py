@@ -58,6 +58,7 @@ class Catalog:
         for rec, fam in self.family.items():
             self.by_family[fam].append(rec)
         self.all_recs = sorted(self.rec_track)
+        self.genre_cache = {}
         # any Spotify track id we have -> its recording, for continuing from what's playing
         self.rec_by_spotify = {t['spotify_url'].rsplit('/', 1)[-1]: h.recording_key(tid)
                                for tid, t in h.tracks.items() if t['spotify_url']}
@@ -119,11 +120,21 @@ def candidates(cat, rec, adventure, rng):
     return out
 
 
-def sequence(start, n=20, adventure=0.3, seed=None, played=()):
+def genre_recs(genre):
+    """Recordings by artists tagged with genre."""
+    cat = catalog()
+    if genre not in cat.genre_cache:
+        h = cat.history
+        cat.genre_cache[genre] = [r for r in cat.all_recs if any(genre in h.artist_genres[a] for a in cat.rec_artists[r])]
+    return cat.genre_cache[genre]
+
+
+def sequence(start, n=20, adventure=0.3, seed=None, played=(), genre=None):
     """[{'rec', 'track', 'reason'}] starting with recording start. With played (recordings
     already heard, oldest first), continue after start instead: start itself is left out and
-    nothing in played repeats."""
+    nothing in played repeats. With genre, the set leans toward artists tagged with it (genre radio)."""
     cat = catalog()
+    in_genre = set(genre_recs(genre)) if genre else set()
     rng = random.Random(seed)
     picks = [{'rec': start, 'reason': 'where we start'}]
     used = {start, *played}
@@ -135,7 +146,11 @@ def sequence(start, n=20, adventure=0.3, seed=None, played=()):
         cur = picks[-1]['rec']
         fam = cat.family[cur]
         scored = []
-        for rec, parts in candidates(cat, cur, adventure, rng).items():
+        options = candidates(cat, cur, adventure, rng)
+        if in_genre:  # genre radio: always some of the genre on offer, even without a connection
+            for rec in rng.sample(sorted(in_genre), min(25, len(in_genre))):
+                options[rec].append((0.3, f"more {genre}", []))
+        for rec, parts in options.items():
             if rec in used or rec not in cat.rec_track:
                 continue
             if set(cat.rec_artists[rec]) & set(recent_artists[-ARTIST_COOLDOWN:]):
@@ -147,10 +162,13 @@ def sequence(start, n=20, adventure=0.3, seed=None, played=()):
             score = sum(s for s, _, _ in parts)
             if fam and cat.family[rec] == fam:
                 score *= 1 + 2 * (1 - adventure)
+            if rec in in_genre:
+                score *= 4 + 10 * (1 - adventure)
             best = max(parts, key=lambda p: p[0])
             scored.append((score, rec, best[1], best[2]))
-        if not scored:  # dead end: jump anywhere
-            rec = rng.choice([r for r in cat.all_recs if r not in used])
+        if not scored:  # dead end: jump anywhere (in the genre, for genre radio)
+            rec = rng.choice([r for r in (in_genre or cat.all_recs) if r not in used] or
+                             [r for r in cat.all_recs if r not in used])
             scored = [(1, rec, 'a fresh start', [])]
         # low adventure mostly takes the strongest connection; high flattens the odds
         power = 1 / (0.35 + 1.5 * adventure)
@@ -180,6 +198,15 @@ def start_for_artist(artist_id):
 def start_for_show(playlist_id):
     cat = catalog()
     return next((r for r in cat.show_recs.get(playlist_id, []) if r in cat.rec_track), None)
+
+
+def start_for_genre(genre, rng):
+    """A recording in the genre, favoring ones played more often."""
+    recs = genre_recs(genre)
+    if not recs:
+        return None
+    cat = catalog()
+    return rng.choices(recs, [cat.plays[r] for r in recs])[0]
 
 
 def random_start(rng):
