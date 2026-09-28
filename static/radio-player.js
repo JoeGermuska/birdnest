@@ -237,6 +237,7 @@
         await S.player.activateElement();
         try {
             await playOnDevice({uris: [uri(S.queue[i].id)]});
+            noRepeat();
             S.sent = i;
             S.active = true;
             S.browsing = false;
@@ -280,6 +281,11 @@
             await queueNext();
             S.queueing = false;
         }
+    }
+    // Spotify's repeat setting (the listener's, across their devices) would loop the one track the radio hands it
+    // at a time, or the set's end; the radio turns it off while it's driving
+    function noRepeat() {
+        api('PUT', `/me/player/repeat?state=off&device_id=${S.deviceId}`).catch(() => {});
     }
     // hand Spotify the set's next track; retry once, and say so if it doesn't take (otherwise Spotify's own
     // autoplay quietly takes over when this track ends)
@@ -369,6 +375,11 @@
                 $('rp-play').textContent = state.paused ? '▶' : '⏸';
                 $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
                 if (S.stale.has(id) && !state.paused) { S.stale.delete(id); p.nextTrack(); return; }
+                if (S.active && state.repeat_mode && !S.repeatFixing) {  // switched on elsewhere: off again
+                    S.repeatFixing = true;
+                    noRepeat();
+                    setTimeout(() => { S.repeatFixing = false; }, 5000);
+                }
                 const i = whichInSet(id, t.name);
                 if (i >= 0 && i !== S.current) { S.current = i; mark(); save(); }
                 if (i >= 0) keepGoing();
