@@ -2,8 +2,10 @@
 // script's state and the #radio-player bar (data-turbo-permanent, with its drawer holding the live track list)
 // survive moving around the site, and the music keeps playing. Uses Spotify's Web Playback SDK (Premium only).
 //
-// Spotify is handed one track at a time (play, then queue the next as each starts), so changing what's
-// coming never touches what's playing. Any Birds radio link on the site starts that set here, in place.
+// The player tells Spotify exactly which track to play, one at a time, and starts the next one itself (just
+// before a track ends, or as it ends). It never uses Spotify's own queue, which can't be edited or cleared, so
+// the list and what's playing can't drift apart. Any Birds radio link on the site starts that set here, in place.
+// Tests: tests/test_player.py (with a fake Spotify, tests/fake_spotify.js).
 (function () {
     // once per page load: if Turbo ever re-runs this script, a second copy would start a second player
     if (window.birdsRadioLoaded) return;
@@ -11,10 +13,10 @@
     const S = {
         player: null, deviceId: null, token: null, tokenAt: 0, sdkRequested: false, ready: false,
         queue: [],      // [{id, html, ms}] in play order
-        sent: -1,       // index of the last track Spotify knows about
-        current: -1,    // index of what's playing
-        stale: new Set(),  // tracks queued on Spotify that are no longer in the set; skipped if they come up
-        active: false, extending: false, queueing: false, browsing: false,
+        current: -1,    // index of what's playing (or what we've just asked Spotify to play)
+        pending: null,  // index we've asked Spotify to start and haven't yet seen it play
+        clock: null,    // {pos, at, duration, paused} for the current track, to tell when it's ending
+        active: false, extending: false, browsing: false,
     };
     const $ = id => document.getElementById(id);
     const uri = id => 'spotify:track:' + id;
@@ -221,30 +223,55 @@
     }
 
     // ---- playing ----
-    // Spotify's queue can't be edited, so a track queued for a set we've since changed is remembered and skipped
-    function abandonQueued() {
-        if (S.sent > S.current && S.queue[S.sent]) S.stale.add(S.queue[S.sent].id);
-    }
-    async function playFrom(i, queue, label) {
+    // Play track i of the set (optionally a new set). Everything that starts a track comes through here.
+    async function playAt(i, queue, label) {
         if (!S.ready) { status('The Spotify player is still connecting. Try again in a moment.'); return; }
-        abandonQueued();
         if (queue) {
             S.queue = queue;
             if (label) $('rp-from').textContent = label;
-            draw();
         }
-        S.current = -1;
+        if (!S.queue[i]) return;
+        const token = S.playToken = (S.playToken || 0) + 1;
+        S.current = i;
+        S.pending = i;
+        S.clock = null;
+        clearTimeout(S.endTimer);
+        if (queue) draw(); else { mark(); save(); }
         await S.player.activateElement();
         try {
             await playOnDevice({uris: [uri(S.queue[i].id)]});
-            noRepeat();
-            S.sent = i;
+            if (token !== S.playToken) return;  // something else was started meanwhile
+            if (!S.active) noRepeat();
             S.active = true;
             S.browsing = false;
             $('rp-next').hidden = false;
             document.documentElement.classList.add('radio-bar');
-        } catch (e) { status(`Couldn't start playback (${esc(e.message)}).`); }
+            keepGoing();
+        } catch (e) {
+            if (token === S.playToken) { S.pending = null; status(`Couldn't start playback (${esc(e.message)}).`); }
+        }
     }
+    // on to the next track in the set, if we're still on track `from` (the end timer, the end of a track and ⏭
+    // can race; only the first one counts)
+    async function advance(from) {
+        if (from !== S.current || S.pending != null) return;
+        if (from >= S.queue.length - 1 && endless()) await keepGoing();
+        if (from !== S.current) return;
+        if (from < S.queue.length - 1) playAt(from + 1);
+        else { S.active = false; status('That was the end of the set. Press ▶ on a track, or a radio link, to start again.'); }
+    }
+    // just before the current track ends, start the next one (so Spotify's autoplay never gets a look in); if the
+    // browser holds this timer back (background tabs), the end of the track does it instead
+    function scheduleEnd() {
+        clearTimeout(S.endTimer);
+        const c = S.clock, from = S.current;
+        if (!c || c.paused || !c.duration) return;
+        const left = c.duration - c.pos - 400;
+        S.endTimer = setTimeout(() => advance(from), Math.max(0, left));
+    }
+    // where the current track has got to, by now
+    const position = () => S.clock ? S.clock.pos + (S.clock.paused ? 0 : Date.now() - S.clock.at) : 0;
+    const nearEnd = () => !!(S.clock && S.clock.duration && position() >= S.clock.duration - 4000);
     // start the set a /radio URL describes (?artist= / ?show= / ?track=), right here
     async function startRadio(url) {
         status('Starting Birds radio…');
@@ -255,8 +282,8 @@
             const resp = await fetch('/radio/set?' + params);
             if (!resp.ok) throw new Error(resp.status);
             const set = await resp.json();
-            await playFrom(0, set.picks.map(p => ({id: p.spotify_id, html: p.html, ms: p.ms})), `From ${set.label}`);
             S.genre = set.genre || null;
+            await playAt(0, set.picks.map(p => ({id: p.spotify_id, html: p.html, ms: p.ms})), `From ${set.label}`);
         } catch (e) { status(`Couldn't start that set (${esc(e.message)}).`); }
     }
     async function more(afterIndex, n, random) {
@@ -268,70 +295,73 @@
         return (await resp.json()).picks;
     }
     const endless = () => { const box = $('rp-endless'); return !box || box.checked; };
+    // running low: sequence more from the end of the set
     async function keepGoing() {
-        // running low: sequence more from the end of the set
-        if (!S.extending && endless() && S.current >= S.queue.length - 3) {
-            S.extending = true;
-            try { replaceAfter(S.queue.length - 1, await more(S.queue.length - 1, 10)); } catch (e) {}
-            S.extending = false;
-        }
-        // playing the last track Spotify knows: hand it the next one
-        if (!S.queueing && S.current === S.sent && S.sent < S.queue.length - 1) {
-            S.queueing = true;
-            await queueNext();
-            S.queueing = false;
-        }
+        if (S.extending || !endless() || S.current < S.queue.length - 3) return;
+        S.extending = true;
+        try { replaceAfter(S.queue.length - 1, await more(S.queue.length - 1, 10)); } catch (e) {}
+        S.extending = false;
     }
-    // Spotify's repeat setting (the listener's, across their devices) would loop the one track the radio hands it
-    // at a time, or the set's end; the radio turns it off while it's driving
+    // Spotify's repeat setting (the listener's, across their devices) would loop the one track the radio hands it;
+    // the radio turns it off while it's driving
     function noRepeat() {
         api('PUT', `/me/player/repeat?state=off&device_id=${S.deviceId}`).catch(() => {});
     }
-    // hand Spotify the set's next track; retry once, and say so if it doesn't take (otherwise Spotify's own
-    // autoplay quietly takes over when this track ends)
-    async function queueNext() {
-        const next = S.queue[S.sent + 1];
-        const post = () => api('POST', `/me/player/queue?device_id=${S.deviceId}&uri=${encodeURIComponent(uri(next.id))}`);
-        try {
-            await post().catch(() => new Promise(r => setTimeout(r, 2000)).then(post));
-            S.sent++;
-        } catch (e) {
-            status(`Couldn't line up the next track (${esc(e.message)}). Press ⏭ or ▶ on a track to carry on.`);
-        }
-    }
     // Which track in the set is this? By id, or, since Spotify sometimes plays another release of the same
-    // recording under a different id, by name for the track we just queued (or the next few).
+    // recording under a different id, by name for the track we asked for.
     const baseName = n => (n || '').toLowerCase().replace(/\s*[-(\[].*$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
     const nameOf = q => { const m = /data-name="([^"]*)"/.exec(q.html || ''); return m ? new DOMParser().parseFromString(m[1], 'text/html').body.textContent : ''; };
     function whichInSet(id, name) {
         const i = S.queue.findIndex(q => q.id === id || q.alt === id);
         if (i >= 0) return i;
-        for (let j = Math.max(0, S.current + 1); j <= Math.min(S.queue.length - 1, S.sent + 2); j++) {
-            if (baseName(nameOf(S.queue[j])) && baseName(nameOf(S.queue[j])) === baseName(name)) {
-                S.queue[j].alt = id;  // remember the other id for next time
-                return j;
-            }
+        const asked = S.queue[S.current];
+        if (asked && baseName(name) && baseName(nameOf(asked)) === baseName(name)) {
+            asked.alt = id;  // remember the other id for next time
+            return S.current;
         }
         return -1;
     }
-    // Something outside the set is playing (Spotify's autoplay, or something picked elsewhere): let it play,
-    // make sure the set's next track follows it, and say so.
-    function offTheSet(id) {
-        if (S.offSet === id) return;
-        S.offSet = id;
-        status(`${S.nowHtml} <span class="rp-off">(not from this set; back to it next)</span>`);
-        if (S.sent <= S.current && S.current < S.queue.length - 1) queueNext();
-    }
-    // what's playing and the track already handed to Spotify stay; the rest is re-sequenced
-    // (random: from a random new start instead of from here)
+    // what's playing stays; everything after it is re-sequenced (random: from a random new start instead of here)
     async function retune(random) {
         if (!S.active) return;
-        const keep = Math.max(S.current, S.sent);
+        const keep = S.current;
         try {
             replaceAfter(keep, await more(keep, 15, random), true);
             if (random) { $('rp-from').textContent = 'From a random new start'; S.genre = null; }
             keepGoing();
         } catch (e) { status(`Couldn't change what's next (${esc(e.message)}).`); }
+    }
+
+    // What Spotify says is playing, against what the radio asked for.
+    function onState(state, id, name) {
+        const i = whichInSet(id, name);
+        if (S.pending != null) {
+            // waiting for the track we asked for: anything else is the old track winding down; ignore it
+            if (i !== S.pending) return;
+            S.pending = null;
+        }
+        if (!S.active) return;
+        if (i === S.current) {
+            const wasNearEnd = nearEnd();
+            S.clock = {pos: state.position, at: Date.now(), duration: state.duration || (S.clock && S.clock.duration), paused: state.paused};
+            // the track has run out (Spotify stops at the end, repeat being off): on to the next
+            if (state.paused && state.position === 0 && wasNearEnd) { advance(i); return; }
+            scheduleEnd();
+            keepGoing();
+        } else if (i >= 0) {
+            // another track from the set, started some other way: follow along
+            S.current = i;
+            S.clock = {pos: state.position, at: Date.now(), duration: state.duration, paused: state.paused};
+            mark(); save(); scheduleEnd();
+        } else if (nearEnd()) {
+            // Spotify's autoplay stepped in as our track ended: back to the set
+            advance(S.current);
+        } else if (!state.paused) {
+            // something else chosen in Spotify: the radio steps aside rather than fight over it
+            S.active = false;
+            clearTimeout(S.endTimer);
+            status(`${S.nowHtml} <span class="rp-off">(not from Birds radio; ▶ on a track to go back to the set)</span>`);
+        }
     }
 
     function connect() {
@@ -374,16 +404,12 @@
                 status(S.nowHtml);
                 $('rp-play').textContent = state.paused ? '▶' : '⏸';
                 $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
-                if (S.stale.has(id) && !state.paused) { S.stale.delete(id); p.nextTrack(); return; }
                 if (S.active && state.repeat_mode && !S.repeatFixing) {  // switched on elsewhere: off again
                     S.repeatFixing = true;
                     noRepeat();
                     setTimeout(() => { S.repeatFixing = false; }, 5000);
                 }
-                const i = whichInSet(id, t.name);
-                if (i >= 0 && i !== S.current) { S.current = i; mark(); save(); }
-                if (i >= 0) keepGoing();
-                else if (S.active && !state.paused) offTheSet(id);
+                onState(state, id, t.name);
             });
             p.connect();
         };
@@ -483,8 +509,8 @@
         const play = e.target.closest('.play-from');
         if (play && S.player) {
             const li = play.closest('li');
-            if (li.closest('#rp-list')) playFrom(liveRows().indexOf(li));
-            else { playFrom(pageRows().indexOf(li), pageSet(), pageLabel()); S.genre = pageGenre(); }
+            if (li.closest('#rp-list')) playAt(liveRows().indexOf(li));
+            else { S.genre = pageGenre(); playAt(pageRows().indexOf(li), pageSet(), pageLabel()); }
             return;
         }
         const nav = e.target.closest('.radio-nav a');
@@ -498,18 +524,20 @@
         }
         if (!S.player) return;
         if (e.target.closest('#radio-play-set')) {
-            playFrom(0, pageSet(), pageLabel());
             S.genre = pageGenre();
+            playAt(0, pageSet(), pageLabel());
         } else if (e.target.closest('#rp-play')) {
             if (S.active && S.ready) S.player.togglePlay();
-            else if (S.queue.length) {  // picking up after a reload, or after the player dropped out
-                const at = S.active ? Math.max(0, S.current) : S.resume;
-                (S.ready ? Promise.resolve() : reconnect()).then(() => playFrom(at || 0)).catch(e => status(esc(e.message)));
+            else if (S.queue.length) {  // picking up after a reload, after stepping aside, or after the player dropped out
+                const at = S.resume != null ? S.resume : Math.max(0, S.current);
+                S.resume = null;
+                (S.ready ? Promise.resolve() : reconnect()).then(() => playAt(at)).catch(e => status(esc(e.message)));
             }
-            else if (pageRows().length) { playFrom(0, pageSet(), pageLabel()); S.genre = pageGenre(); }
+            else if (pageRows().length) { S.genre = pageGenre(); playAt(0, pageSet(), pageLabel()); }
             else startRadio('/radio');
         } else if (e.target.closest('#rp-next')) {
-            S.player.nextTrack();
+            if (S.active) advance(S.current);
+            else if (S.queue[S.current + 1]) playAt(S.current + 1);
         } else if (e.target.closest('#rp-toggle')) {
             openDrawer($('rp-drawer').hidden);
         } else if (e.target.closest('#rp-sync')) {

@@ -10,6 +10,13 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 
 - In a Claude Code cloud session there's no virtualenv: `pip install -r requirements.txt` and run `python3 app.py` (PORT env var); Chromium for Playwright is at `/opt/pw-browsers/chromium`.
 
+## Tests
+
+- `pip install -r requirements-dev.txt`, then `pytest tests` (about 30s). `tests/test_radio.py` covers the sequencer
+  and its endpoints; `tests/test_player.py` drives the radio player in Chromium against a fake Spotify
+  (`tests/fake_spotify.js`: the Web API and Web Playback SDK, controllable from tests). Browser tests skip without
+  Playwright/Chromium. Change the player? Add or adjust a test there first.
+
 ## Notes
 
 - `notes/genres.md`: open questions and an experiment idea for genre tagging.

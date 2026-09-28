@@ -1,0 +1,3 @@
+-r requirements.txt
+pytest
+playwright  # browser tests; also needs a Chromium (`playwright install chromium`, or PLAYWRIGHT_CHROMIUM=path)
