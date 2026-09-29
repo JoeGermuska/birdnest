@@ -282,7 +282,6 @@ section.home { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
 .note-return .note-label::before { background: #8e44ad; }
 .note-regular .note-label::before { background: #d68910; }
 .note-genre .note-label::before { background: #229954; }
-.note-radio .note-label::before { background: #7a2e5e; }
  
 /* Autocomplete styles */
 .autocomplete-container {

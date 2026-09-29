@@ -751,7 +751,7 @@ class History:
 
     def home_notes(self, rng=None):
         """Small cards for the home page wall: a return, a much-repeated track, a very new show, a regular,
-        a DJ, a random show to pull out, and a radio start. Different picks each call."""
+        a DJ and a random show to pull out. Different picks each call."""
         rng = rng or random.Random()
         if not hasattr(self, '_home_pools'):
             self._home_pools = {'returns': self._rank_returns()['rows'][:60], 'tracks': self._rank_tracks()['rows'][:40],
@@ -780,10 +780,7 @@ class History:
         d = self.show_dates[rng.choice(shows)]
         notes.append({'kind': 'random', 'label': 'Pull one out', 'parts': [],
                       'link': {'show': d, 'text': f"{d:%B} {d.day}, {d.year}"}, 'tail': ", picked at random"})
-        d = self.show_dates[rng.choice(shows)]
-        notes.append({'kind': 'radio', 'label': 'Birds radio', 'parts': ["Start the radio from the show of "],
-                      'radio': d, 'text': f"{d:%B} {d.day}, {d.year}"})
-        for n in notes:  # everything but the radio start reads as one run of parts
+        for n in notes:  # each reads as one run of parts
             n['parts'] = n['parts'] + ([n.pop('link')] if 'link' in n else []) + ([n.pop('tail')] if 'tail' in n else [])
         rng.shuffle(notes)
         return notes

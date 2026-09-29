@@ -40,7 +40,7 @@
         {% else %}{% set n = item.note %}
         <div class="note-card note-{{ n.kind }}" style="--tilt: {{ item.tilt }}deg">
             <span class="note-label">{{ n.label }}</span>
-            <p>{% if n.radio %}{{ parts(n.parts) }}{{ radio_button(n.text, url_for('radio_page', show=n.radio.isoformat())) }}{% else %}{{ parts(n.parts) }}{% endif %}</p>
+            <p>{{ parts(n.parts) }}</p>
             {% if n.more %}<a class="more" href="{{ url_for('ranking', kind=n.more.ranking, h=n.more.anchor) }}#{{ n.more.anchor }}">see them all →</a>{% endif %}
         </div>
         {% endif %}
