@@ -16,7 +16,10 @@ ways in are done together, and the design pass fits around them.
    With it, new type: Alegreya Sans for titles, labels and controls, David Libre for reading (quote marks from
    Alegreya), as `--font-display`/`--font-body` and a few color tokens on `:root` in `style.css`.
 
-4. **Design pass on the other pages**: shared colors/type tokens (fonts done; move the remaining colors and the scattered 0.7–0.85rem sizes onto tokens; links site-wide in ink like `.latest-links` instead of browser blue), **dark and light mode** (built on those tokens), tables on phones, before/after screenshots.
+4. [X]  **Design pass on the other pages**: colors, fonts and small type sizes are tokens on `:root` in `style.css`;
+   **dark mode** redefines the color tokens (follows the system; the banner's switch picks the other); links are ink
+   instead of browser blue; track tables become cards on phones. Still open: images with white borders glare a bit in
+   dark mode; `templates/_tracks_table.html` isn't used anywhere.
 5. **Later**: option C (sort/filter the wall) as its own browse page; Apple Music in the radio player.
 
 ## Birds radio player
