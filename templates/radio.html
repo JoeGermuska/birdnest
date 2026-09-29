@@ -4,21 +4,21 @@
 <style>
     .radio-controls { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin: 14px 0; }
     .radio-controls label { display: flex; gap: 8px; align-items: center; }
-    .radio-controls .scale { font-size: 0.8rem; color: #777; }
-    .radio-controls button, .radio-save button { font: inherit; padding: 4px 12px; border: 1px solid #bbb;
-        border-radius: 4px; background: #fff; cursor: pointer; }
-    .radio-controls button:hover, .radio-save button:hover { background: #f0eee8; }
+    .radio-controls .scale { font-size: 0.8rem; color: var(--ink-3); }
+    .radio-controls button, .radio-save button { font: inherit; font-family: var(--font-display); padding: 4px 12px; border: 1px solid var(--control-rule);
+        border-radius: 4px; background: var(--bg); cursor: pointer; }
+    .radio-controls button:hover, .radio-save button:hover { background: var(--wash); }
     .radio-save { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
-    .radio-save input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; min-width: 0; width: 22rem; max-width: 100%; }
-    .radio-note { padding: 8px 12px; border-radius: 4px; background: #e8f6ee; color: #1d6b3d; }
-    .radio-note.error { background: #fbeaea; color: #922; }
+    .radio-save input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid var(--control-rule); border-radius: 4px; min-width: 0; width: 22rem; max-width: 100%; }
+    .radio-note { padding: 8px 12px; border-radius: 4px; background: var(--good-wash); color: var(--good); }
+    .radio-note.error { background: var(--bad-wash); color: var(--bad); }
     .radio-play-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
-    #radio-play-set { font: inherit; font-weight: 600; padding: 5px 14px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
+    #radio-play-set { font: inherit; font-family: var(--font-display); font-weight: 600; padding: 5px 14px; border: 1px solid var(--control-rule); border-radius: 4px; background: var(--bg); cursor: pointer; }
     :root:not(.player-ready) .radio-play-row { display: none; }
     .radio-start { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; margin: 16px 0 4px; }
-    .radio-start dt { font-size: 0.8rem; text-transform: uppercase; color: #777; }
+    .radio-start dt { font-size: 0.8rem; text-transform: uppercase; color: var(--ink-3); }
     .radio-start dd { margin: 2px 0 0; font-size: 1.15rem; font-weight: 600; }
-    .radio-start dd a { color: #222; }
+    .radio-start dd a { color: var(--ink); }
     .radio-start .muted { font-weight: normal; }
     .radio-start .seed { font-family: ui-monospace, Menlo, monospace; font-weight: 500; }
     .radio-nav { display: flex; gap: 14px; align-self: flex-end; }

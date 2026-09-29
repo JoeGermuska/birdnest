@@ -12,6 +12,24 @@
     {# only the quote marks and apostrophes, from Alegreya: David Libre's look like primes (see --font-body) #}
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,400;0,700;1,400&text=%E2%80%9C%E2%80%9D%E2%80%98%E2%80%99%22%27&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        // Light or dark: the system's setting, unless the banner's switch chose the other one (remembered here).
+        // Set before the page paints; <html> survives Turbo's page swaps, so this only needs to run once.
+        (function () {
+            const root = document.documentElement, systemDark = matchMedia('(prefers-color-scheme: dark)');
+            try { const t = localStorage.getItem('theme'); if (t) root.dataset.theme = t; } catch (e) {}
+            if (window.birdsThemeBound) return;
+            window.birdsThemeBound = true;
+            document.addEventListener('click', e => {
+                if (!e.target.closest('#theme-toggle')) return;
+                const dark = root.dataset.theme ? root.dataset.theme === 'dark' : systemDark.matches;
+                const next = dark ? 'light' : 'dark', system = systemDark.matches ? 'dark' : 'light';
+                // choosing what the system says goes back to following the system
+                if (next === system) delete root.dataset.theme; else root.dataset.theme = next;
+                try { if (next === system) localStorage.removeItem('theme'); else localStorage.setItem('theme', next); } catch (err) {}
+            });
+        })();
+    </script>
     <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script src="https://kit.fontawesome.com/65d0c7afaa.js" crossorigin="anonymous"></script>

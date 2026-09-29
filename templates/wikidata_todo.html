@@ -3,29 +3,29 @@
 {% block extra_head %}
 <style>
     .wd-controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 12px 0 16px; }
-    .wd-controls button, .wd-row button { font: inherit; font-size: 0.85rem; padding: 3px 10px; border: 1px solid #bbb;
-        border-radius: 4px; background: #fff; cursor: pointer; }
-    .wd-controls button:hover, .wd-row button:hover { background: #f0eee8; }
+    .wd-controls button, .wd-row button { font: inherit; font-family: var(--font-display); font-size: 0.85rem; padding: 3px 10px; border: 1px solid var(--control-rule);
+        border-radius: 4px; background: var(--bg); cursor: pointer; }
+    .wd-controls button:hover, .wd-row button:hover { background: var(--wash); }
     .wd-progress { font-weight: 600; }
-    .wd-status { color: #777; font-size: 0.85rem; }
+    .wd-status { color: var(--ink-3); font-size: 0.85rem; }
     .wd-list { list-style: none; padding: 0; margin: 0; }
     .wd-row { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; gap: 4px 14px; align-items: start;
-        padding: 10px 0; border-top: 1px solid #e5e5e5; }
+        padding: 10px 0; border-top: 1px solid var(--rule); }
     .wd-row h2 { font-size: 1rem; margin: 0; }
-    .wd-row h2 a { color: #222; }
+    .wd-row h2 a { color: var(--ink); }
     .wd-row .muted { font-weight: normal; margin-left: 6px; }
-    .wd-state { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #999; padding-top: 2px; }
-    .wd-row.is-done .wd-state { color: #1d6b3d; }
-    .wd-row.is-skipped .wd-state { color: #8a5a00; }
+    .wd-state { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-4); padding-top: 2px; }
+    .wd-row.is-done .wd-state { color: var(--good); }
+    .wd-row.is-skipped .wd-state { color: var(--warn); }
     .wd-row.is-done, .wd-row.is-skipped { opacity: 0.55; }
     .wd-spotify { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 4px 0; font-size: 0.9rem; }
-    .wd-spotify code { font-size: 0.85rem; background: #f3f1ec; padding: 2px 6px; border-radius: 3px; user-select: all; }
+    .wd-spotify code { font-size: 0.85rem; background: var(--wash); padding: 2px 6px; border-radius: 3px; user-select: all; }
     .wd-cands { margin: 4px 0 0; padding: 0; list-style: none; font-size: 0.9rem; }
     .wd-cands li { margin: 2px 0; }
-    .wd-cands .qid { font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; color: #777; }
-    .wd-note { color: #8a5a00; font-size: 0.8rem; }
-    .wd-found { color: #1d6b3d; font-size: 0.85rem; }
-    .badge-check { background: #fbefd5; color: #8a5a00; }
+    .wd-cands .qid { font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; color: var(--ink-3); }
+    .wd-note { color: var(--warn); font-size: 0.8rem; }
+    .wd-found { color: var(--good); font-size: 0.85rem; }
+    .badge-check { background: var(--warn-wash); color: var(--warn); }
     body.hide-finished .wd-row.is-done, body.hide-finished .wd-row.is-skipped { display: none; }
     @media (max-width: 600px) { .wd-row { grid-template-columns: minmax(0, 1fr) auto; } .wd-state { grid-column: 1 / -1; } }
 </style>
