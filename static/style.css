@@ -750,10 +750,41 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 .rp-scroll { position: relative; max-height: min(24rem, 50vh); overflow-y: auto; overflow-x: hidden; background: var(--bg); margin: 0 16px 10px; border: 1px solid var(--rule); border-radius: 6px; padding: 0 8px; }
 .rp-scroll .radio-set { margin: 0; }
 
-/* phones: wide track tables scroll sideways in their own box rather than widening the page (which also
-   pushed the fixed radio bar off screen). A proper narrow layout for tables is in notes/plan.md. */
+/* phones: each row of a track table becomes a small card (a grid) instead of columns, with no header row.
+   Show page: number and icons | track / artist / album / badges | time. Artist page: icons | track, album | dates.
+   Search: icons | cover | track / artist / album / dates. (The track cell's name and album are placed separately,
+   display: contents, so the artist can sit between them.) */
 @media (max-width: 700px) {
-    table.show-tracks { display: block; max-width: 100%; overflow-x: auto; }
+    table.show-tracks, table.show-tracks tbody { display: block; width: 100%; }
+    table.show-tracks thead { display: none; }
+    table.show-tracks tr { display: grid; column-gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+    table.show-tracks td { display: block; padding: 0; border: 0; }
+    table.show-tracks td.links { width: auto; padding-top: 3px; }
+    table.show-tracks .played a { white-space: nowrap; }
+
+    table.show-tracks:not(.artist-tracks):not(.search-tracks) tr { grid-template-columns: 2em minmax(0, 1fr) auto; }
+    table.show-tracks td.seq { grid-column: 1; grid-row: 1 / span 4; }
+    table.show-tracks:not(.artist-tracks):not(.search-tracks) td:nth-child(2) { display: contents; }
+    table.show-tracks:not(.artist-tracks):not(.search-tracks) .track-name { grid-column: 2; grid-row: 1; }
+    table.show-tracks:not(.artist-tracks):not(.search-tracks) td:nth-child(3) { grid-column: 2; grid-row: 2; color: var(--ink-2); }
+    table.show-tracks:not(.artist-tracks):not(.search-tracks) .album { grid-column: 2 / span 2; grid-row: 3; }
+    table.show-tracks:not(.artist-tracks):not(.search-tracks) td:nth-child(5) { grid-column: 3; grid-row: 1; }
+    table.show-tracks td.notes { grid-column: 2 / span 2; grid-row: 4; }
+    table.show-tracks td.notes .badge { margin-top: 4px; }
+
+    table.artist-tracks tr { grid-template-columns: 1.6em minmax(0, 1fr) auto; }
+    table.artist-tracks td.links { grid-column: 1; grid-row: 1 / span 2; }
+    table.artist-tracks td.played { grid-column: 3; grid-row: 1 / span 2; text-align: right; }
+    table.artist-tracks td.label { display: block; grid-column: 2; grid-row: 2; }
+
+    table.search-tracks tr { grid-template-columns: 1.6em 40px minmax(0, 1fr); }
+    table.search-tracks td.links { grid-column: 1; grid-row: 1 / span 4; }
+    table.search-tracks td.thumb { grid-column: 2; grid-row: 1 / span 4; width: auto; }
+    table.search-tracks td:nth-child(3) { display: contents; }
+    table.search-tracks .track-name { grid-column: 3; grid-row: 1; }
+    table.search-tracks td:nth-child(4) { grid-column: 3; grid-row: 2; color: var(--ink-2); }
+    table.search-tracks .album { grid-column: 3; grid-row: 3; }
+    table.search-tracks td.played { grid-column: 3; grid-row: 4; color: var(--ink-3); }
 }
 @media (max-width: 700px) {
     .show-header > div { min-width: 0; }
