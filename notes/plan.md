@@ -56,5 +56,4 @@ ways in are done together, and the design pass fits around them.
 - Wikidata to-do page: code on main, but `wikidata_candidate` isn't built; run `python wikidata_candidates.py`,
   commit birdnest.db, deploy. Bulk QuickStatements once the Wikidata account is autoconfirmed.
 - Spotify: app is in development mode (add each friend to its user list)
-- Security nicety: the Spotify OAuth flow doesn't check `state`.
 - Genres: see notes/genres.md (backburner).

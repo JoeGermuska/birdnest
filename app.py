@@ -10,6 +10,7 @@ from datetime import date
 from collections import Counter
 import os
 import random
+import secrets
 import json
 from urllib.parse import urlparse 
 
@@ -352,6 +353,13 @@ def _spotify_auth():
                         cache_handler=FlaskSessionCacheHandler(session), show_dialog=False)
 
 
+def _send_to_spotify(auth):
+    """Off to Spotify to log in, with a fresh random state that the callback must see again: a callback with any
+    other state (someone else's link, say) is refused, so nobody can log a friend in to their own account."""
+    session['oauth_state'] = secrets.token_urlsafe(24)
+    return redirect(auth.get_authorize_url(state=session['oauth_state']))
+
+
 def _save_pending_playlist(auth):
     import spotipy
     pending = session.pop('pending_playlist', None)
@@ -380,7 +388,7 @@ def radio_save():
     auth = _spotify_auth()
     if auth.validate_token(auth.cache_handler.get_cached_token()):
         return redirect(_save_pending_playlist(auth))
-    return redirect(auth.get_authorize_url())
+    return _send_to_spotify(auth)
 
 
 @app.route('/spotify/login')
@@ -388,7 +396,7 @@ def spotify_login():
     if not _spotify_configured():
         abort(404)
     session['after_login'] = _local_path(request.args.get('next'), url_for('radio_page'))
-    return redirect(_spotify_auth().get_authorize_url())
+    return _send_to_spotify(_spotify_auth())
 
 
 @app.route('/spotify/logout')
@@ -411,6 +419,11 @@ def spotify_callback():
     if not _spotify_configured():
         abort(404)
     auth = _spotify_auth()
+    expected, state = session.pop('oauth_state', None), request.args.get('state') or ''
+    if not expected or not secrets.compare_digest(expected.encode(), state.encode()):
+        session.pop('pending_playlist', None)
+        session['save_error'] = "that Spotify login didn't start here. Please log in again."
+        return redirect(session.pop('after_login', None) or url_for('radio_page'))
     if request.args.get('code'):
         auth.get_access_token(request.args['code'], check_cache=False)
         return redirect(_save_pending_playlist(auth) or session.pop('after_login', None) or url_for('radio_page'))
