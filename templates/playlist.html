@@ -23,7 +23,7 @@
                 <p class="show-meta">
                     {{ stats.tracks }} tracks · {{ stats.runtime_min // 60 }}h {{ '%02d' % (stats.runtime_min % 60) }}m · {{ stats.artists }} artists
                 </p>
-                <div class="novelty" title="Share of this show's artists who had never been played before. Dots are the {{ stats.novelty_peers|length }} shows around this one.">
+                <div class="novelty" title="{{ (stats.new_artists * 100)|round|int }}% of this show's artists had never been played before; {{ (stats.repeats * 100)|round|int }}% of its songs were heard on earlier shows, which counts a little against it. Dots are the {{ stats.novelty_peers|length }} shows around this one.">
                     <span class="novelty-label">Novelty</span>
                     <span class="novelty-value">{{ (stats.novelty * 100)|round|int }}</span>
                     <svg class="novelty-strip" viewBox="0 0 200 16" width="200" height="16" aria-hidden="true">

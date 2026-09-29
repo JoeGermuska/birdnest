@@ -33,7 +33,7 @@
     </div>
     {% endif %}
 
-    <h2 class="home-head">Every show <span class="muted">{{ n_shows }} since {{ wall[-1].show.date.strftime('%B') }} {{ wall[-1].show.date.year }}</span></h2>
+    <h2 class="home-head">Every show <span class="muted">{{ n_shows }} since {{ wall[-1].show.date.strftime('%B') }} {{ wall[-1].show.date.year }} · <a href="{{ url_for('browse') }}">sort and filter them</a></span></h2>
     <div class="tile-grid">
         {% for item in wall %}
         {% if item.show %}{% with playlist=item.show, label=None %}{% include "_playlist_tile.html" %}{% endwith %}

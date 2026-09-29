@@ -1,0 +1,38 @@
+{% extends "_base.html" %}
+{% block title %}Every show{% endblock title %}
+{% block content %}
+{# every show as tiles; each control is a link (or a GET form) to this page with the query changed #}
+<section class="browse">
+    <div class="title-unit">
+        <h1>Every show</h1>
+    </div>
+    <div class="browse-controls">
+        <nav class="seg" aria-label="Order">
+            {% for key, name in sorts.items() %}<a href="{{ link(sort=key) }}"{% if key == current.sort %} aria-current="true"{% endif %}>{{ name }}</a>{% endfor %}
+        </nav>
+        <form class="browse-dj" action="{{ url_for('browse') }}" method="get">
+            {% if current.sort != 'newest' %}<input type="hidden" name="sort" value="{{ current.sort }}">{% endif %}
+            {% if current.family %}<input type="hidden" name="family" value="{{ current.family }}">{% endif %}
+            <label>In the room
+                <select name="dj" onchange="this.form.requestSubmit()">
+                    <option value="">Anyone</option>
+                    {% for slug, name, n in djs %}<option value="{{ slug }}"{% if slug == current.dj %} selected{% endif %}>{{ name }} ({{ n }})</option>{% endfor %}
+                </select></label>
+            <noscript><button type="submit">Show</button></noscript>
+        </form>
+        <nav class="family-chips" aria-label="Leaning toward">
+            <a href="{{ link(family=None) }}"{% if not current.family %} aria-current="true"{% endif %}>Any sound</a>
+            {% for f, color in families %}<a href="{{ link(family=f) }}"{% if f == current.family %} aria-current="true"{% endif %}><span class="swatch" style="background: {{ color }}"></span>{{ f }}</a>{% endfor %}
+        </nav>
+    </div>
+    <p class="browse-count">{{ count }} show{{ 's' if count != 1 }}{% if dj_name %} with {{ dj_name }} in the room{% endif %}{% if current.family %}, leaning {{ current.family }}{% endif %}{% if current.sort == 'new' %}, the most new artists for their time first{% endif %}</p>
+
+    {% for year, tiles in groups %}
+    {% if year %}<h2 class="year-head" id="y{{ year }}">{{ year }} <span class="muted">{{ tiles|length }} show{{ 's' if tiles|length != 1 }}</span></h2>{% endif %}
+    <div class="tile-grid">
+        {% for playlist in tiles %}{% with label=playlist.label %}{% include "_playlist_tile.html" %}{% endwith %}{% endfor %}
+    </div>
+    {% endfor %}
+    {% if not count %}<p>No shows match. <a href="{{ link(dj=None, family=None) }}">Show them all</a>.</p>{% endif %}
+</section>
+{% endblock content %}

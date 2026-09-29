@@ -8,6 +8,7 @@ import radio
 import genre_families
 from datetime import date
 from collections import Counter
+import itertools
 import os
 import random
 import secrets
@@ -60,6 +61,54 @@ def index():
                            room=history.show_room(latest), mix=history.show_mix(latest),
                            facts=history.show_factoids(latest), stats=history.show_stats(latest),
                            this_week=[tile(p) for p in history.same_week(latest)], wall=wall, n_shows=len(pids))
+
+
+BROWSE_SORTS = {'newest': 'Newest', 'oldest': 'Oldest', 'new': 'Most new for its time', 'shuffle': 'Shuffle'}
+
+
+@app.route('/shows')
+def browse():
+    """Every show as tiles, sorted and filtered by the query: sort, dj (slug), family (genre family it leans toward)."""
+    history = factoids.get_history()
+    shows = history.browse()
+    sort = request.args.get('sort') if request.args.get('sort') in BROWSE_SORTS else 'newest'
+    dj = request.args.get('dj') if request.args.get('dj') in history.dj_by_slug else None
+    families = [f for f in genre_families.FAMILY_NAMES if sum(f in s['leans'] for s in shows) >= 5]
+    family = request.args.get('family') if request.args.get('family') in families else None
+    if dj:
+        shows = [s for s in shows if history.dj_by_slug[dj] in s['djs']]
+    if family:
+        shows = [s for s in shows if family in s['leans']]
+    seed = request.args.get('seed', type=int)
+    if sort == 'shuffle':
+        seed = seed if seed is not None else random.randrange(10 ** 6)
+        shows = sorted(shows, key=lambda s: s['date'])
+        random.Random(seed).shuffle(shows)
+    else:
+        key = {'newest': lambda s: s['date'], 'oldest': lambda s: s['date'], 'new': lambda s: s['lift']}[sort]
+        shows = sorted(shows, key=key, reverse=sort != 'oldest')
+
+    def tile(s):
+        t = {**history.shows[s['pid']], 'caption': history.show_caption(s['pid'])['image']}
+        if sort == 'new':
+            t['label'] = f"{s['date']:%b} {s['date'].day}, {s['date'].year} · novelty {round(s['novelty'] * 100)}"
+        return t
+    if sort in ('newest', 'oldest'):
+        groups = [(y, [tile(s) for s in g]) for y, g in itertools.groupby(shows, key=lambda s: s['date'].year)]
+    else:
+        groups = [(None, [tile(s) for s in shows])]
+
+    current = {'sort': sort, 'dj': dj, 'family': family}
+    def link(**change):  # this view with some controls changed; a fresh shuffle each time it's asked for
+        q = {k: v for k, v in {**current, **change}.items() if v and not (k == 'sort' and v == 'newest')}
+        if q.get('sort') == 'shuffle':
+            q['seed'] = random.randrange(10 ** 6)
+        return url_for('browse', **q)
+    djs = sorted(((history.djs[i]['slug'], history.djs[i]['name'], len(p)) for i, p in history.dj_shows.items()),
+                 key=lambda d: (-d[2], d[1]))
+    return render_template('shows.html', groups=groups, count=len(shows), current=current, link=link,
+                           sorts=BROWSE_SORTS, djs=djs, dj_name=dj and history.djs[history.dj_by_slug[dj]]['name'],
+                           families=[(f, genre_families.COLORS[f][0]) for f in families])
 
 
 @app.route('/shows/random')

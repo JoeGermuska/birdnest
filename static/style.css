@@ -810,6 +810,27 @@ a.radio-start-link .radio-icon, .rp-now .radio-icon { vertical-align: -2px; colo
 .title-unit .show-cover { margin: 4px 0 0; font-style: italic; color: var(--ink-2); font-size: 0.95rem; }
 .title-unit + .action-row { margin-top: 0; }
 
+/* Browse (/shows): every show, sorted and filtered; the controls are links */
+section.browse { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
+.browse-controls { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; margin: 0 0 12px; font-family: var(--font-display); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--control-rule); border-radius: 4px; overflow: hidden; font-size: var(--size-small); }
+.seg a { padding: 4px 12px; color: var(--ink-2); text-decoration: none; }
+.seg a + a { border-left: 1px solid var(--control-rule); }
+.seg a:hover { background: var(--wash); }
+.seg a[aria-current] { background: var(--ink); color: var(--bg); }
+.browse-dj label { display: flex; gap: 8px; align-items: center; font-size: var(--size-small); color: var(--ink-2); }
+.browse-dj select { font: inherit; font-size: var(--size-small); }
+.family-chips { display: flex; flex-wrap: wrap; gap: 6px; font-size: var(--size-note); }
+.family-chips a { padding: 3px 10px; border-radius: 999px; background: var(--wash); color: var(--ink); text-decoration: none; white-space: nowrap; }
+.family-chips a:hover { background: var(--wash-strong); }
+.family-chips a[aria-current] { background: var(--ink); color: var(--bg); }
+.family-chips .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+@media (max-width: 700px) { .family-chips { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 2px; } }
+.browse-count { color: var(--ink-3); font-size: var(--size-note); margin: 0 0 10px; }
+.year-head { font-size: 1.5rem; margin: 26px 0 10px; }
+.year-head .muted, .home-head .muted { font-family: var(--font-display); font-weight: normal; margin-left: 8px; }
+.home-head .muted a { color: inherit; }
+
 /* Type roles. Alegreya Sans: titles, small-caps labels, controls, chart text and figures shown as data.
    Everything else reads in David Libre (body). Uppercase labels share one tracking. */
 h1, h2, h3, .home-head, nav#topbar h1 { font-family: var(--font-display); font-weight: 700; line-height: 1.1; }

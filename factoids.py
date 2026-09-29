@@ -26,6 +26,7 @@ THEME_NIGHT_MIN_TRACKS = 4
 LONG_ABSENCE_DAYS = 365 * 2
 REGULAR_MIN_SHOWS = 10
 NOVELTY_WINDOW = 20  # shows on each side to compare novelty against
+REPEAT_PENALTY = 0.5  # novelty: new artists' share, less this much of the share of songs heard on earlier shows
 GENRE_MIN_TRACKS = 20
 LINK_LABELS = [('wikipedia', 'Wikipedia'), ('musicbrainz', 'MusicBrainz'), ('discogs', 'Discogs'),
                ('bandcamp', 'Bandcamp'), ('allmusic', 'AllMusic'), ('website', 'Website'), ('wikidata', 'Wikidata')]  # ignore very rare genres, whose lift is noisy
@@ -206,10 +207,12 @@ class History:
         self.family_of = genre_families.assign(self.artist_genres)
         self.mix = {pid: self._family_mix(pid) for pid in self.show_tracks}
 
-        # Novelty: share of a show's artists who had never been played before.
-        # It trends down as the pool of already-played artists grows, so rank
+        # Novelty: share of a show's artists who had never been played before, less a little (REPEAT_PENALTY)
+        # for songs heard on earlier shows. It trends down as the pool of already-played artists grows, so rank
         # each show against a sliding window of neighboring shows.
-        self.novelty = {pid: self._debut_share(pid) for pid in self.show_tracks}
+        self.new_artists = {pid: self._debut_share(pid) for pid in self.show_tracks}
+        self.repeats = self._repeat_shares()
+        self.novelty = {pid: max(0.0, self.new_artists[pid] - REPEAT_PENALTY * self.repeats[pid]) for pid in self.show_tracks}
         ordered = sorted(self.novelty, key=self.show_dates.get)
         self.novelty_peers, self.novelty_rank = {}, {}
         for i, pid in enumerate(ordered):
@@ -224,6 +227,15 @@ class History:
         # Recordings can appear under several Spotify track ids (single vs. album,
         # compilations); ISRC groups them so repeat counts are honest.
         return self.tracks[track_id]['isrc_id'] or f"t{track_id}"
+
+    def _repeat_shares(self):
+        """Per show, the share of its tracks whose recording was played on an earlier show."""
+        first = {}
+        for pid in sorted(self.show_tracks, key=self.show_dates.get):
+            for t in self.show_tracks[pid]:
+                first.setdefault(self.recording_key(t), self.show_dates[pid])
+        return {pid: sum(1 for t in tids if first[self.recording_key(t)] < self.show_dates[pid]) / len(tids) if tids else 0
+                for pid, tids in self.show_tracks.items()}
 
     def _debut_share(self, pid):
         d = self.show_dates[pid]
@@ -381,6 +393,8 @@ class History:
             'runtime_min': sum(self.tracks[t]['duration_ms'] or 0 for t in tids) // 60000,
             'artists': len({a for t in tids for a in self.track_artists[t]}),
             'novelty': self.novelty.get(playlist_id, 0),
+            'new_artists': self.new_artists.get(playlist_id, 0),
+            'repeats': self.repeats.get(playlist_id, 0),
             'novelty_rank': self.novelty_rank.get(playlist_id, 0.5),
             'novelty_peers': self.novelty_peers.get(playlist_id, []),
         }
@@ -766,10 +780,10 @@ class History:
         t = rng.choice(pools['tracks'])
         notes.append({'kind': 'repeat', 'label': 'Heard it before', 'parts': t['label'] + [f", played {t['value']} times"],
                       'more': {'ranking': 'tracks', 'anchor': t['anchor']}})
-        novel = sorted(shows, key=lambda p: -self.novelty[p])[:25]
+        novel = sorted(shows, key=lambda p: -self.new_artists[p])[:25]
         p = rng.choice(novel)
         d = self.show_dates[p]
-        notes.append({'kind': 'theme', 'label': 'All new', 'parts': [f"{round(self.novelty[p] * 100)}% of the artists on "],
+        notes.append({'kind': 'theme', 'label': 'All new', 'parts': [f"{round(self.new_artists[p] * 100)}% of the artists on "],
                       'link': {'show': d, 'text': f"{d:%B} {d.day}, {d.year}"}, 'tail': " had never been played before"})
         ar = rng.choice(pools['artists'])
         notes.append({'kind': 'regular', 'label': 'Regulars', 'parts': ar['label'] + [f", at {ar['value']} shows"]})
@@ -784,6 +798,24 @@ class History:
             n['parts'] = n['parts'] + ([n.pop('link')] if 'link' in n else []) + ([n.pop('tail')] if 'tail' in n else [])
         rng.shuffle(notes)
         return notes
+
+    def browse(self):
+        """Every show with what the browse page sorts and filters on: novelty against the shows around it (lift:
+        its share of new artists minus their median), who was in the room, and the genre families it leans toward
+        (at least 1.5 times the family's average share across the archive, and at least 12% of the show)."""
+        if not hasattr(self, '_browse'):
+            n, usual = len(self.mix), Counter()
+            for shares, _ in self.mix.values():
+                usual.update({f: v / n for f, v in shares.items() if f})
+            self._browse = []
+            for pid in self.show_tracks:
+                peers, shares = self.novelty_peers[pid], self.mix[pid][0]
+                self._browse.append({
+                    'pid': pid, 'date': self.show_dates[pid], 'novelty': self.novelty[pid],
+                    'lift': self.novelty[pid] - peers[len(peers) // 2],
+                    'djs': {i for i, _ in self.show_djs.get(pid, ())},
+                    'leans': {f for f, v in shares.items() if f and v >= max(0.12, 1.5 * usual[f])}})
+        return self._browse
 
     def genre_tree(self):
         """Plays per genre per year, grouped into families, for the genre map. Each play
@@ -815,6 +847,7 @@ class History:
         for pid in sorted(self.novelty, key=self.show_dates.get):
             peers = self.novelty_peers[pid]
             out.append({'date': self.show_dates[pid], 'novelty': self.novelty[pid],
+                        'new_artists': self.new_artists[pid], 'repeats': self.repeats[pid],
                         'median': peers[len(peers) // 2], 'rank': self.novelty_rank[pid]})
         return out
 
@@ -823,11 +856,13 @@ RANKINGS = ['artists', 'tracks', 'returns', 'labels', 'djs']  # novelty has its 
 
 
 def _signature(db_path):
-    """Hash of the database file: mtimes change on git checkout and Docker COPY, content doesn't."""
+    """Hash of the database file and of the code that builds History from it, so either changing rebuilds the
+    cache (mtimes change on git checkout and Docker COPY, content doesn't)."""
     h = hashlib.sha1()
-    with open(db_path, 'rb') as f:
-        for block in iter(lambda: f.read(1 << 20), b''):
-            h.update(block)
+    for path in (db_path, __file__, genre_families.__file__):
+        with open(path, 'rb') as f:
+            for block in iter(lambda: f.read(1 << 20), b''):
+                h.update(block)
     return h.hexdigest()
 
 
