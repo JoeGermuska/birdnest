@@ -25,10 +25,12 @@ ways in are done together, and the design pass fits around them.
      against a show: `REPEAT_PENALTY` in `factoids.py`.)
    - "In the room" should maybe be additive: pick several people, see the shows they were all in.
    - "Leans <genre>" (a family at 1.5x its usual share) doesn't obviously make anyone want to filter by it.
-6. **Cover captions for the older shows**: only ~162 of 284 shows say what the playlist image is (the "Playlist image:"
-   part of the Spotify description). Earlier ones may be in Joe's Google Doc from before that habit started:
-   https://docs.google.com/document/d/1cCRNWvXN7pYyKQ3JCrp8yLNofaLE1gsKcj5Ot1F-Sb0/edit?tab=t.0#heading=h.h6jguqwf34z4
-   Fill the blanks from there (a small table of date -> caption, used when the description has none).
+6. [X]  **Cover captions for the older shows**: `load_captions.py` loads the Google Doc's "Birds" section (one heading
+   per week, 5/2020 to 10/2024) into `cover_caption`; `show_caption` uses it when the Spotify description has no
+   "Playlist image:". 269 of 284 shows now have one. Still none for 2020-04-07, 04-16, 04-23 (before the doc's
+   list), 2020-12-10, 2024-11-21, 2025-01-02, 01-30, 02-27, 03-13, 10-01, 10-30, 2026-01-08, 04-02, 04-16, 06-11.
+   Rerun from a Markdown download of the doc (File > Download > Markdown) to fix a caption or get the emoji back
+   (one in 12/23/2021 was lost in the export used).
 7. **Later**: Apple Music in the radio player.
 
 ## Birds radio player

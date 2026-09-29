@@ -485,6 +485,14 @@ class ShowDJ(Base):
     dj = relationship("DJ", back_populates="show_djs")
 
 
+class CoverCaption(Base):
+    """What a show's playlist image is, for shows whose Spotify description doesn't say (the older ones);
+    see load_captions.py."""
+    __tablename__ = 'cover_caption'
+    playlist_id = Column(Integer, ForeignKey("playlist.playlist_id"), primary_key=True)
+    caption = Column(String)
+
+
 class Genre(Base):
     __tablename__ = 'genre'
     genre_id = Column(Integer, primary_key=True)

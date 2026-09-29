@@ -142,6 +142,11 @@ class History:
             for r in con.execute("select artist_id, source, url from artist_link"):
                 self.artist_links[r['artist_id']][r['source']] = r['url']
 
+        # what the older shows' playlist images are, from before that went in the description (load_captions.py)
+        self.cover_captions = {}
+        if con.execute("select 1 from sqlite_master where name='cover_caption'").fetchone():
+            self.cover_captions = {r['playlist_id']: r['caption'] for r in con.execute("select playlist_id, caption from cover_caption")}
+
         # who was in the room, in join order (see load_djs.py)
         self.djs = {}  # dj_id -> {'dj_id', 'name', 'slug'}
         self.show_djs = defaultdict(list)  # playlist_id -> [(dj_id, note)]
@@ -742,11 +747,13 @@ class History:
 
     def show_caption(self, playlist_id):
         """A show's description split into its own note and the playlist image credit, without the
-        "What we played for each other on <date>." boilerplate."""
+        "What we played for each other on <date>." boilerplate. Older shows' descriptions don't say what the
+        image is; for those, the caption from the Google Doc (cover_caption), if there is one."""
         text = html.unescape(self.shows[playlist_id]['description'] or '')
         text = re.sub(r'^\s*What we played for each other on [\d/]+\.?\s*', '', text)
         note, _, image = text.partition('Playlist image:')
-        return {'note': ' '.join(note.split()), 'image': ' '.join(image.split()).rstrip('.')}
+        image = ' '.join(image.split()).rstrip('.') or self.cover_captions.get(playlist_id, '')
+        return {'note': ' '.join(note.split()), 'image': image}
 
     def same_week(self, playlist_id, days=3):
         """The show closest to this one's calendar date in each earlier year (within `days`), newest first."""
