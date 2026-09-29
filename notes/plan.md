@@ -20,7 +20,16 @@ ways in are done together, and the design pass fits around them.
    **dark mode** redefines the color tokens (follows the system; the banner's switch picks the other); links are ink
    instead of browser blue; track tables become cards on phones. Still open: images with white borders glare a bit in
    dark mode; `templates/_tracks_table.html` isn't used anywhere.
-5. **Later**: option C (sort/filter the wall) as its own browse page; Apple Music in the radio player.
+5. **Browse page** (`/shows`, 0e12cfa): option C as its own page. Built, but the filters need rethinking (Joe, 2026-09-28):
+   - "Most new for its time" doesn't mean much to a listener. (Novelty now also counts repeated songs a little
+     against a show: `REPEAT_PENALTY` in `factoids.py`.)
+   - "In the room" should maybe be additive: pick several people, see the shows they were all in.
+   - "Leans <genre>" (a family at 1.5x its usual share) doesn't obviously make anyone want to filter by it.
+6. **Cover captions for the older shows**: only ~162 of 284 shows say what the playlist image is (the "Playlist image:"
+   part of the Spotify description). Earlier ones may be in Joe's Google Doc from before that habit started:
+   https://docs.google.com/document/d/1cCRNWvXN7pYyKQ3JCrp8yLNofaLE1gsKcj5Ot1F-Sb0/edit?tab=t.0#heading=h.h6jguqwf34z4
+   Fill the blanks from there (a small table of date -> caption, used when the description has none).
+7. **Later**: Apple Music in the radio player.
 
 ## Birds radio player
 
