@@ -6,4 +6,5 @@
         <span class="by">· {% for a in p.artists %}{% if a.spotify_id %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% else %}{{ a.name }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}</span>
         {% if p.family %}<span class="fam">{{ p.family }}</span>{% endif %}
         <span class="why">{{ p.reason[0]|upper }}{{ p.reason[1:] }}</span></div>
+    <button type="button" class="remove-pick" title="Take out of the set" aria-label="Take out of the set">×</button>
 </li>

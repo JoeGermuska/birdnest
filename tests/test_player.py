@@ -227,3 +227,111 @@ def test_show_radio_keeps_leaning_as_it_continues(page, server):
     page.click('#rp-random')
     page.wait_for_load_state('networkidle')
     assert bodies[-1]['lean'] is None, 'a random new start drops the lean'
+
+
+def open_list(page):
+    page.click('#rp-toggle')
+    page.wait_for_selector('#rp-list li', state='visible')
+
+
+def take_out(page, row):
+    """Take a track out of the live list with its × (shown on hover)."""
+    page.hover(f'#rp-list li:nth-child({row + 1})')
+    page.click(f'#rp-list li:nth-child({row + 1}) .remove-pick')
+    wait(page)
+
+
+def swipe(page, row, dx):
+    """A touch swipe across a row of the live list: dx < 0 is to the left."""
+    page.evaluate('''([row, dx]) => {
+        const li = document.querySelectorAll('#rp-list li')[row], r = li.getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const ev = (type, cx) => li.dispatchEvent(new PointerEvent(type,
+            {bubbles: true, cancelable: true, pointerType: 'touch', isPrimary: true, pointerId: 7, clientX: cx, clientY: y}));
+        ev('pointerdown', x);
+        for (let i = 1; i <= 10; i++) ev('pointermove', x + dx * i / 10);
+        ev('pointerup', x + dx);
+    }''', [row, dx])
+    wait(page, 600)
+
+
+def test_taking_out_a_coming_track(page, server):
+    start_from_show_track(page, server)
+    open_list(page)
+    ids = live_ids(page)
+    take_out(page, 2)
+    assert live_ids(page) == ids[:2] + ids[3:]
+    assert playing_row(page) == 0 and fake(page, 'track') == ids[0], 'what is playing carries on'
+    fake(page, 'finish()')
+    wait(page)
+    fake(page, 'finish()')
+    wait(page)
+    assert plays(page)[-2:] == [ids[1], ids[3]], 'the taken-out track is skipped'
+    assert playing_row(page) == 2
+    assert not page.errors
+
+
+def test_taking_out_a_played_track_keeps_the_place(page, server):
+    """Rows before the playing one shift up; the highlight and the end-of-track timer follow."""
+    page.goto(server + SHOW)
+    page.wait_for_function('window.FakeSpotify && document.documentElement.classList.contains("player-ready")')
+    fake(page, 'duration = 2500')
+    page.click('table.show-tracks tbody tr:nth-child(3) a.radio-link')
+    page.wait_for_function('FakeSpotify.track !== null')
+    open_list(page)
+    ids = live_ids(page)
+    page.click('#rp-next')
+    wait(page, 300)
+    take_out(page, 0)
+    assert live_ids(page) == ids[1:]
+    assert playing_row(page) == 0 and fake(page, 'track') == ids[1]
+    page.wait_for_function(f'FakeSpotify.track === {ids[2]!r}', timeout=5000)
+    assert playing_row(page) == 1
+    assert not page.errors
+
+
+def test_taking_out_the_playing_track_plays_the_next(page, server):
+    start_from_show_track(page, server)
+    open_list(page)
+    ids = live_ids(page)
+    take_out(page, 0)
+    assert live_ids(page) == ids[1:]
+    assert plays(page)[-1] == ids[1] and playing_row(page) == 0
+    assert never_used_spotify_queue(page)
+
+
+def test_taken_out_tracks_do_not_come_back(page, server):
+    start_from_show_track(page, server)
+    open_list(page)
+    bodies = []
+    page.on('request', lambda r: bodies.append(r.post_data_json) if r.url.endswith('/radio/more') else None)
+    gone = live_ids(page)[4]
+    take_out(page, 4)
+    page.click('#rp-reshuffle')
+    page.wait_for_load_state('networkidle')
+    assert gone in bodies[-1]['played']
+    assert gone not in live_ids(page)
+
+
+def test_swipe_left_takes_a_track_out(page, server):
+    start_from_show_track(page, server)
+    open_list(page)
+    ids = live_ids(page)
+    swipe(page, 2, -30)  # too short: nothing happens
+    assert live_ids(page) == ids
+    swipe(page, 2, -300)
+    assert live_ids(page) == ids[:2] + ids[3:]
+    assert fake(page, 'track') == ids[0]
+    assert not page.locator('.swipe-hint').count()
+    assert not page.errors
+
+
+def test_swipe_right_starts_radio_from_that_track(page, server):
+    start_from_show_track(page, server)
+    open_list(page)
+    ids = live_ids(page)
+    swipe(page, 3, 300)
+    page.wait_for_function(f'FakeSpotify.track === {ids[3]!r}')
+    wait(page)
+    assert live_ids(page)[0] == ids[3] and playing_row(page) == 0
+    assert len(live_ids(page)) == 20, 'a new set'

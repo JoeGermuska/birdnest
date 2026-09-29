@@ -67,6 +67,7 @@
         activateElement() { return Promise.resolve(); }
         getCurrentState() { return Promise.resolve(null); }
         togglePlay() { F.paused = !F.paused; F.emit(); return Promise.resolve(); }
+        pause() { F.paused = true; F.emit(); return Promise.resolve(); }
         nextTrack() { F.calls.push({method: 'SDK', path: 'nextTrack'}); return Promise.resolve(); }
     }};
     setTimeout(() => window.onSpotifyWebPlaybackSDKReady && window.onSpotifyWebPlaybackSDKReady(), 10);

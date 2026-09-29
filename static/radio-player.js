@@ -13,6 +13,7 @@
     const S = {
         player: null, deviceId: null, token: null, tokenAt: 0, sdkRequested: false, ready: false,
         queue: [],      // [{id, html, ms}] in play order
+        removed: [],    // ids taken out of this set, so topping it up doesn't bring them back
         current: -1,    // index of what's playing (or what we've just asked Spotify to play)
         pending: null,  // index we've asked Spotify to start and haven't yet seen it play
         clock: null,    // {pos, at, duration, paused} for the current track, to tell when it's ending
@@ -82,7 +83,7 @@
     // The set survives a reload (browsers, iOS especially, reload tabs they've put to sleep): keep it in the tab
     function save() {
         try {
-            sessionStorage.setItem('radio-set', JSON.stringify({queue: S.queue, current: S.current, from: $('rp-from').textContent}));
+            sessionStorage.setItem('radio-set', JSON.stringify({queue: S.queue, current: S.current, removed: S.removed, from: $('rp-from').textContent}));
         } catch (e) {}
     }
     function restore() {
@@ -91,6 +92,7 @@
             if (!saved || !saved.queue.length) return;
             S.queue = saved.queue;
             S.current = saved.current;
+            S.removed = saved.removed || [];
             $('rp-from').textContent = saved.from;
             draw();
             S.resume = Math.max(0, saved.current);
@@ -134,6 +136,104 @@
         $('rp-toggle').textContent = open ? 'Tracks ▾' : 'Tracks ▴';
         try { localStorage.setItem('radio-drawer', open ? '1' : '0'); } catch (e) {}
         if (open) { S.browsing = false; $('rp-sync').hidden = true; follow(); loadQueues(); }
+    }
+
+    // Take track i out of the set. Rows before the playing one shift what "current" means; taking out the playing
+    // track moves on to the next one.
+    function removeAt(i) {
+        const li = liveRows()[i];
+        if (!S.queue[i] || !li) return;
+        S.removed.push(S.queue[i].id);
+        S.queue.splice(i, 1);
+        li.remove();
+        const shift = n => n != null && n > i ? n - 1 : n;
+        S.resume = shift(S.resume);
+        if (i === S.current) {
+            S.pending = null;
+            if (S.active && S.queue[i]) return playAt(i);
+            if (S.active) {  // it was the last one
+                S.active = false;
+                S.current = i - 1;
+                clearTimeout(S.endTimer);
+                S.player.pause();
+                status('That was the end of the set. Press ▶ on a track, or a radio link, to start again.');
+            } else S.current = Math.min(i, S.queue.length - 1);  // not playing from the set: ▶ picks up here
+        } else {
+            S.current = shift(S.current);
+            S.pending = shift(S.pending);
+            scheduleEnd();  // its timer knows the track by its place in the list
+        }
+        mark();
+        save();
+        if (S.active) keepGoing();
+    }
+
+    // Touch: swipe a row of the live list left to take it out, right for Birds radio from that track (like its
+    // radio icon). Vertical movement is left to the list's own scrolling (touch-action: pan-y).
+    function bindSwipe(list) {
+        let sw = null;
+        const threshold = li => Math.min(120, li.offsetWidth * 0.35);
+        const done = s => {
+            S.swipedAt = Date.now();
+            S.browsing = s.wasBrowsing;  // a sideways swipe isn't scrolling away from what's playing
+            $('rp-sync').hidden = !S.browsing;
+        };
+        const back = ({li, hint}) => {
+            li.style.transition = 'transform 0.2s';
+            li.style.transform = '';
+            setTimeout(() => { li.classList.remove('swiping'); li.style.transition = ''; hint.remove(); }, 200);
+        };
+        list.addEventListener('pointerdown', e => {
+            const li = e.target.closest('li');
+            if (e.pointerType === 'mouse' || !e.isPrimary || !li || sw) return;
+            sw = {li, id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, on: false, wasBrowsing: S.browsing};
+        });
+        list.addEventListener('pointermove', e => {
+            if (!sw || e.pointerId !== sw.id) return;
+            const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+            if (!sw.on) {
+                if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }  // scrolling
+                if (Math.abs(dx) < 12) return;
+                sw.on = true;
+                sw.li.classList.add('swiping');
+                sw.hint = document.createElement('div');
+                sw.hint.style.top = `${sw.li.offsetTop}px`;
+                sw.hint.style.height = `${sw.li.offsetHeight}px`;
+                $('rp-scroll').append(sw.hint);
+                try { sw.li.setPointerCapture(e.pointerId); } catch (err) {}
+            }
+            sw.dx = dx;
+            const radio = dx > 0, armed = Math.abs(dx) >= threshold(sw.li);
+            sw.hint.className = `swipe-hint ${radio ? 'radio' : 'remove'}${armed ? ' armed' : ''}`;
+            sw.hint.innerHTML = radio ? `${RADIO_ICON} Birds radio from here` : 'Take out ×';
+            sw.li.style.transform = `translateX(${dx}px)`;
+        });
+        list.addEventListener('pointerup', e => {
+            if (!sw || e.pointerId !== sw.id) return;
+            const s = sw;
+            sw = null;
+            if (!s.on) return;
+            done(s);
+            if (Math.abs(s.dx) < threshold(s.li)) return back(s);
+            if (s.dx < 0) {
+                s.li.style.transition = 'transform 0.2s';
+                s.li.style.transform = `translateX(${-s.li.offsetWidth - 20}px)`;
+                setTimeout(() => { s.hint.remove(); removeAt(liveRows().indexOf(s.li)); }, 200);
+            } else {
+                back(s);
+                const url = radioLink(s.li.querySelector('a.radio-link'));
+                if (url) startRadio(url);
+            }
+        });
+        list.addEventListener('pointercancel', e => {
+            if (!sw || e.pointerId !== sw.id) return;
+            if (sw.on) { done(sw); back(sw); }
+            sw = null;
+        });
+        // a swipe isn't a tap: don't press what it started on
+        list.addEventListener('click', e => {
+            if (Date.now() - (S.swipedAt || 0) < 400) { e.preventDefault(); e.stopPropagation(); }
+        }, true);
     }
 
     // ---- ♥ and ＋: save what's playing to your Liked Songs, or add it to the playlist you use as your queue ----
@@ -228,6 +328,7 @@
         if (!S.ready) { status('The Spotify player is still connecting. Try again in a moment.'); return; }
         if (queue) {
             S.queue = queue;
+            S.removed = [];
             if (label) $('rp-from').textContent = label;
         }
         if (!S.queue[i]) return;
@@ -288,7 +389,8 @@
     }
     async function more(afterIndex, n, random) {
         const resp = await fetch('/radio/more', {method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({after: S.queue[afterIndex].id, played: S.queue.slice(0, afterIndex + 1).map(p => p.id),
+            body: JSON.stringify({after: S.queue[afterIndex].id,
+                                  played: [...S.removed, ...S.queue.slice(0, afterIndex + 1).map(p => p.id)],
                                   n, random: !!random, lean: random ? null : S.lean,
                                   seed: Math.floor(Math.random() * 1e6), adventure: adventure()})});
         if (!resp.ok) throw new Error(resp.status);
@@ -513,6 +615,8 @@
             else { S.lean = pageLean(); playAt(pageRows().indexOf(li), pageSet(), pageLabel()); }
             return;
         }
+        const remove = e.target.closest('#rp-list .remove-pick');
+        if (remove) { removeAt(liveRows().indexOf(remove.closest('li'))); return; }
         const nav = e.target.closest('.radio-nav a');
         if (nav && $('radio-controls')) {  // Reshuffle / Random start on the radio page: a new proposed set
             e.preventDefault();
@@ -599,6 +703,7 @@
             for (const ev of ['wheel', 'touchmove', 'keydown']) {
                 $('rp-scroll').addEventListener(ev, () => { if (S.active) { S.browsing = true; $('rp-sync').hidden = false; } }, {passive: true});
             }
+            bindSwipe($('rp-list'));
             S.bar = bar;
             const q = savedQueue();  // show the chosen queue before the full list of playlists is loaded
             if (q) $('rp-queue').insertAdjacentHTML('beforeend', `<option value="${esc(q.id)}" selected>${esc(q.name)}</option>`);

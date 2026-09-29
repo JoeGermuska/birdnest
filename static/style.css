@@ -19,7 +19,7 @@ body {
     line-height: 1.45;
 }
 
-/* Banner: a paper masthead. Phones: title and search, then the links on their own row (scrolling sideways if they outgrow it). */
+/* Banner: a paper masthead. Phones and small tablets: title and search, then the links on their own row (scrolling sideways if they outgrow it). */
 nav#topbar {
     display: flex;
     align-items: center;
@@ -50,7 +50,9 @@ nav#topbar #q {
     border-radius: 999px;
 }
 nav#topbar #q:focus { outline: 2px solid var(--ink-soft); outline-offset: 1px; }
-@media (max-width: 700px) {
+nav#topbar .nav-links a { white-space: nowrap; }
+/* two rows below ~860px: one row doesn't fit an iPad mini held upright */
+@media (max-width: 860px) {
     nav#topbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px 0; }
     nav#topbar h1 { font-size: 1.25rem; }
     nav#topbar form#search { flex: 1 1 7rem; min-width: 0; }
@@ -586,7 +588,7 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 
 /* Birds radio track lists: the live one in the player's drawer and the proposed set on /radio */
 .radio-set { list-style: none; padding: 0; margin: 18px 0; counter-reset: pick; }
-.radio-set li { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 0 10px; padding: 6px 0; border-top: 1px solid #eee; counter-increment: pick; }
+.radio-set li { display: grid; grid-template-columns: var(--pick-col, 2.4em) minmax(0, 1fr); gap: 0 10px; padding: 6px 0; border-top: 1px solid #eee; counter-increment: pick; }
 .radio-set .pick-num { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
 .radio-set .pick-no::before { content: counter(pick); color: #999; font-variant-numeric: tabular-nums; }
 .radio-set .track { font-weight: 600; }
@@ -636,7 +638,7 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 .rp-drawer-head label { display: flex; gap: 6px; align-items: center; }
 .rp-drawer-head .scale { font-size: 0.8rem; color: #777; }
 .rp-from { font-weight: 600; flex-basis: 100%; }
-.rp-scroll { max-height: min(24rem, 50vh); overflow-y: auto; background: #fff; margin: 0 16px 10px; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0 8px; }
+.rp-scroll { position: relative; max-height: min(24rem, 50vh); overflow-y: auto; overflow-x: hidden; background: #fff; margin: 0 16px 10px; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0 8px; }
 .rp-scroll .radio-set { margin: 0; }
 
 /* phones: wide track tables scroll sideways in their own box rather than widening the page (which also
@@ -678,3 +680,31 @@ button, input, select, textarea, .radio-player, .autocomplete-dropdown, .chip, .
 /* the Sortable theme (genres list, track tables) sets its own Helvetica and bold headers; keep ours */
 body table[data-sortable].sortable-theme-bootstrap { font-family: inherit; font-size: inherit; line-height: inherit; }
 body table[data-sortable] th { font-weight: 500; }
+
+/* Taking tracks out of the live list: × on hover with a mouse; on touch, swipe a row left (and right for Birds
+   radio from that track), with what the swipe will do shown behind the row */
+.radio-set .remove-pick { display: none; }
+#rp-list li { grid-template-columns: var(--pick-col, 2.4em) minmax(0, 1fr) auto; touch-action: pan-y; }
+#rp-list .remove-pick { display: block; visibility: hidden; align-self: center; border: 0; background: none; padding: 2px 8px;
+    font-size: 1.2rem; line-height: 1; color: #999; cursor: pointer; }
+#rp-list li:hover .remove-pick, #rp-list .remove-pick:focus-visible { visibility: visible; }
+#rp-list .remove-pick:hover { color: var(--accent); }
+@media (hover: none) { #rp-list .remove-pick { display: none; } }
+#rp-list li.swiping { position: relative; z-index: 1; background: #fff; opacity: 1; }
+#rp-list li.swiping.is-playing { background: #e8f6ee; }
+.swipe-hint { position: absolute; left: 0; right: 0; z-index: 0; display: flex; align-items: center; gap: 6px; padding: 0 16px;
+    font-family: var(--font-display); font-weight: 500; color: #fff; opacity: 0.55; }
+.swipe-hint.armed { opacity: 1; }
+.swipe-hint.remove { justify-content: flex-end; background: var(--accent); }
+.swipe-hint.radio { justify-content: flex-start; background: #7a2e5e; }
+.swipe-hint .radio-icon { color: #fff; }
+
+/* touch screens: track icons and ▶ big enough for a finger (each icon's tap area is about 44px wide) */
+@media (pointer: coarse) {
+    .track-links { gap: 12px; }
+    .track-links svg { width: 20px; height: 20px; }
+    .track-links a { position: relative; }
+    .track-links a::after { content: ''; position: absolute; inset: -6px -12px; }
+    .radio-set { --pick-col: 2.8em; }
+    .radio-set .play-from { font-size: 0.85rem; width: 2.3em; padding: 5px 0; }
+}
