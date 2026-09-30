@@ -20,6 +20,7 @@ os.environ.setdefault('SPOTIPY_CLIENT_ID', 'test-client')
 os.environ.setdefault('SPOTIPY_CLIENT_SECRET', 'test-secret')
 
 FAKE_SPOTIFY = (Path(__file__).parent / 'fake_spotify.js').read_text()
+FAKE_EMBED = (Path(__file__).parent / 'fake_spotify_embed.js').read_text()
 
 
 @pytest.fixture(scope='session')
@@ -58,22 +59,41 @@ def session_cookie(app_module):
                                             'token_type': 'Bearer', 'scope': app_module.SPOTIFY_SCOPES}})
 
 
-@pytest.fixture
-def page(browser, server, app_module):
-    """A logged-in page with the fake Spotify standing in for the real one; other outside requests are refused."""
+def _page(browser, server, cookie=None):
+    """A page with the fake Spotify (SDK and Web API) and fake Spotify embed standing in for the real ones; other
+    outside requests are refused, and noted in page.outside."""
     ctx = browser.new_context(viewport={'width': 1200, 'height': 900})
-    ctx.add_cookies([{'name': 'session', 'value': session_cookie(app_module), 'domain': '127.0.0.1', 'path': '/'}])
+    if cookie:
+        ctx.add_cookies([{'name': 'session', 'value': cookie, 'domain': '127.0.0.1', 'path': '/'}])
     pg = ctx.new_page()
-    pg.errors = []
+    pg.errors, pg.outside = [], []
     pg.on('pageerror', lambda e: pg.errors.append(str(e)))
 
     def route(r, _req=None):
         url = r.request.url
         if url.startswith('https://sdk.scdn.co/spotify-player.js'):
             return r.fulfill(body=FAKE_SPOTIFY, content_type='application/javascript')
+        if url.startswith('https://open.spotify.com/embed/iframe-api/v1'):
+            return r.fulfill(body=FAKE_EMBED, content_type='application/javascript')
         if url.startswith(server):
             return r.continue_()
+        pg.outside.append(url)
         return r.abort()
     pg.route('**/*', route)
+    return ctx, pg
+
+
+@pytest.fixture
+def page(browser, server, app_module):
+    """A logged-in page: the full player, on the Web Playback SDK."""
+    ctx, pg = _page(browser, server, session_cookie(app_module))
+    yield pg
+    ctx.close()
+
+
+@pytest.fixture
+def guest_page(browser, server):
+    """A page for someone not logged in: the player in Spotify's embed."""
+    ctx, pg = _page(browser, server)
     yield pg
     ctx.close()

@@ -719,14 +719,18 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 :root.player-ready .radio-set li:hover .play-from, :root.player-ready .radio-set li:focus-within .play-from { visibility: visible; }
 @media (hover: none) { :root.player-ready .radio-set .pick-no { visibility: hidden; } :root.player-ready .radio-set .play-from { visibility: visible; } }
 
-/* Birds radio player (radio-player.js): fixed at the bottom of every page (a log-in prompt until you log in).
+/* Birds radio player (radio-player.js): fixed at the bottom of every page (Spotify's embed above the bar for
+   listeners who aren't logged in).
    The drawer above the bar holds the live track list and the controls for what comes next. */
 .radio-player { display: none; }
 :root.radio-bar .radio-player { display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
     background: var(--wash); border-top: 1px solid var(--paper-rule); box-shadow: 0 -2px 8px var(--hover-shade); }
 :root.radio-bar body { padding-bottom: var(--radio-bar-h, 72px); }  /* the bar's real height, set by radio-player.js */
 .rp-bar { display: flex; gap: 8px; align-items: center; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
-#radio-login .rp-bar { flex-wrap: wrap; gap: 4px 12px; }
+.rp-embed { padding: 8px 16px 0; }
+.rp-embed iframe { display: block; border: 0; border-radius: 12px; }
+.rp-embed.folded { height: 0; padding-top: 0; overflow: hidden; }  /* still there and playing, just out of sight */
+.rp-login-note { flex-basis: 100%; margin: 0; font-size: var(--size-note); color: var(--ink-3); }
 .radio-player button { font: inherit; padding: 4px 12px; border: 1px solid var(--control-rule); border-radius: 4px; background: var(--bg); cursor: pointer; }
 .radio-player button:disabled { opacity: 0.5; cursor: default; }
 #rp-play, #rp-next { min-width: 2.6em; }
@@ -742,10 +746,8 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
     .rp-drawer-head { padding: 8px 10px 6px; gap: 6px 10px; font-size: var(--size-note); }
     .rp-drawer-head .scale { display: none; }
     .rp-scroll { margin: 0 10px 8px; max-height: 45vh; }
-    .rp-note { font-size: var(--size-label); }
+    .rp-embed { padding: 6px 10px 0; }
 }
-.rp-login { font-weight: 600; }
-.rp-note { font-size: var(--size-note); color: var(--ink-3); }
 .rp-drawer { border-bottom: 1px solid var(--paper-rule); }
 .rp-drawer-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 10px 16px 8px; font-size: var(--size-small); }
 .rp-drawer-head label { display: flex; gap: 6px; align-items: center; }
@@ -753,6 +755,7 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 .rp-from { font-weight: 600; flex-basis: 100%; }
 .rp-scroll { position: relative; max-height: min(24rem, 50vh); overflow-y: auto; overflow-x: hidden; background: var(--bg); margin: 0 16px 10px; border: 1px solid var(--rule); border-radius: 6px; padding: 0 8px; }
 .rp-scroll .radio-set { margin: 0; }
+.rp-scroll:has(> .radio-set:empty) { display: none; }  /* no set yet: an empty box would be a stray rule */
 
 /* phones: each row of a track table becomes a small card (a grid) instead of columns, with no header row.
    Show page: number and icons | track / artist / album / badges | time. Artist page: icons | track, album | dates.

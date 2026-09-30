@@ -335,3 +335,177 @@ def test_swipe_right_starts_radio_from_that_track(page, server):
     wait(page)
     assert live_ids(page)[0] == ids[3] and playing_row(page) == 0
     assert len(live_ids(page)) == 20, 'a new set'
+
+
+# ---- embed mode: listeners who aren't logged in play through Spotify's embed (tests/fake_spotify_embed.js) ----
+
+def embed(page, expr):
+    return page.evaluate(f'FakeEmbed.{expr}')
+
+
+def start_embed_from_show_track(page, server, row=3):
+    page.goto(server + SHOW)
+    page.wait_for_function('window.FakeEmbed && document.documentElement.classList.contains("player-ready")')
+    page.click(f'table.show-tracks tbody tr:nth-child({row}) a.radio-link')
+    page.wait_for_function('FakeEmbed.track !== null')
+    wait(page)
+
+
+def no_web_api(page):
+    """Embed mode stays off the Web API and the Web Playback SDK altogether."""
+    return not [u for u in page.outside if 'api.spotify.com' in u or 'sdk.scdn.co' in u] \
+        and not page.evaluate('!!window.FakeSpotify')
+
+
+def test_embed_radio_link_plays_the_set_in_place(guest_page, server):
+    page = guest_page
+    start_embed_from_show_track(page, server)
+    ids = live_ids(page)
+    assert page.url.endswith(SHOW)
+    assert len(ids) == 20
+    assert embed(page, 'loads') == [ids[0]] and embed(page, 'track') == ids[0]
+    assert playing_row(page) == 0
+    assert page.locator('#rp-embed-box iframe').is_visible(), 'the embed is in the bar, where it can be seen'
+    assert page.locator('#rp-like, #rp-add, #rp-queue').count() == 0, 'no ♥, ＋ or queue: they need the Web API'
+    assert no_web_api(page)
+    assert not page.errors
+
+
+def test_embed_track_end_plays_the_next_one(guest_page, server):
+    """The embed doesn't pause at the end of a track; it just stops at the end."""
+    page = guest_page
+    start_embed_from_show_track(page, server)
+    ids = live_ids(page)
+    for n in range(1, 4):
+        embed(page, 'finish()')
+        wait(page)
+        assert embed(page, 'loads')[-1] == ids[n] and embed(page, 'track') == ids[n]
+        assert playing_row(page) == n
+    assert len(embed(page, 'loads')) == 4, 'one load per track, no double skips'
+
+
+def test_embed_end_of_track_timer_starts_the_next_track(guest_page, server):
+    page = guest_page
+    page.goto(server + SHOW)
+    page.wait_for_function('window.FakeEmbed && document.documentElement.classList.contains("player-ready")')
+    embed(page, 'duration = 1500')
+    page.click('table.show-tracks tbody tr:nth-child(3) a.radio-link')
+    page.wait_for_function('FakeEmbed.track !== null')
+    ids = live_ids(page)
+    page.wait_for_function(f'FakeEmbed.track === {ids[1]!r}', timeout=5000)
+    assert playing_row(page) == 1
+
+
+def test_embed_next_and_pause(guest_page, server):
+    page = guest_page
+    start_embed_from_show_track(page, server)
+    ids = live_ids(page)
+    page.click('#rp-next')
+    wait(page)
+    assert embed(page, 'track') == ids[1] and playing_row(page) == 1
+    page.click('#rp-play')
+    wait(page)
+    assert embed(page, 'paused') and page.inner_text('#rp-play') == '▶'
+    page.click('#rp-play')
+    wait(page)
+    assert not embed(page, 'paused') and embed(page, 'track') == ids[1]
+
+
+def test_embed_stale_updates_from_the_last_track_are_ignored(guest_page, server):
+    """An update from the track before, arriving late, mustn't move the list back or skip ahead."""
+    page = guest_page
+    start_embed_from_show_track(page, server)
+    ids = live_ids(page)
+    page.click('#rp-next')
+    wait(page)
+    page.evaluate(f'''() => FakeEmbed.emit('playback_update', {{playingURI: 'spotify:track:{ids[0]}', isPaused: false,
+                     isBuffering: false, duration: FakeEmbed.duration, position: FakeEmbed.duration}})''')
+    wait(page)
+    assert playing_row(page) == 1 and embed(page, 'track') == ids[1]
+    assert len(embed(page, 'loads')) == 2
+
+
+def test_embed_says_when_it_plays_previews(guest_page, server):
+    page = guest_page
+    page.goto(server + SHOW)
+    page.wait_for_function('window.FakeEmbed && document.documentElement.classList.contains("player-ready")')
+    embed(page, 'duration = 29713')
+    page.click('table.show-tracks tbody tr:nth-child(3) a.radio-link')
+    page.wait_for_function('FakeEmbed.track !== null')
+    wait(page)
+    assert 'preview' in page.inner_text('#rp-now').lower()
+
+
+def test_embed_carries_on_across_pages(guest_page, server):
+    page = guest_page
+    start_embed_from_show_track(page, server)
+    ids = live_ids(page)
+    page.evaluate('FakeEmbed.frame.dataset.marker = "1"')
+    for path in ['/genres', '/rankings/artists', '/artist/doesnotexist', SHOW]:
+        page.evaluate(f'Turbo.visit({path!r})')
+        wait(page, 700)
+    assert page.locator('#radio-player').count() == 1
+    assert page.evaluate('FakeEmbed.frame.isConnected && FakeEmbed.frame.dataset.marker === "1"'), 'the same embed, never reloaded'
+    embed(page, 'finish()')
+    wait(page)
+    assert embed(page, 'track') == ids[1] and playing_row(page) == 1
+    assert not page.errors
+
+
+def test_embed_radio_page_play_this_set(guest_page, server):
+    page = guest_page
+    page.goto(server + '/radio?seed=5')
+    page.wait_for_function('window.FakeEmbed && document.documentElement.classList.contains("player-ready")')
+    ids = page.eval_on_selector_all('#radio-list li', 'els => els.map(e => e.dataset.spotify)')
+    page.click('#radio-play-set')
+    page.wait_for_function('FakeEmbed.track !== null')
+    assert embed(page, 'track') == ids[0]
+    assert live_ids(page) == ids
+
+
+def test_logged_in_listeners_keep_the_full_player(page, server):
+    start_from_show_track(page, server)
+    assert page.locator('#rp-embed-box').count() == 0
+    assert not page.evaluate('!!window.FakeEmbed')
+
+
+def embed_shown(page):
+    return page.evaluate("(() => { const b = document.getElementById('rp-embed-box'); return !b.hidden && b.offsetHeight > 40; })()")
+
+
+def test_embed_folds_away_when_paused_and_can_be_hidden(guest_page, server):
+    page = guest_page
+    page.goto(server + SHOW)
+    page.wait_for_function('window.FakeEmbed && document.documentElement.classList.contains("player-ready")')
+    assert not embed_shown(page), 'nothing playing yet: no embed'
+    assert not page.locator('#rp-embed-toggle').is_visible()
+    page.click('table.show-tracks tbody tr:nth-child(3) a.radio-link')
+    page.wait_for_function('FakeEmbed.track !== null')
+    wait(page)
+    assert embed_shown(page)
+    page.click('#rp-play')  # pause
+    wait(page)
+    assert not embed_shown(page), 'paused: folded away'
+    page.click('#rp-play')
+    wait(page)
+    assert embed_shown(page)
+    page.click('#rp-embed-toggle')  # hide it while it plays
+    wait(page)
+    assert not embed_shown(page)
+    assert page.evaluate('FakeEmbed.frame.isConnected'), 'hidden, not removed: the music carries on'
+    embed(page, 'finish()')
+    wait(page)
+    assert not embed_shown(page), 'stays hidden for the next track'
+    page.click('#rp-embed-toggle')
+    wait(page)
+    assert embed_shown(page)
+    assert not page.errors
+
+
+def test_embed_mode_explains_the_login(guest_page, server):
+    page = guest_page
+    page.goto(server + SHOW)
+    page.click('#rp-toggle')
+    note = page.inner_text('#rp-drawer')
+    assert 'five' in note and 'Log in with Spotify' in note
+    assert not page.locator('#rp-scroll').is_visible(), 'no set yet: no empty list box'

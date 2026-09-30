@@ -62,8 +62,8 @@
         {% if saved %}<p class="radio-note">Saved “{{ saved.name }}” to your Spotify: <a href="{{ saved.url }}" target="_blank" rel="noopener">open it</a>.</p>{% endif %}
         {% if save_error %}<p class="radio-note error">Couldn't save to Spotify: {{ save_error }}</p>{% endif %}
 
-        {% if radio_listener %}<p class="radio-play-row"><button type="button" id="radio-play-set">▶ Play this set</button>
-            <span class="muted">or ▶ on any track to start there</span></p>{% endif %}
+        <p class="radio-play-row"><button type="button" id="radio-play-set">▶ Play this set</button>
+            <span class="muted">or ▶ on any track to start there</span></p>
         <ol class="radio-set" id="radio-list">
             {% for p in picks %}{% include "_radio_pick.html" %}{% endfor %}
         </ol>

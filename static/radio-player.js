@@ -1,6 +1,12 @@
 // Birds radio player. Loaded once in <head>; Turbo Drive swaps pages underneath without reloading, so this
 // script's state and the #radio-player bar (data-turbo-permanent, with its drawer holding the live track list)
-// survive moving around the site, and the music keeps playing. Uses Spotify's Web Playback SDK (Premium only).
+// survive moving around the site, and the music keeps playing.
+//
+// Two ways to play (the bar's data-mode), behind one small interface (S.engine):
+//  - 'sdk', for listeners logged in to the site with Spotify: Spotify's Web Playback SDK (Premium only), plus the
+//    Web API for ♥ and ＋. A Spotify app in development mode only lets a handful of accounts log in, so:
+//  - 'embed', for everyone else: Spotify's Embed iFrame API, a visible player in the bar. No login with us and no
+//    Web API; Spotify plays whole tracks if you're logged in to Spotify in this browser, else short previews.
 //
 // The player tells Spotify exactly which track to play, one at a time, and starts the next one itself (just
 // before a track ends, or as it ends). It never uses Spotify's own queue, which can't be edited or cleared, so
@@ -11,7 +17,7 @@
     if (window.birdsRadioLoaded) return;
     window.birdsRadioLoaded = true;
     const S = {
-        player: null, deviceId: null, token: null, tokenAt: 0, sdkRequested: false, ready: false,
+        engine: null, player: null, deviceId: null, token: null, tokenAt: 0, ready: false,
         queue: [],      // [{id, html, ms}] in play order
         removed: [],    // ids taken out of this set, so topping it up doesn't bring them back
         current: -1,    // index of what's playing (or what we've just asked Spotify to play)
@@ -155,7 +161,7 @@
                 S.active = false;
                 S.current = i - 1;
                 clearTimeout(S.endTimer);
-                S.player.pause();
+                S.engine.pause();
                 status('That was the end of the set. Press ▶ on a track, or a radio link, to start again.');
             } else S.current = Math.min(i, S.queue.length - 1);  // not playing from the set: ▶ picks up here
         } else {
@@ -260,7 +266,7 @@
     let queuesLoaded = false;
     // your playlists you can add to (your own, and collaborative ones), for choosing a queue
     async function loadQueues() {
-        if (queuesLoaded || !S.ready) return;
+        if (queuesLoaded || !S.ready || !$('rp-queue')) return;
         queuesLoaded = true;
         const select = $('rp-queue'), chosen = savedQueue();
         try {
@@ -277,6 +283,7 @@
     }
     // which tracks are already in the queue playlist, so ＋ can show ✓ and take them back out
     async function loadQueueIds() {
+        if (!$('rp-add')) return;
         const q = savedQueue();
         S.queueIds = null;
         if (!q) return updateAdd();
@@ -338,9 +345,8 @@
         S.clock = null;
         clearTimeout(S.endTimer);
         if (queue) draw(); else { mark(); save(); }
-        await S.player.activateElement();
         try {
-            await playOnDevice({uris: [uri(S.queue[i].id)]});
+            await S.engine.play(S.queue[i]);
             if (token !== S.playToken) return;  // something else was started meanwhile
             if (!S.active) noRepeat();
             S.active = true;
@@ -407,6 +413,7 @@
     // Spotify's repeat setting (the listener's, across their devices) would loop the one track the radio hands it;
     // the radio turns it off while it's driving
     function noRepeat() {
+        if (S.engine !== sdk) return;
         api('PUT', `/me/player/repeat?state=off&device_id=${S.deviceId}`).catch(() => {});
     }
     // Which track in the set is this? By id, or, since Spotify sometimes plays another release of the same
@@ -466,62 +473,132 @@
         }
     }
 
-    function connect() {
-        window.onSpotifyWebPlaybackSDKReady = () => {
-            if (S.player) return;  // one player per page load, however often the SDK script runs
-            const p = S.player = new Spotify.Player({name: 'Birds radio', volume: 0.8,
-                                                     getOAuthToken: cb => getToken(true).then(cb, () => {})});
-            p.addListener('ready', ({device_id}) => {
-                S.deviceId = device_id;
-                S.ready = true;
-                S.frame = [...document.querySelectorAll('body > iframe')].find(isSpotifyFrame) || S.frame;
-                if (!$('rp-drawer').hidden) loadQueues();
-                readyWaiters.forEach(r => r());
-                readyWaiters = [];
-                $('rp-play').disabled = false;
-                if (!S.active) status(S.resume != null ? 'Ready. Press ▶ to pick up where you left off.'
-                                                       : `Ready. Press ▶ for a random set, or ${RADIO_ICON} next to any track, artist, show, genre or DJ.`);
-                loadQueueIds();
-                document.documentElement.classList.add('player-ready');
-            });
-            p.addListener('not_ready', () => { S.ready = false; if (!readyWaiters.length) status('Spotify player went offline. Press ▶ to reconnect.'); });
-            p.addListener('account_error', () => {
-                status('Playing here needs Spotify Premium. You can still save a set as a playlist on the radio page.');
-                $('rp-play').disabled = true;
-            });
-            p.addListener('authentication_error', () => { getToken(true).catch(() => {}); });
-            p.addListener('initialization_error', ({message}) => status(`This browser can't play Spotify here (${esc(message)}).`));
-            p.addListener('playback_error', ({message}) => status(`Playback problem: ${esc(message)}`));
-            p.addListener('player_state_changed', state => {
-                if (!state) return;
-                const t = state.track_window.current_track;
-                const id = (t.linked_from && t.linked_from.id) || t.id;
-                if (id !== S.trackId) {
-                    S.trackId = id;
-                    showLiked();
-                    $('rp-add').hidden = false;
-                    updateAdd();
-                }
-                S.nowHtml = `${state.paused ? 'Paused' : 'Now playing'}: <strong>${esc(t.name)}</strong> · ${esc(t.artists.map(a => a.name).join(', '))}`;
-                status(S.nowHtml);
-                $('rp-play').textContent = state.paused ? '▶' : '⏸';
-                $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
-                if (S.active && state.repeat_mode && !S.repeatFixing) {  // switched on elsewhere: off again
-                    S.repeatFixing = true;
-                    noRepeat();
-                    setTimeout(() => { S.repeatFixing = false; }, 5000);
-                }
-                onState(state, id, t.name);
-            });
-            p.connect();
-        };
+    // What's playing, in the bar. id/name/artists: what the engine says it's playing.
+    function shown(state, id, name, artists) {
+        if (id !== S.trackId) {
+            S.trackId = id;
+            if ($('rp-like')) { showLiked(); $('rp-add').hidden = false; updateAdd(); }
+        }
+        S.nowHtml = `${state.paused ? 'Paused' : 'Now playing'}: <strong>${esc(name)}</strong> · ${esc(artists)}`;
+        status(S.nowHtml + (S.previews ? ` <span class="rp-off">(previews only: log in at <a href="https://open.spotify.com">open.spotify.com</a> in this browser for whole tracks)</span>` : ''));
+        $('rp-play').textContent = state.paused ? '▶' : '⏸';
+        $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
+    }
+    function whenReady() {
+        S.ready = true;
+        $('rp-play').disabled = false;
+        if (!S.active) status(S.resume != null ? 'Ready. Press ▶ to pick up where you left off.'
+                                               : `Ready. Press ▶ for a random set, or ${RADIO_ICON} next to any track, artist, show, genre or DJ.`);
+        document.documentElement.classList.add('player-ready');
+    }
+    function loadScript(src) {
         const script = document.createElement('script');
-        script.src = 'https://sdk.scdn.co/spotify-player.js';
+        script.src = src;
         script.async = true;
         // Turbo would otherwise run it again when a cached page's <head> comes back, making a second player
         script.setAttribute('data-turbo-eval', 'false');
         document.head.appendChild(script);
-        S.sdkRequested = true;
+    }
+
+    // ---- engines: connect(), play(pick), toggle(), pause(), reconnect() ----
+    // The Web Playback SDK: this page is a Spotify device, told what to play through the Web API.
+    const sdk = {
+        connect() {
+            window.onSpotifyWebPlaybackSDKReady = () => {
+                if (S.player) return;  // one player per page load, however often the SDK script runs
+                const p = S.player = new Spotify.Player({name: 'Birds radio', volume: 0.8,
+                                                         getOAuthToken: cb => getToken(true).then(cb, () => {})});
+                p.addListener('ready', ({device_id}) => {
+                    S.deviceId = device_id;
+                    S.frame = [...document.querySelectorAll('body > iframe')].find(isSpotifyFrame) || S.frame;
+                    whenReady();
+                    if (!$('rp-drawer').hidden) loadQueues();
+                    readyWaiters.forEach(r => r());
+                    readyWaiters = [];
+                    loadQueueIds();
+                });
+                p.addListener('not_ready', () => { S.ready = false; if (!readyWaiters.length) status('Spotify player went offline. Press ▶ to reconnect.'); });
+                p.addListener('account_error', () => {
+                    status('Playing here needs Spotify Premium. You can still save a set as a playlist on the radio page.');
+                    $('rp-play').disabled = true;
+                });
+                p.addListener('authentication_error', () => { getToken(true).catch(() => {}); });
+                p.addListener('initialization_error', ({message}) => status(`This browser can't play Spotify here (${esc(message)}).`));
+                p.addListener('playback_error', ({message}) => status(`Playback problem: ${esc(message)}`));
+                p.addListener('player_state_changed', state => {
+                    if (!state) return;
+                    const t = state.track_window.current_track;
+                    const id = (t.linked_from && t.linked_from.id) || t.id;
+                    shown(state, id, t.name, t.artists.map(a => a.name).join(', '));
+                    if (S.active && state.repeat_mode && !S.repeatFixing) {  // switched on elsewhere: off again
+                        S.repeatFixing = true;
+                        noRepeat();
+                        setTimeout(() => { S.repeatFixing = false; }, 5000);
+                    }
+                    onState(state, id, t.name);
+                });
+                p.connect();
+            };
+            loadScript('https://sdk.scdn.co/spotify-player.js');
+        },
+        async play(pick) {
+            await S.player.activateElement();
+            await playOnDevice({uris: [uri(pick.id)]});
+        },
+        toggle() { S.player.togglePlay(); },
+        pause() { S.player.pause(); },
+        reconnect,
+    };
+
+    // Spotify's embed, in the bar: loaded with one track at a time. It reports what it's playing about once a
+    // second. At the end of a track it doesn't pause, its position just stops at the duration, so that counts as
+    // the end here (as a pause at 0 does from the SDK).
+    const artistsOf = q => { const m = /<span class="by">([\s\S]*?)<\/span>/.exec(q.html || ''); return m ? new DOMParser().parseFromString(m[1], 'text/html').body.textContent.replace(/^\s*·\s*/, '').replace(/\s+/g, ' ').trim() : ''; };
+    const embed = {
+        connect() {
+            window.onSpotifyIframeApiReady = api => { if (!S.iframeApi) { S.iframeApi = api; whenReady(); } };
+            loadScript('https://open.spotify.com/embed/iframe-api/v1');
+        },
+        play(pick) {
+            S.embedPick = pick;
+            S.embedStart = true;  // play it once the embed says it has loaded it
+            if (S.embed) { S.embed.loadUri(uri(pick.id)); return; }
+            $('rp-embed-box').hidden = false;
+            try { S.embedHidden = localStorage.getItem('radio-embed-hidden') === '1'; } catch (e) {}
+            S.iframeApi.createController($('rp-embed'), {uri: uri(pick.id), width: '100%', height: 80}, c => {
+                S.embed = c;
+                c.addListener('ready', () => { if (S.embedStart) { S.embedStart = false; c.play(); } });
+                c.addListener('playback_update', ({data}) => embedUpdate(data));
+            });
+        },
+        toggle() { S.embed.togglePlay(); },
+        pause() { S.embed.pause(); },
+        async reconnect() {},
+    };
+    function embedUpdate(d) {
+        const asked = S.embedPick, id = (d.playingURI || '').split(':').pop();
+        if (!asked || !id) return;
+        // what the embed had before it loaded the track we asked for, arriving late: not news
+        if (id !== asked.id && S.queue.some(q => q.id === id)) return;
+        const ended = d.duration > 0 && d.position >= d.duration - 250;
+        const state = {paused: d.isPaused || ended, position: ended ? 0 : d.position, duration: d.duration};
+        // a listener not logged in to Spotify gets previews (30 seconds or less) of tracks that are longer
+        S.previews = d.duration > 0 && d.duration < 31000 && asked.ms > 35000;
+        const name = nameOf(asked);
+        shown(state, asked.id, name, artistsOf(asked));
+        onState(state, asked.id, name);
+        S.embedPlaying = !d.isPaused;  // (the end of a track isn't a pause: the next one is on its way)
+        foldEmbed();
+    }
+    // The embed folds away when it's paused, or when the listener hides it; folded, not removed or display: none,
+    // so it keeps playing.
+    function foldEmbed() {
+        const box = $('rp-embed-box'), button = $('rp-embed-toggle');
+        if (!box || !S.embed) return;
+        box.classList.toggle('folded', !S.embedPlaying || !!S.embedHidden);
+        button.hidden = !S.embedPlaying;
+        button.textContent = S.embedHidden ? 'Show Spotify' : 'Hide Spotify';
+        button.setAttribute('aria-pressed', String(!!S.embedHidden));
     }
 
     // The Web Playback SDK plays through an iframe it adds to <body>. Turbo normally swaps in a whole new <body>,
@@ -609,7 +686,7 @@
         const link = radioLink(e.target.closest('a'));
         if (link) { e.preventDefault(); startRadio(link); return; }
         const play = e.target.closest('.play-from');
-        if (play && S.player) {
+        if (play && S.engine) {
             const li = play.closest('li');
             if (li.closest('#rp-list')) playAt(liveRows().indexOf(li));
             else { S.lean = pageLean(); playAt(pageRows().indexOf(li), pageSet(), pageLabel()); }
@@ -626,22 +703,26 @@
             loadSet(url);
             return;
         }
-        if (!S.player) return;
+        if (!S.engine) return;
         if (e.target.closest('#radio-play-set')) {
             S.lean = pageLean();
             playAt(0, pageSet(), pageLabel());
         } else if (e.target.closest('#rp-play')) {
-            if (S.active && S.ready) S.player.togglePlay();
+            if (S.active && S.ready) S.engine.toggle();
             else if (S.queue.length) {  // picking up after a reload, after stepping aside, or after the player dropped out
                 const at = S.resume != null ? S.resume : Math.max(0, S.current);
                 S.resume = null;
-                (S.ready ? Promise.resolve() : reconnect()).then(() => playAt(at)).catch(e => status(esc(e.message)));
+                (S.ready ? Promise.resolve() : S.engine.reconnect()).then(() => playAt(at)).catch(e => status(esc(e.message)));
             }
             else if (pageRows().length) { S.lean = pageLean(); playAt(0, pageSet(), pageLabel()); }
             else startRadio('/radio');
         } else if (e.target.closest('#rp-next')) {
             if (S.active) advance(S.current);
             else if (S.queue[S.current + 1]) playAt(S.current + 1);
+        } else if (e.target.closest('#rp-embed-toggle')) {
+            S.embedHidden = !S.embedHidden;
+            try { localStorage.setItem('radio-embed-hidden', S.embedHidden ? '1' : '0'); } catch (err) {}
+            foldEmbed();
         } else if (e.target.closest('#rp-toggle')) {
             openDrawer($('rp-drawer').hidden);
         } else if (e.target.closest('#rp-sync')) {
@@ -694,7 +775,8 @@
         const bar = $('radio-player');
         // the bar is always there when Spotify is set up: the player, or a prompt to log in
         document.documentElement.classList.toggle('radio-bar', !!document.querySelector('.radio-player'));
-        if (bar && !S.sdkRequested) {
+        if (bar && !S.engine) {
+            S.engine = bar.dataset.mode === 'embed' ? embed : sdk;
             try {
                 $('rp-endless').checked = localStorage.getItem('radio-endless') !== '0';
                 if (localStorage.getItem('radio-drawer') === '1') openDrawer(true);
@@ -706,9 +788,9 @@
             bindSwipe($('rp-list'));
             S.bar = bar;
             const q = savedQueue();  // show the chosen queue before the full list of playlists is loaded
-            if (q) $('rp-queue').insertAdjacentHTML('beforeend', `<option value="${esc(q.id)}" selected>${esc(q.name)}</option>`);
+            if (q && $('rp-queue')) $('rp-queue').insertAdjacentHTML('beforeend', `<option value="${esc(q.id)}" selected>${esc(q.name)}</option>`);
             restore();
-            connect();
+            S.engine.connect();
         }
         // reserve the bar's real height at the bottom of the page (it changes with the drawer and on phones)
         const shown = document.querySelector('.radio-player');
