@@ -34,6 +34,16 @@ app.session = scoped_session(SessionLocal)
 
 # load the (pre-built) analysis cache at startup rather than on the first request
 factoids.get_history()
+
+# one public host, since Spotify only knows birdsconferring.com's OAuth callback (and the session cookie is per host)
+CANONICAL_HOST = 'birdsconferring.com'
+HOST_ALIASES = {'birdsconferring.fly.dev', 'www.birdsconferring.com'}
+
+@app.before_request
+def canonical_host():
+    if request.host in HOST_ALIASES:
+        return redirect(request.url.replace(f'//{request.host}', f'//{CANONICAL_HOST}', 1), code=301)
+
 @app.context_processor
 def radio_bar():
     # the site-wide player bar; checking the session is enough here, /spotify/token refreshes as needed
