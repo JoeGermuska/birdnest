@@ -26,7 +26,7 @@
     #radio-result.loading { opacity: 0.45; }
 </style>
 {% endblock extra_head %}
-{% from "_macros.html" import radio_icon %}
+{% from "_macros.html" import radio_icon, icon  %}
 {% block content %}
 <section class="detail">
     <h1>Birds radio</h1>
@@ -35,7 +35,7 @@
         a wildcard. Start from any track, artist, show, genre or DJ with the {{ radio_icon() }} Birds radio links around the site.</p>
 
     <form class="radio-controls" id="radio-controls" method="get" action="{{ url_for('radio_page') }}">
-        {% for key in ('artist', 'show', 'track', 'genre', 'dj') %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key, '') }}" {{ 'disabled' if not request.args.get(key) }}>{% endfor %}
+        {% for key in ('artist', 'show', 'track', 'genre', 'dj', 'length', 'album') %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key, '') }}" {{ 'disabled' if not request.args.get(key) }}>{% endfor %}
         <input type="hidden" name="seed" value="{{ seed }}">
         <label for="adventure">Adventure
             <span class="scale">close</span>
@@ -48,7 +48,7 @@
 
 
     <div id="radio-result" data-seed="{{ seed }}" data-artist="{{ request.args.get('artist', '') }}" data-show="{{ request.args.get('show', '') }}" data-track="{{ request.args.get('track', '') }}" data-genre="{{ genre or '' }}" data-dj="{{ request.args.get('dj', '') }}" data-lean='{{ lean|tojson }}' data-label="From {{ start_label }}">
-        {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track'), 'genre': request.args.get('genre'), 'dj': request.args.get('dj')}|dictsort|selectattr(1)|list %}
+        {% set start = {'artist': request.args.get('artist'), 'show': request.args.get('show'), 'track': request.args.get('track'), 'genre': request.args.get('genre'), 'dj': request.args.get('dj'), 'length': request.args.get('length'), 'album': request.args.get('album')}|dictsort|selectattr(1)|list %}
         <dl class="radio-start">
             <div><dt>Starting from</dt>
                 <dd>{% if start_url %}<a href="{{ start_url }}">{{ start_label }}</a>{% else %}{{ start_label }}{% endif %}
@@ -75,7 +75,7 @@
             <input type="hidden" name="return_to" value="{{ request.full_path }}">
             <label for="playlist-name">Playlist name</label>
             <input type="text" id="playlist-name" name="name" value="Birds radio: {{ start_label }}">
-            <button type="submit"><i class="fab fa-spotify"></i> Save to Spotify</button>
+            <button type="submit">{{ icon('spotify') }} Save to Spotify</button>
         </form>
         {% endif %}
     </div>

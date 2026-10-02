@@ -601,6 +601,14 @@ class Album(Base):
     label = Column(String)
     images = Column(JSON) # not in simplified
     popularity = Column(Integer) # not in simplified
+    release_date = Column(String) # YYYY, YYYY-MM or YYYY-MM-DD (see release_date_precision); a reissue's own date
+    release_date_precision = Column(String)
+    album_type = Column(String) # album, single, compilation
+    total_tracks = Column(Integer)
+    upc = Column(String) # not in simplified; the key for MusicBrainz/Discogs release lookups
+    copyright_p = Column(String) # the ℗ line, often "under exclusive license to ..."; not in simplified
+    copyright_c = Column(String) # the © line; not in simplified
+    fetched_at = Column(String) # when the full album object was last stored (refresh_albums.py)
     artists = relationship('Artist', secondary=album_artist, back_populates='albums')
     tracks = relationship("Track", backref="album")
 
@@ -651,6 +659,9 @@ class Album(Base):
         try:
             o.popularity = init_data['popularity']
         except KeyError: pass
+        import refresh_albums
+        for k, v in refresh_albums.album_fields(init_data).items():
+            setattr(o, k, v)
         for a in init_data.get('artists',[]):
             o.artists.append(Artist.get_or_create(session, a['id'], init_data=a))
         session.add(o)

@@ -4,7 +4,7 @@
 {% block content %}
 <section class="home">
     <div class="home-latest">
-        {% with playlist=latest, label=None %}{% include "_playlist_tile.html" %}{% endwith %}
+        {% with playlist=latest, label=None, full_image=True %}{% include "_playlist_tile.html" %}{% endwith %}
         <div class="latest-info">
             <p class="eyebrow">Latest show</p>
             <h1><a href="{{ url_for('show_playlist', date_str=latest.date) }}">{{ latest.date.strftime('%B') }} {{ latest.date.day }}, {{ latest.date.year }}</a></h1>

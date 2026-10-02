@@ -1,6 +1,7 @@
-{# playlist: a show dict with 'date' and optional 'caption' (the playlist image credit); label: optional text under the image #}
+{# playlist: a show dict with 'date' and optional 'caption' (the playlist image credit); label: optional text under the image;
+   full_image: the original image instead of the small tile copy (for a big tile) #}
 <a class="playlist-tile" href="{{ url_for('show_playlist', date_str=playlist.date) }}"{% if playlist.caption %} title="{{ playlist.caption }}"{% endif %}>
-    <img src="{{ url_for('playlist_image', date_str=playlist.date) }}" alt="" onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/vinyl-placeholder.png') }}'" loading="lazy">
+    <img src="{{ url_for('playlist_image', date_str=playlist.date, size=None if full_image else 'tile') }}" alt="" onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/vinyl-placeholder.png') }}'" loading="lazy">
     {% if playlist.caption %}<span class="tile-caption">{{ playlist.caption }}</span>{% endif %}
     <span class="tile-date">{{ label or '%s %d, %d'|format(playlist.date.strftime('%b'), playlist.date.day, playlist.date.year) }}</span>
 </a>

@@ -62,7 +62,66 @@ ways in are done together, and the design pass fits around them.
   after that track.)
 - Later: Apple Music (see the ISRC-based plan discussed earlier: `track_provider` table, MusicKit JS adapter).
 
+## Albums and labels (2026-10-01)
+
+Spotify's `label` mostly names today's catalog owner (Rhino/Warner Records, Columbia/Legacy, UMC), not the label a
+record came out on, and there are 2,965 distinct label strings, 1,893 of them used once. Raw label rankings mostly
+show who owns the back catalog.
+
+- [X]  **Album details from Spotify** (`refresh_albums.py`; new albums get them on load): release date, album type
+  (album/single/compilation), track count, UPC, ℗/© lines. Spotify's date is the date of whatever release it serves,
+  so often a reissue's.
+- [ ]  **First release dates from MusicBrainz** (`enrich_mb_recordings.py`, by ISRC, into `mb_recording`); the
+  `track_release` view takes the earlier of that and Spotify's album date. Backfill started 2026-10-01; about 60% of
+  the most-played tracks are found. Maybe later: fall back to an artist + title search for the rest (less reliable;
+  keep it marked as such).
+- [ ]  **Song age**: each show's span and median age, decade mix per show/DJ/year, "oldest thing played".
+- [ ]  **Labels from MusicBrainz**: UPC → release → label (with MBID, type, country, parent/imprint relations,
+  Wikidata, Discogs, Bandcamp); the earliest release of each recording for its original label. Then group label
+  strings under parents, and add label pages (`/label/<slug>`, label radio), DJ label fingerprints, indie vs. major
+  share over time, and Chicago labels.
+- [X]  **Album pages and rankings** (`/album/<spotify id>`, Rankings > Albums, album names linked from shows, artists
+  and search; album radio). Duplicate Spotify copies of an album, and editions in one MusicBrainz release group,
+  count as one album. Outside links (Wikipedia, MusicBrainz, Discogs, AllMusic, Bandcamp, Apple Music, Wikidata)
+  from `enrich_mb_albums.py`: matched by the release's own link to the Spotify album, else by an exact barcode
+  that leads to one release group (70% matched in a 40-album trial). Backfill started 2026-10-01.
+- [ ]  Compilation and reissue share per show.
+- [ ]  Wikidata to-do for albums: release groups with a Wikidata item lacking the Spotify album ID (P2205).
+
+## Wikidata to-do: ways to grow it
+
+Slow and steady is fine; each needs a candidate query plus a review section on `/todo/wikidata`.
+
+- Artists whose Wikidata item we reached through MusicBrainz but which has no Spotify artist ID (P1902): near-certain
+  matches, since MusicBrainz editors made the link.
+- Albums: Wikidata album items (via MusicBrainz release group, P436) without a Spotify album ID (P2205).
+- Labels, once we have MusicBrainz labels: Wikidata items without a MusicBrainz label ID (P966), and labels with
+  no Wikidata item at all.
+- QuickStatements export of reviewed rows (once the account is autoconfirmed).
+
+## /heath: show sizes and song lengths (2026-10-01)
+
+Heath asked for most and fewest songs per show, longest and shortest songs, six-minute songs, and back-to-back
+runs of one artist. Built at `/heath` (`History.lengths()`, `History.back_to_back()`), with six-minute radio
+(`/radio?length=long`). Linked from Heath's DJ page only. Ideas for more:
+- Song length by release decade, once the MusicBrainz dates are in.
+- Per-DJ pace: average song length on the nights each DJ is in the room.
+- Back-to-backs by the same album, or the same label.
+
+## Speed (2026-10-01)
+
+Thursday-night load: the 256 MB machine OOM-killed the worker twice, and Fly logged the 25-connection hard limit
+over and over. Done: tile-size cover images (`make_tiles.py`; covers were up to 2000px/1MB and each download held
+one of the worker's 8 threads), inline SVG icons instead of the Font Awesome kit (a blocking script on every
+load), year-long caching of versioned static files, robots.txt off the endless radio/search URLs, gunicorn
+`--max-requests` recycling and access logs.
+- [ ]  Maybe `fly scale memory 512` if the OOM kills continue (a dollar or two a month).
+- [ ]  Once /shows is good, lighten the home page: latest show, this week in past years, a few random shows,
+  instead of the whole wall of covers (Joe, 2026-10-01).
+
 ## Loose ends
+
+- Dark mode: on the show page, the "usual" row of the mix bars is hard to read.
 
 - Wikidata to-do page: code on main, but `wikidata_candidate` isn't built; run `python wikidata_candidates.py`,
   commit birdnest.db, deploy. Bulk QuickStatements once the Wikidata account is autoconfirmed.

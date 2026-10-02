@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "birdnest",
+      "runtimeExecutable": "/Users/germuska/.virtualenvs/birdnest/bin/flask",
+      "runtimeArgs": ["--app", "app", "run", "--port", "5057"],
+      "port": 5057
+    }
+  ]
+}

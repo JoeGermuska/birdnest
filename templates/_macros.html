@@ -2,6 +2,7 @@
 {%- for p in items -%}
 {%- if p is string -%}{{ p }}
 {%- elif p.artist -%}<a href="{{ url_for('artist', spotify_id=p.artist) }}">{{ p.text }}</a>
+{%- elif p.album -%}<a href="{{ url_for('album', spotify_id=p.album) }}">{{ p.text }}</a>
 {%- elif p.genre -%}<a href="{{ url_for('genre', genre_name=p.genre) }}">{{ p.text }}</a>
 {%- elif p.dj -%}<a href="{{ url_for('dj', slug=p.dj) }}">{{ p.text }}</a>
 {%- elif p.show -%}<a href="{{ url_for('show_playlist', date_str=p.show) }}">{{ p.text }}</a>
@@ -45,6 +46,17 @@
 {%- endfor -%}
 {%- endmacro %}
 
+{# Small inline icons (in place of Font Awesome, whose kit was a blocking script on every page load for five icons).
+   Sized like text: 1em square, sitting on the baseline. #}
+{% macro icon(name, class='') -%}
+<svg class="icon{{ ' ' ~ class if class }}" viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true">
+{%- if name == 'search' %}<circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M15.6 15.6 21 21" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+{%- elif name == 'moon' %}<path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z" fill="currentColor"/>
+{%- elif name == 'sun' %}<circle cx="12" cy="12" r="4.6" fill="currentColor"/><path d="M12 1.8v3M12 19.2v3M1.8 12h3M19.2 12h3M4.8 4.8l2.1 2.1M17.1 17.1l2.1 2.1M4.8 19.2l2.1-2.1M17.1 6.9l2.1-2.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+{%- elif name == 'spotify' %}<circle cx="12" cy="12" r="12" fill="currentColor"/><path d="M6.5 9.3c3.7-1.1 7.9-.8 11.2 1.1M7.1 12.4c3-.9 6.4-.6 9.1.9M7.7 15.3c2.4-.6 4.9-.4 7 .7" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/>
+{%- endif %}</svg>
+{%- endmacro %}
+
 {# the Birds radio icon: next to every link that starts the radio (radio-player.js has a copy for its messages) #}
 {% macro radio_icon() -%}
 <svg class="radio-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5 5a9.9 9.9 0 0 0 0 14M19 5a9.9 9.9 0 0 1 0 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -59,7 +71,7 @@
    links: [(label, url)]; a label of 'Spotify' gets the Spotify icon. #}
 {% macro action_row(radio_url, links=()) -%}
 <p class="action-row">{{ radio_button('Birds radio', radio_url) }}
-{%- for label, url in links %}<a href="{{ url }}">{% if label == 'Spotify' %}<i class="fab fa-spotify"></i> {% endif %}{{ label }}</a>{% endfor %}</p>
+{%- for label, url in links %}<a href="{{ url }}">{% if label == 'Spotify' %}{{ icon('spotify') }} {% endif %}{{ label }}</a>{% endfor %}</p>
 {%- endmacro %}
 
 {% macro radio_link(url, title) -%}

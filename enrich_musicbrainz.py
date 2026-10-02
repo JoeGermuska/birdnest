@@ -7,9 +7,12 @@ backfill a run only touches newly added artists. Safe to interrupt; progress
 is committed as it goes. MusicBrainz asks for at most one request per second.
     python enrich_musicbrainz.py [path/to/birdnest.db]
 """
+import fcntl
 import json
+import os
 import sqlite3
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -32,18 +35,32 @@ create table if not exists mb_artist_url (
 );
 """
 
-_last_request = 0.0
+# MusicBrainz's limit is per client, so scripts running at the same time (say the recordings backfill and the
+# album lookups) take turns: the time of the last request lives in a shared file, read and written under a lock.
+RATE_FILE = os.path.join(tempfile.gettempdir(), 'birdnest-musicbrainz.last')
+
+
+def _wait_turn():
+    with open(RATE_FILE, 'a+') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.seek(0)
+        try:
+            last = float(f.read() or 0)
+        except ValueError:
+            last = 0.0
+        wait = 1.05 - (time.time() - last)
+        if wait > 0:
+            time.sleep(wait)
+        f.seek(0)
+        f.truncate()
+        f.write(repr(time.time()))
 
 
 def get(path, **params):
-    global _last_request
     query = urllib.parse.urlencode({**params, 'fmt': 'json'}, doseq=True)
     req = urllib.request.Request(f"{API}/{path}?{query}", headers={'User-Agent': USER_AGENT})
     for attempt in range(5):
-        wait = 1.05 - (time.time() - _last_request)
-        if wait > 0:
-            time.sleep(wait)
-        _last_request = time.time()
+        _wait_turn()
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.load(resp)

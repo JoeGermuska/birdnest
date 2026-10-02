@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, track_links, action_row %}
+{% from "_macros.html" import factoids, track_links, action_row, icon  %}
 {% block title %}{{ artist.name }}{% endblock title %}
 {% block content %}
 <section class="detail artist">
@@ -15,7 +15,7 @@
                 {% if profile %}{{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} · {{ profile.n_plays }} play{{ 's' if profile.n_plays != 1 }} ·
                 {% if profile.n_shows > 1 %}{{ profile.first.year }}–{{ profile.last.year }}{% else %}{{ profile.first }}{% endif %} ·{% endif %}
                 {% if artist.followers is not none %}{{ "{:,}".format(artist.followers) }} followers{% endif %}
-                {% if not profile %}· <a href="{{ artist.spotify_url }}"><i class="fab fa-spotify"></i> Spotify</a>{% endif %}
+                {% if not profile %}· <a href="{{ artist.spotify_url }}">{{ icon('spotify') }} Spotify</a>{% endif %}
             </p>
             {% if profile and profile.genres %}
             <p class="chips">{% for g in profile.genres %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}">{{ g }}</a>{% endfor %}</p>
@@ -38,7 +38,7 @@
                 <td class="links">{{ track_links(t.spotify_url, t.name) }}</td>
                 <td><span class="track-name">{{ t.name }}</span>{% if t.others %}<div class="album">with {% for a in t.others %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
                 <td class="played">{% for d in t.dates|reverse %}<a class="date" href="{{ url_for('show_playlist', date_str=d) }}">{{ d }}</a>{% endfor %}</td>
-                <td class="label">{{ t.album }}</td>
+                <td class="label">{% if t.album_page %}<a href="{{ url_for('album', spotify_id=t.album_page) }}">{{ t.album }}</a>{% else %}{{ t.album }}{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>

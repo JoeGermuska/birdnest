@@ -1,0 +1,187 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import parts, track_links, radio_button %}
+{% block title %}Heath's Place{% endblock title %}
+{% block extra_head %}
+<style>
+    .lengths .stat-row { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 18px 0 8px; }
+    .lengths .stat-row div { display: flex; flex-direction: column; }
+    .lengths .stat-row dt { font-family: var(--font-display); font-size: var(--size-label); text-transform: uppercase; color: var(--ink-3); order: 2; }
+    .lengths .stat-row dd { margin: 0; font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .lengths h2 { margin-top: 36px; }
+    .lengths .chart { width: 100%; height: auto; display: block; margin: 8px 0 4px; overflow: visible; }
+    .lengths .chart text { font-family: var(--font-display); font-size: 11px; fill: var(--ink-3); }
+    .lengths .section-nav { position: sticky; top: 0; z-index: 2; display: flex; gap: 18px; overflow-x: auto; scrollbar-width: none;
+        margin: 20px -16px 0; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--rule);
+        font-family: var(--font-display); font-size: var(--size-small); white-space: nowrap; }
+    .lengths .section-nav::-webkit-scrollbar { display: none; }
+    .lengths .section-nav a { color: var(--ink-2); text-decoration: none; padding-bottom: 2px; border-bottom: 2px solid transparent; }
+    .lengths .section-nav a:hover { color: var(--ink); }
+    .lengths .section-nav a[aria-current] { color: var(--ink); border-bottom-color: var(--accent); }
+    .lengths h2[id] { scroll-margin-top: 52px; }
+    @media (max-width: 600px) { .lengths .chart text { font-size: 22px; } }
+    .lengths .chart .grid { stroke: var(--rule); stroke-width: 1; }
+    .lengths .chart .dot { fill: var(--bar); stroke: var(--bg); stroke-width: 1.5; }
+    .lengths .chart a:hover .dot, .lengths .chart a:focus .dot { fill: var(--accent); }
+    .lengths .chart .bar { fill: var(--bar); }
+    .lengths .chart .bar.is-six { fill: var(--bar-strong); }
+    .lengths .chart g.bin:hover .bar { fill: var(--accent); }
+    .lengths .chart .six-line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 3; }
+    .lengths .chart .six-label { fill: var(--accent); font-weight: 600; }
+    .lengths .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 8px 32px; }
+    .lengths .pair h3 { font-family: var(--font-display); font-size: var(--size-label); text-transform: uppercase; color: var(--ink-3); margin: 16px 0 6px; }
+    .lengths ol.len-list { list-style: none; padding: 0; margin: 0; }
+    .lengths .len-list li { display: grid; grid-template-columns: 3.4rem 1fr auto; gap: 2px 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--rule); }
+    .lengths .len-list .num { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+    .lengths .len-list .what { min-width: 0; }
+    .lengths .len-list .sub { display: block; font-size: var(--size-note); color: var(--ink-3); }
+    .lengths .len-list .sub a { color: inherit; }
+    .lengths .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px 24px; margin: 18px 0 0; }
+    .lengths .facts dt { font-family: var(--font-display); font-size: var(--size-label); text-transform: uppercase; color: var(--ink-3); }
+    .lengths .facts dd { margin: 2px 0 0; }
+    .lengths table.years { border-collapse: collapse; width: 100%; max-width: 640px; font-variant-numeric: tabular-nums; }
+    .lengths .years th { font-family: var(--font-display); font-size: var(--size-label); text-transform: uppercase; color: var(--ink-3); font-weight: normal; text-align: left; padding: 4px 8px 4px 0; }
+    .lengths .years td { padding: 5px 8px 5px 0; border-top: 1px solid var(--rule); white-space: nowrap; }
+    .lengths .years .meter { display: inline-block; vertical-align: middle; height: 8px; border-radius: 0 4px 4px 0; background: var(--bar); margin-left: 6px; }
+</style>
+{% endblock extra_head %}
+
+{% macro show_date(d) -%}<a href="{{ url_for('show_playlist', date_str=d) }}">{{ d.strftime('%b') }} {{ d.day }}, {{ d.year }}</a>{%- endmacro %}
+{% macro hm(minutes) -%}{{ minutes // 60 }}h {{ '%02d' % (minutes % 60) }}m{%- endmacro %}
+{% macro dates(ds) -%}{% for d in ds[:3] %}{% if not loop.first %}, {% endif %}{{ show_date(d) }}{% endfor %}{% if ds|length > 3 %} and {{ ds|length - 3 }} more{% endif %}{%- endmacro %}
+
+{% macro song_list(rows) %}
+<ol class="len-list">
+    {% for r in rows %}
+    <li><span class="num">{{ r.ms|mmss }}</span>
+        <span class="what">“{{ r.name }}” · {{ parts(r.artists) }}<span class="sub">{{ dates(r.dates) }}</span></span>
+        {{ track_links(r.spotify_url, r.name) }}</li>
+    {% endfor %}
+</ol>
+{% endmacro %}
+
+{% macro show_list(shows, key) %}
+<ol class="len-list">
+    {% for s in shows %}
+    <li><span class="num">{{ s[key] }}</span>
+        <span class="what">{{ show_date(s.date) }}<span class="sub">{{ hm(s.minutes) }}{% if s.room %} · {{ parts(s.room) }}{% endif %}</span></span>
+        <span></span></li>
+    {% endfor %}
+</ol>
+{% endmacro %}
+
+{% block content %}
+<section class="detail lengths">
+    <h1>📊 Heath's Place for Data</h1>
+    <p class="detail-meta">How many songs a show holds and how long they run, for <a href="{{ url_for('dj', slug='heath') }}">Heath</a>,
+        who asked for most and fewest songs per show, longest and shortest songs, six-minute songs, and
+        <a href="#back-to-back">back-to-backs</a>.
+        Lengths are Spotify's.</p>
+
+    <dl class="stat-row">
+        <div><dt>songs played</dt><dd>{{ '{:,}'.format(L.plays) }}</dd></div>
+        <div><dt>hours of music</dt><dd>{{ L.hours }}</dd></div>
+        <div><dt>songs in a typical show</dt><dd>{{ L.per_show|round|int }}</dd></div>
+        <div><dt>median song</dt><dd>{{ L.median_ms|mmss }}</dd></div>
+        <div><dt>six minutes or longer</dt><dd>{{ (L.six_plays / L.plays * 100)|round|int }}%</dd></div>
+    </dl>
+
+    <nav class="section-nav" aria-label="Sections">
+        <a href="#sizes">Songs per show</a><a href="#lengths">Song lengths</a><a href="#six">Six-minute songs</a><a href="#back-to-back">Back to back</a><a href="#years">Year by year</a>
+    </nav>
+
+    <h2 id="sizes">Songs per show</h2>
+    {% set W, H, top = 800, 200, (L.max_n / 10)|round(0, 'ceil')|int * 10 %}
+    <svg class="chart" viewBox="-28 -8 {{ W + 36 }} {{ H + 30 }}" role="img" aria-label="Songs in each show over time, one dot per show">
+        {% for v in range(0, top + 1, 10) %}{% set y = H - v / top * H %}
+        <line class="grid" x1="0" x2="{{ W }}" y1="{{ y }}" y2="{{ y }}" /><text x="-6" y="{{ y + 4 }}" text-anchor="end">{{ v }}</text>{% endfor %}
+        {% for y in range(history.first_date.year + 1, history.last_date.year + 1) %}
+        <text x="{{ history.year_x(y, W) }}" y="{{ H + 20 }}" text-anchor="middle">{{ y }}</text>{% endfor %}
+        {% for s in L.shows %}
+        <a href="{{ url_for('show_playlist', date_str=s.date) }}"><title>{{ s.date.strftime('%b') }} {{ s.date.day }}, {{ s.date.year }}: {{ s.n }} songs, {{ hm(s.minutes) }}</title>
+            <circle class="dot" cx="{{ history.timeline_x(s.date, W) }}" cy="{{ H - s.n / top * H }}" r="4.5" /></a>{% endfor %}
+    </svg>
+    <p class="detail-meta">Each dot is a show; shows have gotten shorter since the early pandemic ones.</p>
+
+    <div class="pair">
+        <div><h3>Most songs</h3>{{ show_list(L.most, 'n') }}</div>
+        <div><h3>Fewest songs</h3>{{ show_list(L.fewest, 'n') }}</div>
+    </div>
+    <dl class="facts">
+        <div><dt>Longest show</dt><dd>{{ show_date(L.longest_show.date) }}, {{ hm(L.longest_show.minutes) }}</dd></div>
+        <div><dt>Shortest show</dt><dd>{{ show_date(L.shortest_show.date) }}, {{ hm(L.shortest_show.minutes) }}</dd></div>
+        <div><dt>Slowest pace</dt><dd>{{ show_date(L.slowest_show.date) }}: songs averaged {{ L.slowest_show.avg_ms|mmss }}</dd></div>
+        <div><dt>Quickest pace</dt><dd>{{ show_date(L.quickest_show.date) }}: songs averaged {{ L.quickest_show.avg_ms|mmss }}</dd></div>
+    </dl>
+
+    <h2 id="lengths">Song lengths</h2>
+    {% set n_bins = L.bins|length %}{% set bw = W / n_bins %}{% set peak = L.bins|max %}
+    <svg class="chart" viewBox="-28 -8 {{ W + 36 }} {{ H + 30 }}" role="img" aria-label="How many songs fall in each half-minute of length">
+        {% for v in range(0, peak + 1, 200) %}{% set y = H - v / peak * H %}
+        <line class="grid" x1="0" x2="{{ W }}" y1="{{ y }}" y2="{{ y }}" /><text x="-6" y="{{ y + 4 }}" text-anchor="end">{{ v }}</text>{% endfor %}
+        {% for c in L.bins %}{% set lo = loop.index0 * L.bin_ms %}{% set h = c / peak * H %}
+        <g class="bin"><title>{% if loop.last %}{{ lo|mmss }} and longer{% else %}{{ lo|mmss }} to {{ (lo + L.bin_ms)|mmss }}{% endif %}: {{ c }} songs</title>
+            <rect x="{{ loop.index0 * bw }}" y="0" width="{{ bw }}" height="{{ H }}" fill="transparent" />
+            {% if c %}{% set x0, top, r = loop.index0 * bw + 1, H - h, [3, h]|min %}<path class="bar{{ ' is-six' if lo >= 360000 }}" d="M{{ x0 }},{{ H }} V{{ top + r }} q0,{{ -r }} {{ r }},{{ -r }} H{{ x0 + bw - 2 - r }} q{{ r }},0 {{ r }},{{ r }} V{{ H }} Z" />{% endif %}</g>
+        {% if loop.index0 % 2 == 0 and not loop.last %}<text x="{{ loop.index0 * bw }}" y="{{ H + 20 }}" text-anchor="middle">{{ loop.index0 // 2 }}{% if loop.first %} min{% endif %}</text>{% endif %}{% endfor %}
+        <text x="{{ W }}" y="{{ H + 20 }}" text-anchor="end">12+</text>
+        {% set x6 = 12 * bw %}<line class="six-line" x1="{{ x6 }}" x2="{{ x6 }}" y1="-4" y2="{{ H }}" />
+        <text class="six-label" x="{{ x6 + 6 }}" y="8">six minutes</text>
+    </svg>
+    <p class="detail-meta">Every song played, by length in half-minutes. Most land between three and five minutes.</p>
+
+    <div class="pair">
+        <div><h3>Longest songs</h3>{{ song_list(L.longest) }}</div>
+        <div><h3>Shortest songs</h3>{{ song_list(L.shortest) }}</div>
+    </div>
+
+    <h2 id="six">Six-minute songs</h2>
+    <p>{{ '{:,}'.format(L.six_plays) }} plays of {{ '{:,}'.format(L.six_recordings) }} different songs have run six minutes or more.</p>
+    <p>{{ radio_button('Six-minute radio', url_for('radio_page', length='long')) }}</p>
+    <div class="pair">
+        <div><h3>Shows with the most</h3>{{ show_list(L.most_six, 'six') }}</div>
+        <div><h3>Just over six minutes</h3>{{ song_list(L.near_six) }}</div>
+    </div>
+
+    <h2 id="back-to-back">Back to back</h2>
+    <p>{{ B.n }} times, in {{ B.shows }} of {{ B.total_shows }} shows, the room played the same artist two or more songs in a row.
+        {% if B.repeat %}Twice for {% for r in B.repeat %}{% if not loop.first %}{{ ' and ' if loop.last else ', ' }}{% endif %}{{ parts(r.artist) }}{% endfor %}.{% endif %}</p>
+    <ol class="len-list">
+        {% for r in B.runs %}
+        <li><span class="num">×{{ r.tracks|length }}</span>
+            <span class="what">{{ parts(r.artist_parts) }}<span class="sub">{{ show_date(r.date) }}, songs {{ r.start }}–{{ r.start + r.tracks|length - 1 }}:
+                {% if r.tracks|map(attribute='name')|unique|list|length == 1 %}“{{ r.tracks[0].name }}”, the same song {{ 'twice' if r.tracks|length == 2 else r.tracks|length ~ ' times' }}
+                {%- else %}{% for t in r.tracks %}{% if not loop.first %}, {% endif %}“{{ t.name }}”{% endfor %}{% endif %}</span></span>
+            <span></span></li>
+        {% endfor %}
+    </ol>
+
+    <h2 id="years">Year by year</h2>
+    {% set max_per_show = L.by_year|map(attribute='per_show')|max %}{% set max_six = L.by_year|map(attribute='six_share')|max %}
+    <table class="years">
+        <thead><tr><th>Year</th><th>Songs per show</th><th>Average song</th><th>Six minutes+</th></tr></thead>
+        <tbody>{% for y in L.by_year %}
+            <tr><td>{{ y.year }}</td>
+                <td>{{ '%.1f' % y.per_show }}<span class="meter" style="width: {{ (y.per_show / max_per_show * 80)|round }}px"></span></td>
+                <td>{{ y.avg_ms|mmss }}</td>
+                <td>{{ (y.six_share * 100)|round|int }}%<span class="meter" style="width: {{ (y.six_share / max_six * 80)|round }}px"></span></td></tr>
+        {% endfor %}</tbody>
+    </table>
+</section>
+<script>
+    (() => {  // mark the section in view; runs again on each Turbo page view
+        const links = [...document.querySelectorAll('.section-nav a')];
+        const heads = links.map(a => document.getElementById(a.hash.slice(1)));
+        const mark = () => {
+            let current = heads[0];
+            for (const h of heads) if (h.getBoundingClientRect().top < 120) current = h;
+            links.forEach((a, i) => heads[i] === current ? a.setAttribute('aria-current', 'location') : a.removeAttribute('aria-current'));
+            const on = links[heads.indexOf(current)];
+            on.parentElement.scrollLeft = on.offsetLeft - 16;  // keep it visible when the bar scrolls sideways on phones
+        };
+        if (window.heathScroll) removeEventListener('scroll', window.heathScroll);
+        window.heathScroll = () => document.querySelector('.section-nav') ? mark() : removeEventListener('scroll', window.heathScroll);
+        addEventListener('scroll', window.heathScroll, {passive: true});
+        mark();
+    })();
+</script>
+{% endblock content %}

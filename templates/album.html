@@ -1,0 +1,47 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import factoids, track_links, action_row, parts %}
+{% set album = profile.album %}
+{% block title %}{{ album.name }}{% endblock title %}
+{% block content %}
+<section class="detail album-page">
+    <header class="detail-header">
+        {% if album.image_url %}<img class="detail-image" src="{{ album.image_url }}" alt="">{% endif %}
+        <div>
+            <hgroup class="title-unit"><h1>{{ album.name }}</h1><p class="subtitle">{{ profile.kind }}{% if profile.artists %} by {{ parts(profile.artists) }}{% endif %}</p></hgroup>
+            {{ action_row(url_for('radio_page', album=album.spotify_id), [('Spotify', album.spotify_url)] + profile.links) }}
+            <p class="detail-meta">
+                {{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} · {{ profile.n_plays }} play{{ 's' if profile.n_plays != 1 }}
+                · {% if profile.n_shows > 1 %}{{ profile.first.year }}–{{ profile.last.year }}{% else %}{{ profile.first }}{% endif %}
+                {% if album.total_tracks %}· {{ album.total_tracks }} tracks on the album{% endif %}
+            </p>
+        </div>
+    </header>
+
+    {% set marks = [] %}
+    {% for s in profile.shows %}{% set _ = marks.append({'date': s.date, 'label': s.date ~ ': ' ~ (s.tracks|map(attribute='name')|join(', '))}) %}{% endfor %}
+    {% include "_timeline.html" %}
+    {{ factoids(profile.facts) }}
+
+    <h2>Played</h2>
+    <table class="show-tracks artist-tracks">
+        <thead><tr><th></th><th>Track</th><th>Played</th><th class="num">Time</th></tr></thead>
+        <tbody>
+            {% for t in profile.tracks %}
+            <tr>
+                <td class="links">{{ track_links(t.spotify_url, t.name) }}</td>
+                <td><span class="track-name">{{ t.name }}</span>{% if t.others %}<div class="album">with {% for a in t.others %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
+                <td class="played">{% for d in t.dates|reverse %}<a class="date" href="{{ url_for('show_playlist', date_str=d) }}">{{ d }}</a>{% endfor %}</td>
+                <td class="num">{% if t.ms %}{{ t.ms|mmss }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if profile.copyright or profile.editions %}
+    <p class="detail-meta album-notes">
+        {% if profile.copyright %}{{ profile.copyright }}{% endif %}
+        {% if profile.editions %}<br>Also played from {% for e in profile.editions %}<a href="{{ e.spotify_url }}">{{ e.name }}{% if e.release_date %} ({{ e.release_date[:4] }}){% endif %}</a>{% if not loop.last %}, {% endif %}{% endfor %} on Spotify; counted together here.{% endif %}
+    </p>
+    {% endif %}
+</section>
+{% endblock content %}

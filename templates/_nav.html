@@ -1,14 +1,15 @@
+{% from "_macros.html" import icon %}
 <nav id="topbar">
     <h1><a href="/">Conference of the Birds</a></h1>
     <div class="nav-links"><a href="{{ url_for('browse') }}">Shows</a><a href="{{ url_for('ranking', kind='artists') }}">Rankings</a><a href="{{ url_for('genre_map') }}">Genre map</a><a href="{{ url_for('djs') }}">DJs</a><a href="{{ url_for('radio_page') }}">Radio</a></div>
     <form id="search" role="search" action="{{ url_for('search')}}" method="GET">
         <div class="autocomplete-container">
-            <i class="fas fa-search search-icon" aria-hidden="true"></i>
+            {{ icon('search', 'search-icon') }}
             <input type="search" id="q" name="q" autocomplete="off" value="{{ terms or '' }}" placeholder="artist, track, album, genre" aria-label="Search artists, tracks, albums, genres" title="Search artists, tracks, albums, genres (press / to jump here)">
             <div id="autocomplete-dropdown" class="autocomplete-dropdown"></div>
         </div>
     </form>
-    <button type="button" id="theme-toggle" title="Light or dark" aria-label="Switch between light and dark"><i class="fas fa-moon theme-moon" aria-hidden="true"></i><i class="fas fa-sun theme-sun" aria-hidden="true"></i></button>
+    <button type="button" id="theme-toggle" title="Light or dark" aria-label="Switch between light and dark">{{ icon('moon', 'theme-moon') }}{{ icon('sun', 'theme-sun') }}</button>
 </nav>
 <script>
 (function () {

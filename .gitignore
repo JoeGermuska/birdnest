@@ -15,3 +15,4 @@ vite.config.ts.timestamp-*
 __pycache__/
 *.history.pickle
 .pytest_cache/
+static/images/tiles/

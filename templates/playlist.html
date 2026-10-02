@@ -68,7 +68,7 @@
                         {{ track_links(track.spotify_url, track.name) }}</td>
                     <td>
                         <span class="track-name">{{ track.name }}</span>
-                        {% if track.album %}<div class="album">{{ track.album }}</div>{% endif %}
+                        {% if track.album %}<div class="album">{% if track.album_page %}<a href="{{ url_for('album', spotify_id=track.album_page) }}">{{ track.album }}</a>{% else %}{{ track.album }}{% endif %}</div>{% endif %}
                     </td>
                     <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>
                     <td class="label">{{ track.label or '' }}</td>

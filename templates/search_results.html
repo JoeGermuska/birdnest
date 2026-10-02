@@ -7,7 +7,7 @@
     <h1>{% if terms %}Results for “{{ terms }}”{% else %}Search{% endif %}</h1>
     {% if terms %}
     <p class="detail-meta">
-        {{ tracks|length }} track{{ 's' if tracks|length != 1 }}{% if artists %} · {{ artists|length }} artist{{ 's' if artists|length != 1 }}{% endif %}{% if genres %} · {{ genres|length }} genre{{ 's' if genres|length != 1 }}{% endif %}
+        {{ tracks|length }} track{{ 's' if tracks|length != 1 }}{% if artists %} · {{ artists|length }} artist{{ 's' if artists|length != 1 }}{% endif %}{% if albums %} · {{ albums|length }} album{{ 's' if albums|length != 1 }}{% endif %}{% if genres %} · {{ genres|length }} genre{{ 's' if genres|length != 1 }}{% endif %}
     </p>
     {% endif %}
 
@@ -30,6 +30,15 @@
     {% endif %}
     {% endif %}
 
+    {% if albums %}
+    <h2>Albums</h2>
+    <ul class="artist-results">
+        {% for a in albums[:12] %}
+        <li><a href="{{ url_for('album', spotify_id=a.spotify_id) }}">{{ a.name }}</a> <span class="muted">{{ a.artists }} · {{ a.shows }} show{{ 's' if a.shows != 1 }}</span></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
     {% if genres %}
     <h2>Genres</h2>
     <p class="chips">{% for g in genres %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}">{{ g }}</a>{% endfor %}</p>
@@ -46,7 +55,7 @@
                 <td class="thumb">{% if track.album and track.album.images %}{% with img = track.album.image_url(max_size=64) %}{% if img %}<img src="{{ img }}" alt="" width="40" height="40" loading="lazy">{% endif %}{% endwith %}{% endif %}</td>
                 <td>
                     <span class="track-name">{{ track.name }}</span>
-                    {% if track.album %}<div class="album">{{ track.album.name }}</div>{% endif %}
+                    {% if track.album %}<div class="album"><a href="{{ url_for('album', spotify_id=track.album.spotify_id) }}">{{ track.album.name }}</a></div>{% endif %}
                 </td>
                 <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>
                 <td class="played">{% for pl in track.playlists|sort(attribute='date', reverse=True) %}<a href="{{ url_for('show_playlist', date_str=pl.date) }}">{{ pl.date }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</td>

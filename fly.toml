@@ -17,7 +17,9 @@ kill_timeout = 5
   exec = []
 
 [processes]
-  app = "gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 8 app:app"
+  # --max-requests: recycle the worker now and then, so memory fragmentation from big pages doesn't creep up to
+  # the VM's limit (it was being OOM-killed at 256 MB); --access-logfile: see who's behind bursts of requests
+  app = "gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 8 --max-requests 2000 --max-requests-jitter 200 --access-logfile - app:app"
 
 [[services]]
   http_checks = []

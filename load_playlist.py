@@ -1,9 +1,13 @@
 from spotclient import Client
 import models
 import enrich_musicbrainz
+import enrich_mb_albums
+import enrich_mb_recordings
+import refresh_albums
 import refresh_artists
 import enrich_wikidata
 import factoids
+import make_tiles
 import load_djs
 import re
 import sys
@@ -43,10 +47,20 @@ if not playlist.show_djs and sys.stdin.isatty():
 # whichever artists are due for their roughly monthly refresh
 refresh_artists.main(force_ids={a.artist_id for t in playlist.tracks for a in t.artists})
 
+# album details (release date, type, UPC) for any album the load didn't fill in
+refresh_albums.main()
+
 # look up new artists on MusicBrainz, then refresh links to other
-# representations of artists (Wikipedia, Discogs, ...)
+# representations of artists (Wikipedia, Discogs, ...); and tonight's tracks'
+# first release dates and albums' links (run enrich_mb_recordings.py and
+# enrich_mb_albums.py on their own for any backlog)
 enrich_musicbrainz.main()
+enrich_mb_recordings.main(track_ids=[t.track_id for t in playlist.tracks])
+enrich_mb_albums.main(album_ids=list({t.album_id for t in playlist.tracks if t.album_id}))
 enrich_wikidata.main()
+
+# small tile copies of any new show images (also made at image build)
+make_tiles.main()
 
 # pre-build the web app's analysis cache for the updated database
 factoids.build_cache()

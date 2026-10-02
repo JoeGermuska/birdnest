@@ -29,7 +29,9 @@ NOVELTY_WINDOW = 20  # shows on each side to compare novelty against
 REPEAT_PENALTY = 0.5  # novelty: new artists' share, less this much of the share of songs heard on earlier shows
 GENRE_MIN_TRACKS = 20
 LINK_LABELS = [('wikipedia', 'Wikipedia'), ('musicbrainz', 'MusicBrainz'), ('discogs', 'Discogs'),
-               ('bandcamp', 'Bandcamp'), ('allmusic', 'AllMusic'), ('website', 'Website'), ('wikidata', 'Wikidata')]  # ignore very rare genres, whose lift is noisy
+               ('bandcamp', 'Bandcamp'), ('allmusic', 'AllMusic'), ('website', 'Website'), ('wikidata', 'Wikidata')]
+ALBUM_LINK_LABELS = [('wikipedia', 'Wikipedia'), ('musicbrainz', 'MusicBrainz'), ('discogs', 'Discogs'),
+                     ('allmusic', 'AllMusic'), ('bandcamp', 'Bandcamp'), ('apple', 'Apple Music'), ('wikidata', 'Wikidata')]  # ignore very rare genres, whose lift is noisy
 
 
 @dataclass
@@ -160,6 +162,35 @@ class History:
         for r in con.execute("select playlist_id, track_id from playlist_track order by playlist_id, sequence"):
             if r['playlist_id'] in self.show_dates:
                 self.show_tracks[r['playlist_id']].append(r['track_id'])
+
+        # albums, with what MusicBrainz knows (enrich_mb_albums.py) when it's been looked up
+        has = lambda t: con.execute("select 1 from sqlite_master where name = ?", (t,)).fetchone()
+        cols = {r[1] for r in con.execute("pragma table_info(album)")}
+        extra = [c for c in ('release_date', 'release_date_precision', 'album_type', 'total_tracks', 'copyright_p') if c in cols]
+        mb = has('mb_album')
+        self.albums = {}
+        for r in con.execute(f"""select al.album_id, al.spotify_id, al.spotify_url, al.name, al.label, al.images
+                                 {''.join(', al.' + c for c in extra)}
+                                 {', m.release_group_mbid, m.first_release_date original_date, m.rg_title' if mb else ''}
+                                 from album al {'left join mb_album m using(album_id)' if mb else ''}"""):
+            a = dict(r)
+            images = json.loads(a.pop('images') or '[]')
+            a['image_url'] = next((i['url'] for i in sorted(images, key=lambda i: i.get('width') or 0) if (i.get('width') or 0) >= 250),
+                                  images[0]['url'] if images else None)
+            self.albums[a['album_id']] = a
+        self.album_artists = defaultdict(list)
+        for r in con.execute("select album_id, artist_id from album_artist"):
+            if r['artist_id'] not in self.album_artists[r['album_id']]:
+                self.album_artists[r['album_id']].append(r['artist_id'])
+        self.album_links = defaultdict(dict)
+        self.album_mb_labels = defaultdict(list)
+        if has('album_link'):
+            for r in con.execute("select album_id, source, url from album_link"):
+                self.album_links[r['album_id']][r['source']] = r['url']
+        if has('mb_album_label'):
+            for r in con.execute("select album_id, name, catalog_number from mb_album_label"):
+                if (r['name'], r['catalog_number']) not in self.album_mb_labels[r['album_id']]:
+                    self.album_mb_labels[r['album_id']].append((r['name'], r['catalog_number']))
         con.close()
 
         # Recordings can appear under several Spotify track ids (single vs. album,
@@ -201,6 +232,49 @@ class History:
         # rank artists by number of shows (1 = most shows; ties share a rank)
         self.artist_rank = {a: 1 + sum(1 for a2 in self.artist_shows if len(self.artist_shows[a2]) > len(v))
                             for a, v in self.artist_shows.items()}
+
+        # Albums: Spotify sometimes lists one album under several ids (regional or re-uploaded copies), and
+        # MusicBrainz's release group gathers editions (remasters, deluxe); each group counts as one album,
+        # under its most played id.
+        self.album_plays = Counter(self.tracks[t]['album_id'] for tids in self.show_tracks.values() for t in tids
+                                   if self.tracks[t]['album_id'] in self.albums)
+        parent = {a: a for a in self.albums}
+        def find(a):
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+        firsts = {}
+        for aid, a in self.albums.items():
+            keys = [('name', (a['name'] or '').strip().lower(), frozenset(self.album_artists[aid]), a.get('album_type') == 'single')]
+            if a.get('release_group_mbid'):
+                keys.append(('rg', a['release_group_mbid']))
+            for k in keys:
+                if k in firsts:
+                    parent[find(aid)] = find(firsts[k])
+                else:
+                    firsts[k] = aid
+        members = defaultdict(list)
+        for aid in self.albums:
+            members[find(aid)].append(aid)
+        self.album_group, self.album_members = {}, {}
+        for ids in members.values():
+            canon = max(ids, key=lambda a: (self.album_plays[a], -a))
+            self.album_members[canon] = sorted(ids, key=lambda a: (-self.album_plays[a], a))
+            for a in ids:
+                self.album_group[a] = canon
+        self.album_by_spotify = {a['spotify_id']: self.album_group[aid] for aid, a in self.albums.items() if a['spotify_id']}
+        self.album_shows = defaultdict(set)
+        for pid, tids in self.show_tracks.items():
+            for t in tids:
+                if self.tracks[t]['album_id'] in self.album_group:
+                    self.album_shows[self.album_group[self.tracks[t]['album_id']]].add(pid)
+        counts = sorted((len(v) for a, v in self.album_shows.items() if self.albums[a].get('album_type') != 'single'), reverse=True)
+        first_at = {}
+        for i, n in enumerate(counts):
+            first_at.setdefault(n, i + 1)
+        # rank albums (singles aside) by number of shows; ties share a rank
+        self.album_rank = {a: first_at[len(v)] for a, v in self.album_shows.items() if self.albums[a].get('album_type') != 'single'}
 
         self.dj_by_slug = {dj['slug']: i for i, dj in self.djs.items()}
         self.dj_shows = defaultdict(set)
@@ -252,8 +326,13 @@ class History:
     def show_rows(self, playlist_id):
         """Everything the show page's track table needs, without touching the ORM."""
         notes = self.track_notes(playlist_id)
-        return [{**self.tracks[t], 'artists': [self.artists[a] for a in self.track_artists[t]], 'notes': notes[t]}
-                for t in self.show_tracks[playlist_id]]
+        return [{**self.tracks[t], 'artists': [self.artists[a] for a in self.track_artists[t]], 'notes': notes[t],
+                 'album_page': self._album_page(t)} for t in self.show_tracks[playlist_id]]
+
+    def _album_page(self, track_id):
+        """The Spotify id an album page lives at, for a track's album (None if unknown)."""
+        canon = self.album_group.get(self.tracks[track_id]['album_id'])
+        return self.albums[canon]['spotify_id'] if canon is not None else None
 
     def neighbors(self, playlist_id):
         """(previous, next) show dates."""
@@ -543,7 +622,7 @@ class History:
             for t in self.show_tracks[pid]:
                 if artist_id in self.track_artists[t]:
                     r = by_rec.setdefault(self.recording_key(t), {
-                        'name': self.tracks[t]['name'], 'album': self.tracks[t]['album'],
+                        'name': self.tracks[t]['name'], 'album': self.tracks[t]['album'], 'album_page': self._album_page(t),
                         'spotify_url': self.tracks[t]['spotify_url'], 'dates': [],
                         'others': [self.artists[a] for a in self.track_artists[t] if a != artist_id]})
                     r['dates'].append(self.show_dates[pid])
@@ -604,6 +683,68 @@ class History:
                 'genres': sorted(self.artist_genres.get(artist_id, ())),
                 'links': [(label, self.artist_links[artist_id][source]) for source, label in LINK_LABELS
                           if source in self.artist_links.get(artist_id, {})]}
+
+    def album_profile(self, album_id):
+        """The album page for a group (album_id is its canonical id: see album_group)."""
+        pids = sorted(self.album_shows.get(album_id, ()), key=self.show_dates.get)
+        if not pids:
+            return None
+        members = set(self.album_members[album_id])
+        album = self.albums[album_id]
+        artists = self.album_artists[album_id]
+        shows, by_rec = [], {}
+        for pid in pids:
+            items = [(i + 1, t) for i, t in enumerate(self.show_tracks[pid]) if self.tracks[t]['album_id'] in members]
+            shows.append({'date': self.show_dates[pid], 'tracks': [{'position': p, 'name': self.tracks[t]['name']} for p, t in items]})
+            for _, t in items:
+                r = by_rec.setdefault(self.recording_key(t), {
+                    'name': self.tracks[t]['name'], 'spotify_url': self.tracks[t]['spotify_url'],
+                    'ms': self.tracks[t]['duration_ms'], 'dates': [],
+                    'others': [self.artists[a] for a in self.track_artists[t] if a not in artists]})
+                r['dates'].append(self.show_dates[pid])
+        track_rows = sorted(by_rec.values(), key=lambda r: (-len(r['dates']), -r['dates'][-1].toordinal()))
+        n = len(pids)
+        facts = Facts()
+
+        rank = self.album_rank.get(album_id)
+        if rank and n >= 2:
+            facts.add('regular', 'Standing', f"#{rank} most-played album" if rank <= 50 else f"played at {n} shows",
+                      more={'ranking': 'albums', 'anchor': album['spotify_id'], 'text': 'see ranking'})
+        top = track_rows[0]
+        if len(top['dates']) > 1:
+            facts.add('repeat', 'Most played', f"“{top['name']}” ({len(top['dates'])} times)")
+        released = album.get('release_date')
+        original = next((self.albums[m]['original_date'] for m in self.album_members[album_id] if self.albums[m].get('original_date')), None)
+        if original and released and original[:4] < released[:4]:
+            facts.add('stat', 'Released', f"{original[:4]}, first (MusicBrainz); this edition {released[:4]}")
+        elif released and not released.startswith('0000'):
+            facts.add('stat', 'Released', released[:4])
+        # MusicBrainz's label (with catalog number) for the release, then Spotify's when it says something else
+        norm = lambda x: re.sub(r'\W', '', (x or '').lower().replace('records', '').replace('recordings', ''))
+        mb_labels = [f"{name} ({cat})" if cat else name for name, cat in self.album_mb_labels.get(album_id, []) if name]
+        label = '; '.join(dict.fromkeys(mb_labels))
+        if album.get('label') and all(norm(album['label']) != norm(n) for n, _ in self.album_mb_labels.get(album_id, [])):
+            label = f"{label}; on Spotify, {album['label']}" if label else album['label']
+        if label:
+            facts.add('stat', 'Label', label)
+        if n >= 3 and self.dj_shows:
+            room = self._over_represented(set(pids), self.dj_shows, limit=3)
+            if room:
+                facts.add('stat', 'Often in the room', *_join([[self._dj_part(i), f" ({k} of {n})"] for i, k in room]))
+
+        links = [(label, self.album_links[album_id][source]) for source, label in ALBUM_LINK_LABELS
+                 if source in self.album_links.get(album_id, {})]
+        if not links:  # a duplicate in the group may be the one MusicBrainz knows
+            other = next((m for m in self.album_members[album_id] if self.album_links.get(m)), None)
+            if other:
+                links = [(label, self.album_links[other][source]) for source, label in ALBUM_LINK_LABELS
+                         if source in self.album_links[other]]
+        kind = {'compilation': 'Compilation', 'single': 'Single'}.get(album.get('album_type'), 'Album')
+        return {'album': album, 'kind': kind, 'artists': _join([self._artist_part(a) for a in artists if a in self.artists]),
+                'shows': shows, 'tracks': track_rows, 'n_shows': n, 'n_plays': sum(len(s['tracks']) for s in shows),
+                'first': shows[0]['date'], 'last': shows[-1]['date'], 'facts': facts, 'links': links,
+                'copyright': album.get('copyright_p'),
+                'editions': [self.albums[m] for m in self.album_members[album_id] if m != album_id]}
 
     def genre_profile(self, name):
         aids = self.genre_artists.get(name)
@@ -704,6 +845,20 @@ class History:
         return {'title': 'Most repeated tracks', 'unit': 'plays', 'rows': rows,
                 'blurb': 'Recordings played at more than one show (the same recording on different releases '
                          'counts together); each tick is a play.'}
+
+    def _rank_albums(self):
+        items = sorted(((a, sorted(self.show_dates[p] for p in pids)) for a, pids in self.album_shows.items()
+                        if len(pids) >= 2 and a in self.album_rank),
+                       key=lambda kv: (-len(kv[1]), (self.albums[kv[0]]['name'] or '').lower()))
+
+        def label(a):
+            return [{'album': self.albums[a]['spotify_id'], 'text': self.albums[a]['name']}, ' · ',
+                    *_join([self._artist_part(x) for x in self.album_artists[a] if x in self.artists])]
+        rows = self._dated_rows(items, lambda a: self.albums[a]['spotify_id'], label,
+                                lambda a, d: f"{self.albums[a]['name']}: {len(d)} shows, {d[0]} to {d[-1]}")
+        return {'title': 'Most played albums', 'unit': 'shows', 'rows': rows,
+                'blurb': 'Albums (not singles) played at more than one show, by the number of shows; each tick is a '
+                         'show. Copies of one album under different Spotify ids, and its editions, count together.'}
 
     def _rank_labels(self):
         dates, artists = defaultdict(list), defaultdict(Counter)
@@ -848,6 +1003,94 @@ class History:
                 'totals': [self.plays_by_year[y] for y in years],
                 'families': [{'name': f, 'genres': gs} for f, gs in families.items() if gs]}
 
+    def lengths(self):
+        """Show sizes and song lengths, for /heath (Heath asked: most and fewest songs per show, longest and
+        shortest songs, six-minute songs)."""
+        six = SIX_MINUTES
+        shows = []
+        for pid, tids in self.show_tracks.items():
+            ms = [self.tracks[t]['duration_ms'] or 0 for t in tids]
+            shows.append({'date': self.show_dates[pid], 'n': len(tids), 'minutes': sum(ms) // 60000,
+                          'avg_ms': sum(ms) / len(ms), 'six': sum(m >= six for m in ms),
+                          'room': _join([self._dj_part(d) for d, _ in self.show_djs.get(pid, [])])})
+        shows.sort(key=lambda s: s['date'])
+        plays = [(self.show_dates[pid], t) for pid, tids in self.show_tracks.items() for t in tids
+                 if self.tracks[t]['duration_ms']]
+        all_ms = sorted(self.tracks[t]['duration_ms'] for _, t in plays)
+
+        # one row per recording, with every date it was played
+        recs = defaultdict(lambda: {'dates': []})
+        for d, t in plays:
+            r = recs[self.recording_key(t)]
+            r.setdefault('track', t)
+            r['dates'].append(d)
+        rows = []
+        for r in recs.values():
+            t = self.tracks[r['track']]
+            rows.append({'ms': t['duration_ms'], 'name': t['name'], 'spotify_url': t['spotify_url'],
+                         'artists': _join([self._artist_part(a) for a in self.track_artists[r['track']]]),
+                         'dates': sorted(set(r['dates']))})
+        by_length = sorted(rows, key=lambda r: r['ms'])
+
+        bin_ms, n_bins = 30000, 24  # half-minute bins up to 12 minutes, then one for everything longer
+        bins = [0] * (n_bins + 1)
+        for m in all_ms:
+            bins[min(m // bin_ms, n_bins)] += 1
+
+        years = defaultdict(lambda: {'shows': 0, 'plays': 0, 'ms': 0, 'six': 0})
+        for s in shows:
+            y = years[s['date'].year]
+            y['shows'] += 1
+            y['plays'] += s['n']
+            y['six'] += s['six']
+        for d, t in plays:
+            years[d.year]['ms'] += self.tracks[t]['duration_ms']
+        by_year = [{'year': k, 'per_show': v['plays'] / v['shows'], 'avg_ms': v['ms'] / v['plays'],
+                    'six_share': v['six'] / v['plays']} for k, v in sorted(years.items())]
+
+        by_n = sorted(shows, key=lambda s: (s['n'], s['minutes']))
+        sixers = [r for r in rows if r['ms'] >= six]
+        return {
+            'shows': shows, 'plays': len(all_ms), 'hours': sum(all_ms) // 3600000,
+            'median_ms': all_ms[len(all_ms) // 2], 'per_show': len(all_ms) / len(shows),
+            'most': by_n[::-1][:10], 'fewest': by_n[:10],
+            'longest_show': max(shows, key=lambda s: s['minutes']), 'shortest_show': min(shows, key=lambda s: s['minutes']),
+            'slowest_show': max(shows, key=lambda s: s['avg_ms']), 'quickest_show': min(shows, key=lambda s: s['avg_ms']),
+            'max_n': max(s['n'] for s in shows),
+            'bins': bins, 'bin_ms': bin_ms,
+            'longest': by_length[::-1][:15], 'shortest': by_length[:15],
+            'six_plays': sum(m >= six for m in all_ms), 'six_recordings': len(sixers),
+            'most_six': sorted(shows, key=lambda s: (-s['six'], s['date']))[:8],
+            'near_six': sorted((r for r in rows if r['ms'] >= six), key=lambda r: r['ms'])[:10],
+            'by_year': by_year,
+        }
+
+    def back_to_back(self):
+        """Runs of two or more songs in a row in a show sharing an artist, for /heath."""
+        runs = []
+        for pid, tids in self.show_tracks.items():
+            i = 0
+            while i < len(tids):
+                shared, j = set(self.track_artists[tids[i]]), i + 1
+                while j < len(tids) and shared & set(self.track_artists[tids[j]]):
+                    shared &= set(self.track_artists[tids[j]])
+                    j += 1
+                if j - i >= 2:
+                    runs.append({'date': self.show_dates[pid], 'start': i + 1, 'artists': sorted(shared),
+                                 'tracks': [{'name': self.tracks[t]['name'], 'spotify_url': self.tracks[t]['spotify_url']}
+                                            for t in tids[i:j]]})
+                i = j
+        runs.sort(key=lambda r: (-len(r['tracks']), r['date']))
+        by_artist = defaultdict(list)
+        for r in runs:
+            for a in r['artists']:
+                by_artist[a].append(r['date'])
+        for r in runs:
+            r['artist_parts'] = _join([self._artist_part(a) for a in r['artists']])
+        repeat = sorted(((a, sorted(d)) for a, d in by_artist.items() if len(d) >= 2), key=lambda kv: (-len(kv[1]), self.artists[kv[0]]['name']))
+        return {'runs': runs, 'n': len(runs), 'shows': len({r['date'] for r in runs}), 'total_shows': len(self.show_tracks),
+                'repeat': [{'artist': [self._artist_part(a)], 'dates': d} for a, d in repeat[:12]]}
+
     def novelty_series(self):
         """Every show's novelty and its neighborhood median, in date order, for the novelty chart."""
         out = []
@@ -859,7 +1102,8 @@ class History:
         return out
 
 
-RANKINGS = ['artists', 'tracks', 'returns', 'labels', 'djs']  # novelty has its own chart page
+SIX_MINUTES = 6 * 60 * 1000
+RANKINGS = ['artists', 'albums', 'tracks', 'returns', 'labels', 'djs']  # novelty has its own chart page
 
 
 def _signature(db_path):

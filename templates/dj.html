@@ -6,7 +6,8 @@
     <header class="detail-header">
         <div>
             <hgroup class="title-unit"><h1>{{ profile.dj.name }}</h1></hgroup>
-            {{ action_row(url_for('radio_page', dj=profile.dj.slug)) }}
+            {# Heath asked for song lengths and show sizes, so he gets his own page #}
+            {{ action_row(url_for('radio_page', dj=profile.dj.slug), [('📊 Heath’s Place', url_for('heath'))] if profile.dj.slug == 'heath' else ()) }}
             <p class="detail-meta">
                 {{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} ({{ (profile.share * 100)|round|int }}% of all) ·
                 {% if profile.n_shows > 1 %}{{ profile.first }} to {{ profile.last }}{% else %}{{ profile.first }}{% endif %} ·

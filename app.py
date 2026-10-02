@@ -4,6 +4,7 @@ from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Artist, Database, Genre, Playlist
 import factoids
+import make_tiles
 import radio
 import genre_families
 from datetime import date
@@ -12,6 +13,7 @@ import itertools
 import os
 import random
 import secrets
+import hashlib
 import json
 from urllib.parse import urlparse 
 
@@ -44,6 +46,32 @@ def canonical_host():
     if request.host in HOST_ALIASES:
         return redirect(request.url.replace(f'//{request.host}', f'//{CANONICAL_HOST}', 1), code=301)
 
+_static_hashes = {}
+
+@app.url_defaults
+def static_version(endpoint, values):
+    """url_for('static', ...) gets ?v=<content hash>, so those URLs can be cached for good (static_cache below)."""
+    if endpoint != 'static' or 'v' in values:
+        return
+    path = os.path.join(app.static_folder, values['filename'])
+    try:
+        key = (path, os.stat(path).st_mtime_ns)
+    except OSError:
+        return
+    if key not in _static_hashes:
+        with open(path, 'rb') as f:
+            _static_hashes[key] = hashlib.md5(f.read()).hexdigest()[:10]
+    values['v'] = _static_hashes[key]
+
+@app.after_request
+def static_cache(response):
+    if request.endpoint == 'static' and request.args.get('v') and response.status_code == 200:
+        response.cache_control.public = True
+        response.cache_control.max_age = 365 * 86400
+        response.cache_control.immutable = True
+        response.cache_control.no_cache = None
+    return response
+
 @app.context_processor
 def radio_bar():
     # the site-wide player bar; checking the session is enough here, /spotify/token refreshes as needed
@@ -54,6 +82,15 @@ def radio_bar():
 def error_page(e):
     # in the site's own template, so moving through an error page keeps the radio and its scripts intact
     return render_template('error.html', code=getattr(e, 'code', 500)), getattr(e, 'code', 500)
+
+@app.route('/robots.txt')
+def robots():
+    # Birds radio has a URL for every seed, and search for every query: endless, and each one costs real work.
+    # (Pages already carry noindex; this keeps polite crawlers from fetching what they'd never index.)
+    body = "User-agent: *\nDisallow: /radio\nDisallow: /search\nDisallow: /autocomplete\nDisallow: /spotify/\nDisallow: /todo/\nCrawl-delay: 5\n"
+    response = make_response(body)
+    response.mimetype = 'text/plain'
+    return response
 
 @app.route('/')
 def index():
@@ -129,7 +166,7 @@ def random_show():
 @app.route('/search')
 def search():
     terms = (request.args.get('q') or '').strip()
-    tracks, artists, genres = [], [], []
+    tracks, artists, genres, albums = [], [], [], []
     if terms:
         db = Database(init_client=False)
         history = factoids.get_history()
@@ -141,7 +178,13 @@ def search():
         for a in artists:
             a['shows'] = len(history.artist_shows[a['artist_id']])
         genres = sorted(g for g in history.genre_artists if all(w in g for w in words))
-    return render_template("search_results.html", tracks=tracks, artists=artists, genres=genres, terms=terms)
+        albums = sorted(({'spotify_id': history.albums[a]['spotify_id'], 'name': history.albums[a]['name'],
+                          'artists': ', '.join(history.artists[x]['name'] for x in history.album_artists[a] if x in history.artists),
+                          'shows': len(pids)}
+                         for a, pids in history.album_shows.items()
+                         if all(w in (history.albums[a]['name'] or '').lower() for w in words)),
+                        key=lambda a: -a['shows'])
+    return render_template("search_results.html", tracks=tracks, artists=artists, genres=genres, albums=albums, terms=terms)
 
 @app.route('/autocomplete')
 def autocomplete():
@@ -180,6 +223,19 @@ def artist(spotify_id):
     return render_template('artist.html', artist=artist, profile=history.artist_profile(artist.artist_id),
                            history=history)
 
+@app.route('/album/<spotify_id>')
+def album(spotify_id):
+    history = factoids.get_history()
+    canon = history.album_by_spotify.get(spotify_id)
+    if canon is None:
+        abort(404)
+    if history.albums[canon]['spotify_id'] != spotify_id:  # another copy or edition of the album: one page for all
+        return redirect(url_for('album', spotify_id=history.albums[canon]['spotify_id']))
+    profile = history.album_profile(canon)
+    if not profile:
+        abort(404)
+    return render_template('album.html', profile=profile, history=history)
+
 @app.route('/todo/wikidata')
 def wikidata_todo():
     """Unlisted: probable Wikidata items for unlinked artists (see wikidata_candidates.py), for adding
@@ -214,6 +270,17 @@ def djs():
 @app.route('/artists')
 def artists():
     return redirect(url_for('ranking', kind='artists'))
+
+@app.route('/heath')
+def heath():
+    """Show sizes and song lengths, as requested by Heath."""
+    history = factoids.get_history()
+    return render_template('heath.html', L=history.lengths(), B=history.back_to_back(), history=history)
+
+@app.template_filter('mmss')
+def mmss(ms):
+    s = round(ms / 1000)
+    return f"{s // 60}:{s % 60:02d}"
 
 @app.route('/rankings/novelty')
 def novelty():
@@ -260,6 +327,12 @@ def playlist_image(date_str):
     except ValueError:
         return "Invalid date format", 400
     images_dir = os.path.join(app.static_folder, 'images')
+
+    # Tiles ask for ?size=tile: a small square copy (make_tiles.py), when there is one
+    if request.args.get('size') == 'tile' and os.path.exists(make_tiles.tile_path(date_str)):
+        response = make_response(send_from_directory(make_tiles.TILES, f"{date_str}.webp"))
+        response.cache_control.max_age = 86400 * 30
+        return response
 
     # First, a local file named for the date
     for ext in ['.jpg', '.png', '.jpeg', '.webp']:
@@ -314,6 +387,16 @@ def _radio_set(args, seed):
         start_label, start_kind = f"{history.djs[dj_id]['name']}'s nights", 'dj'
         start_url = url_for('dj', slug=args['dj'])
         lean = ['dj', dj_id] if start is not None else None
+    elif args.get('album') and args['album'] in history.album_by_spotify:
+        canon = history.album_by_spotify[args['album']]
+        start = radio.start_for_lean(('album', canon), random.Random(seed))
+        start_label, start_kind = history.albums[canon]['name'], 'album'
+        start_url = url_for('album', spotify_id=history.albums[canon]['spotify_id'])
+        lean = ['album', canon] if start is not None else None
+    elif args.get('length') == 'long':
+        start = radio.start_for_lean(('length', 'long'), random.Random(seed))
+        start_label, start_kind, start_url = 'six-minute songs', 'length', url_for('heath') + '#six'
+        lean = ['length', 'long'] if start is not None else None
     elif args.get('show'):
         try:
             pid = history.pid_by_date.get(date.fromisoformat(args['show']))
@@ -367,7 +450,8 @@ def _lean(body):
         return None
     kind, key = lean
     ok = {'genre': lambda: key in history.genre_artists, 'show': lambda: key in history.show_tracks,
-          'artist': lambda: key in history.artist_shows, 'dj': lambda: key in history.djs}
+          'artist': lambda: key in history.artist_shows, 'dj': lambda: key in history.djs,
+          'length': lambda: key == 'long', 'album': lambda: key in history.album_shows}
     return (kind, key) if kind in ok and ok[kind]() else None
 
 
