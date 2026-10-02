@@ -518,6 +518,7 @@ section.detail h2 {
 }
 
 .detail-meta { color: var(--ink-2); }
+.detail-meta.compact { font-size: smaller; font-family: var(--font-display) }
 .detail-meta a { color: inherit; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
