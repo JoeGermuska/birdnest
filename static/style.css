@@ -159,6 +159,21 @@ nav#topbar #q {
 }
 nav#topbar #q:focus { outline: 2px solid var(--ink-3); outline-offset: 1px; }
 nav#topbar .nav-links a { white-space: nowrap; }
+/* the 🤓 menu and the light/dark switch sit together */
+.banner-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+nav#topbar .search-toggle { display: none; }
+/* 🤓: the to-do lists for linking data, quiet until hovered */
+.nerd-menu { position: relative; flex: none; }
+.nerd-menu summary { list-style: none; cursor: pointer; width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%;
+    font-size: 1rem; line-height: 1; opacity: 0.45; filter: grayscale(0.6); transition: opacity 0.15s, filter 0.15s; }
+.nerd-menu summary::-webkit-details-marker { display: none; }
+.nerd-menu summary:hover, .nerd-menu[open] summary, .nerd-menu summary:focus-visible { opacity: 1; filter: none; background: var(--wash-strong); }
+.nerd-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 13rem; padding: 6px 0;
+    background: var(--paper); border: 1px solid var(--paper-rule); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+    font-family: var(--font-display); }
+.nerd-list p { margin: 2px 14px 6px; font-size: var(--size-label); text-transform: uppercase; color: var(--ink-3); }
+.nerd-list a { display: block; padding: 5px 14px; color: var(--ink); text-decoration: none; }
+.nerd-list a:hover { background: var(--wash-strong); }
 #theme-toggle { flex: none; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-3); cursor: pointer; }
 #theme-toggle:hover { color: var(--ink); background: var(--wash-strong); }
 #theme-toggle .theme-moon { display: var(--moon, inline-block); }
@@ -170,6 +185,18 @@ nav#topbar .nav-links a { white-space: nowrap; }
     nav#topbar form#search { flex: 1 1 7rem; min-width: 0; }
     nav#topbar #q { width: 100%; }
     nav#topbar .nav-links { order: 3; flex-basis: 100%; overflow-x: auto; white-space: nowrap; padding: 6px 0 10px; font-size: var(--size-caption); gap: 18px; }
+}
+/* phones: search is a magnifying glass beside the 🤓 and the switch until opened; open, it takes the title's place */
+@media (max-width: 600px) {
+    nav#topbar h1 { margin-right: auto; }
+    nav#topbar:not(.search-open) form#search { flex: none; }
+    nav#topbar:not(.search-open) #q, nav#topbar:not(.search-open) .search-icon { display: none; }
+    nav#topbar:not(.search-open) .search-toggle { display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0;
+        border-radius: 50%; background: none; color: var(--ink-3); font-size: 0.95rem; cursor: pointer; }
+    nav#topbar:not(.search-open) .search-toggle:hover { color: var(--ink); background: var(--wash-strong); }
+    nav#topbar.search-open h1 { display: none; }
+    nav#topbar.search-open form#search { flex: 1 1 auto; }
+    nav#topbar form#search + .banner-tools { margin-left: -10px; }  /* the glass, 🤓 and switch read as one group */
 }
 
 section.playlist { padding: 0 16px; }

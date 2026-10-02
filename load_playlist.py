@@ -6,6 +6,7 @@ import enrich_mb_recordings
 import refresh_albums
 import refresh_artists
 import enrich_wikidata
+import wikidata_album_todo
 import factoids
 import make_tiles
 import load_djs
@@ -52,12 +53,14 @@ refresh_albums.main()
 
 # look up new artists on MusicBrainz, then refresh links to other
 # representations of artists (Wikipedia, Discogs, ...); and tonight's tracks'
-# first release dates and albums' links (run enrich_mb_recordings.py and
-# enrich_mb_albums.py on their own for any backlog)
+# first release dates and albums' links, plus a few earlier misses to retry
+# (run enrich_mb_recordings.py and enrich_mb_albums.py on their own for a backlog)
 enrich_musicbrainz.main()
-enrich_mb_recordings.main(track_ids=[t.track_id for t in playlist.tracks])
-enrich_mb_albums.main(album_ids=list({t.album_id for t in playlist.tracks if t.album_id}))
-enrich_wikidata.main()
+enrich_mb_recordings.main(track_ids=[t.track_id for t in playlist.tracks], retries=100)
+enrich_mb_albums.main(album_ids=list({t.album_id for t in playlist.tracks if t.album_id}), retries=50)
+# no_data: also re-check artists with no Wikidata item yet, which picks up IDs added from /todo/wikidata
+enrich_wikidata.main(no_data=True)
+wikidata_album_todo.main()  # albums whose Wikidata item lacks our Spotify ID (/todo/wikidata/albums)
 
 # small tile copies of any new show images (also made at image build)
 make_tiles.main()

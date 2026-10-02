@@ -40,7 +40,7 @@ WHERE {
   OPTIONAL { ?item rdfs:label ?label FILTER(LANG(?label) IN ("en", "mul")) }
   OPTIONAL { ?item schema:description ?desc FILTER(LANG(?desc) = "en") }
   OPTIONAL { ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> }
-  OPTIONAL { ?item wdt:P1902 ?sp }
+  OPTIONAL { ?item p:P1902 ?spst . ?spst ps:P1902 ?sp . MINUS { ?spst wikibase:rank wikibase:DeprecatedRank } }
   OPTIONAL { ?item wdt:P434 ?mb }
   OPTIONAL { ?item wdt:P571|wdt:P569 ?start }
   BIND(YEAR(?start) AS ?year)

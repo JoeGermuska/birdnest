@@ -4,15 +4,59 @@
     <div class="nav-links"><a href="{{ url_for('browse') }}">Shows</a><a href="{{ url_for('ranking', kind='artists') }}">Rankings</a><a href="{{ url_for('genre_map') }}">Genre map</a><a href="{{ url_for('djs') }}">DJs</a><a href="{{ url_for('radio_page') }}">Radio</a></div>
     <form id="search" role="search" action="{{ url_for('search')}}" method="GET">
         <div class="autocomplete-container">
+            <button type="button" class="search-toggle" aria-label="Search" title="Search (press / to jump here)">{{ icon('search') }}</button>
             {{ icon('search', 'search-icon') }}
             <input type="search" id="q" name="q" autocomplete="off" value="{{ terms or '' }}" placeholder="artist, track, album, genre" aria-label="Search artists, tracks, albums, genres" title="Search artists, tracks, albums, genres (press / to jump here)">
             <div id="autocomplete-dropdown" class="autocomplete-dropdown"></div>
         </div>
     </form>
+    <div class="banner-tools">
+    <details class="nerd-menu">
+        <summary title="Help link the data: to-do lists for Wikidata and MusicBrainz" aria-label="To-do lists for linking data">🤓</summary>
+        <div class="nerd-list">
+            <p>Help link the data</p>
+            <a href="{{ url_for('wikidata_todo') }}">Artists on Wikidata</a>
+            <a href="{{ url_for('wikidata_album_todo') }}">Albums on Wikidata</a>
+            <a href="{{ url_for('musicbrainz_album_todo') }}">Albums on MusicBrainz</a>
+        </div>
+    </details>
     <button type="button" id="theme-toggle" title="Light or dark" aria-label="Switch between light and dark">{{ icon('moon', 'theme-moon') }}{{ icon('sun', 'theme-sun') }}</button>
+    </div>
 </nav>
 <script>
 (function () {
+    // the 🤓 menu closes on a click elsewhere or Escape (bound once; the banner is replaced on each page view)
+    if (!window.birdsNerdBound) {
+        window.birdsNerdBound = true;
+        const close = e => document.querySelectorAll('.nerd-menu[open]').forEach(d => {
+            if (e.type === 'keydown' ? e.key === 'Escape' : !d.contains(e.target)) d.open = false;
+        });
+        document.addEventListener('click', close);
+        document.addEventListener('keydown', close);
+    }
+    // Search: on phones it's just the magnifying glass until opened (click, or / from _base.html). Opening it,
+    // or focusing it any way, selects what's there, so typing replaces it.
+    const topbar = document.getElementById('topbar'), q = document.getElementById('q');
+    window.birdsOpenSearch = () => {
+        const bar = document.getElementById('topbar'), box = document.getElementById('q');
+        bar.classList.add('search-open');
+        box.focus();
+        box.select();
+    };
+    topbar.querySelector('.search-toggle').addEventListener('click', window.birdsOpenSearch);
+    q.addEventListener('focus', () => setTimeout(() => q.select()));  // after the click places the caret
+    q.addEventListener('focusout', () => setTimeout(() => {  // later, so a click on a suggestion still lands
+        if (!topbar.querySelector('form#search').contains(document.activeElement)) topbar.classList.remove('search-open');
+    }, 250));
+    q.addEventListener('keydown', e => { if (e.key === 'Escape') q.blur(); });
+
+    // open toward whichever side has room (the banner wraps on phones, putting the 🤓 at the left)
+    const nerd = document.querySelector('.nerd-menu');
+    if (nerd) nerd.addEventListener('toggle', () => {
+        const list = nerd.querySelector('.nerd-list');
+        list.style.left = list.style.right = '';
+        if (nerd.open && list.getBoundingClientRect().left < 8) { list.style.left = '0'; list.style.right = 'auto'; }
+    });
 
     // Autocomplete functionality
     let autocompleteTimer = null;

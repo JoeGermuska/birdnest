@@ -84,13 +84,13 @@
                 }
             )
         })
+        // "/" jumps to search, unless you're typing somewhere (search selects what's there; see _nav.html)
         window.addEventListener('keydown', (evt) => {
-            let searchbox = document.getElementById('q');
-            if (evt.target != searchbox && evt.key == '/') {
-                searchbox.focus()
-                evt.preventDefault()
-                return false
-            }
+            const t = evt.target;
+            if (evt.key !== '/' || evt.metaKey || evt.ctrlKey || evt.altKey ||
+                t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+            evt.preventDefault();
+            if (window.birdsOpenSearch) window.birdsOpenSearch(); else document.getElementById('q').focus();
         })
     </script>
 

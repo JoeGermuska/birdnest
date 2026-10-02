@@ -10,6 +10,12 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 
 - In a Claude Code cloud session there's no virtualenv: `pip install -r requirements.txt` and run `python3 app.py` (PORT env var); Chromium for Playwright is at `/opt/pw-browsers/chromium`.
 
+## Data upkeep
+
+- Weekly, after each show: `python load_playlist.py` (the show, its artists, albums and tracks, a few MusicBrainz
+  retries, and links people added through the to-do lists under the 🤓 in the banner).
+- Every month or two: `python maintenance.py` (the slow Wikidata jobs). Then commit `birdnest.db` and deploy.
+
 ## Tests
 
 - `pip install -r requirements-dev.txt`, then `pytest tests` (about 30s). `tests/test_radio.py` covers the sequencer

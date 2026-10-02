@@ -236,24 +236,107 @@ def album(spotify_id):
         abort(404)
     return render_template('album.html', profile=profile, history=history)
 
+TODO_PAGES = [
+    {'endpoint': 'wikidata_todo', 'tab': 'Artists on Wikidata', 'title': 'Wikidata to-do: artists', 'kind': 'artist',
+     'check': 'wikidata', 'property': 'P1902', 'source': 'Wikidata', 'account': 'a Wikipedia account',
+     'how': 'Artists with no links whose name matches a musician or group on Wikidata, most-played first, then the ones '
+            'with several possible matches. Open the Wikidata item, check it\'s the same act, and add the Spotify ID as '
+            '<em>Spotify artist ID</em> (P1902).'},
+    {'endpoint': 'wikidata_album_todo', 'tab': 'Albums on Wikidata', 'title': 'Wikidata to-do: albums', 'kind': 'album',
+     'check': 'wikidata', 'property': 'P2205', 'source': 'Wikidata', 'account': 'a Wikipedia account',
+     'how': 'Albums whose Wikidata item (found through MusicBrainz, which links the two) doesn\'t have our Spotify ID yet, '
+            'most-played first. Open the item and add the Spotify ID as <em>Spotify album ID</em> (P2205). An item can '
+            'have more than one, so add ours even when it already has another.'},
+    {'endpoint': 'musicbrainz_album_todo', 'tab': 'Albums on MusicBrainz', 'title': 'MusicBrainz to-do: albums', 'kind': 'album',
+     'check': 'musicbrainz', 'source': 'MusicBrainz', 'account': 'a MusicBrainz account',
+     'how': 'Albums we matched to a MusicBrainz release by barcode alone, most-played first. Open the release, check it\'s '
+            'the same album (title, tracks, barcode), and under <em>External links</em> add the Spotify URL '
+            '(MusicBrainz files it as <em>stream for free</em>).'},
+]
+
+
+def _todo(endpoint, rows):
+    page = next(p for p in TODO_PAGES if p['endpoint'] == endpoint)
+    return render_template('todo.html', page=page, pages=TODO_PAGES, rows=rows)
+
+
+def _table(con, name):
+    return con.execute("select 1 from sqlite_master where name = ?", (name,)).fetchone()
+
+
+def _album_row(history, album_id, shows, **extra):
+    a = history.albums[album_id]
+    return {'spotify_id': a['spotify_id'], 'name': a['name'], 'url': url_for('album', spotify_id=a['spotify_id']),
+            'artists': ', '.join(history.artists[x]['name'] for x in history.album_artists[album_id] if x in history.artists),
+            'shows': shows, **extra}
+
+
 @app.route('/todo/wikidata')
 def wikidata_todo():
-    """Unlisted: probable Wikidata items for unlinked artists (see wikidata_candidates.py), for adding
+    """Probable Wikidata items for unlinked artists (see wikidata_candidates.py), for adding
     their Spotify IDs to Wikidata by hand."""
     history = factoids.get_history()
     con = app.session.connection().connection
-    if not con.execute("select 1 from sqlite_master where name = 'wikidata_candidate'").fetchone():
+    if not _table(con, 'wikidata_candidate'):
         abort(404)
     artists = {}
     for artist_id, spotify_id, name, tier, *cand in con.execute("""
             select c.artist_id, a.spotify_id, a.name, c.tier, c.qid, c.label, c.description, c.wikipedia, c.spotify_ids
             from wikidata_candidate c join artist a using(artist_id)
             where c.artist_id not in (select artist_id from artist_link)"""):
-        a = artists.setdefault(artist_id, {'spotify_id': spotify_id, 'name': name, 'tier': tier, 'candidates': [],
+        a = artists.setdefault(artist_id, {'spotify_id': spotify_id, 'clip': spotify_id, 'name': name, 'tier': tier,
+                                           'url': url_for('artist', spotify_id=spotify_id), 'candidates': [],
                                            'shows': len(history.artist_shows.get(artist_id, ()))})
         a['candidates'].append(dict(zip(('qid', 'label', 'description', 'wikipedia', 'spotify_ids'), cand)))
     rows = sorted(artists.values(), key=lambda a: (a['tier'] != 'likely', -a['shows'], a['name']))
-    return render_template('wikidata_todo.html', rows=rows)
+    return _todo('wikidata_todo', rows)
+
+
+@app.route('/todo/wikidata/albums')
+def wikidata_album_todo():
+    """Album items on Wikidata (via MusicBrainz) without our Spotify album ID (see wikidata_album_todo.py)."""
+    history = factoids.get_history()
+    con = app.session.connection().connection
+    if not _table(con, 'wikidata_album_todo'):
+        abort(404)
+    rows = []
+    for album_id, qid, others in con.execute("select album_id, qid, spotify_ids from wikidata_album_todo"):
+        if album_id not in history.album_shows:
+            continue
+        wikipedia = next((h.get('wikipedia') for h in (history.album_links.get(m, {}) for m in history.album_members[album_id])
+                          if h.get('wikipedia')), None)
+        rows.append(_album_row(history, album_id, len(history.album_shows[album_id]),
+                               clip=history.albums[album_id]['spotify_id'],
+                               target={'url': f"https://www.wikidata.org/wiki/{qid}", 'text': 'Wikidata item', 'id': qid,
+                                       'wikipedia': wikipedia,
+                                       'others': others.split() if others else []}))
+    rows.sort(key=lambda r: (-r['shows'], r['name'].lower()))
+    return _todo('wikidata_album_todo', rows)
+
+
+@app.route('/todo/musicbrainz/albums')
+def musicbrainz_album_todo():
+    """Releases matched by barcode alone (see enrich_mb_albums.py): MusicBrainz doesn't link them to Spotify yet."""
+    history = factoids.get_history()
+    con = app.session.connection().connection
+    if not _table(con, 'mb_album'):
+        abort(404)
+    by_url = {history.album_group.get(a) for a, in con.execute("select album_id from mb_album where method = 'spotify-url'")}
+    rows, seen = [], set()
+    for album_id, mbid, title, upc in con.execute("""select m.album_id, m.release_mbid, m.rg_title, al.upc
+            from mb_album m join album al using(album_id) where m.method = 'barcode'"""):
+        canon = history.album_group.get(album_id)
+        if canon is None or canon in by_url or canon in seen or canon not in history.album_shows:
+            continue
+        seen.add(canon)
+        spotify_id = history.albums[album_id]['spotify_id']
+        rows.append({**_album_row(history, canon, len(history.album_shows[canon])), 'spotify_id': spotify_id,
+                     'clip': f"https://open.spotify.com/album/{spotify_id}",
+                     'target': {'url': f"https://musicbrainz.org/release/{mbid}", 'text': f"MusicBrainz release: {title}",
+                                'note': f"barcode {upc}" if upc else None}})
+    rows.sort(key=lambda r: (-r['shows'], r['name'].lower()))
+    return _todo('musicbrainz_album_todo', rows)
+
 
 @app.route('/dj/<slug>')
 def dj(slug):

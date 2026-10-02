@@ -10,7 +10,9 @@ Matching, most reliable first:
 Wikipedia comes from the release group's Wikidata item.
 
 Incremental like enrich_musicbrainz.py: albums looked up before are skipped;
-not-found ones are tried again after RETRY_DAYS. Most-played albums first,
+not-found ones are tried again after RETRY_DAYS (load_playlist.py
+retries a few each week). Barcode matches are re-checked for a Spotify link
+each run. Most-played albums first,
 singles last. Shares MusicBrainz's one-request-a-second with the other scripts.
     python enrich_mb_albums.py [--cap N] [path/to/birdnest.db]
 """
@@ -94,19 +96,24 @@ def wikipedia_for(qids):
     return out
 
 
-def main(db_path='birdnest.db', cap=None, album_ids=None):
-    """album_ids: look up only these (load_playlist.py passes the night's albums; a plain run does the backlog)."""
+def main(db_path='birdnest.db', cap=None, album_ids=None, retries=None):
+    """New albums (only album_ids, when given: load_playlist.py passes the night's), plus misses due a retry
+    (at most `retries` of them, oldest first; all when None). First, barcode matches are checked for a
+    Spotify link added since (by someone working through /todo/musicbrainz/albums)."""
     con = sqlite3.connect(db_path, timeout=60)
     con.executescript(SCHEMA)
-    if album_ids is not None and not album_ids:
-        return
+    recheck_barcode_matches(con)
     only = f"and al.album_id in ({','.join(str(int(a)) for a in album_ids)})" if album_ids is not None else ''
-    todo = con.execute(f"""
+    new = con.execute(f"""
         select al.album_id, al.spotify_id, al.upc, al.name from album al
         left join mb_album m using(album_id) left join track t using(album_id) left join playlist_track pt using(track_id)
-        where al.spotify_id is not null {only}
-          and (m.album_id is null or (m.release_mbid is null and m.checked_at < datetime('now', '-{RETRY_DAYS} days')))
-        group by al.album_id order by al.album_type = 'single', count(pt.playlist_id) desc""").fetchall()
+        where al.spotify_id is not null and m.album_id is null {only}
+        group by al.album_id order by al.album_type = 'single', count(pt.playlist_id) desc""").fetchall() if album_ids != [] else []
+    due = con.execute(f"""
+        select al.album_id, al.spotify_id, al.upc, al.name from album al join mb_album m using(album_id)
+        where al.spotify_id is not null and m.release_mbid is null and m.checked_at < datetime('now', '-{RETRY_DAYS} days')
+        order by m.checked_at limit ?""", (-1 if retries is None else retries,)).fetchall()
+    todo = new + due
     if cap:
         todo = todo[:cap]
     print(f"{len(todo)} albums to look up")
@@ -115,6 +122,24 @@ def main(db_path='birdnest.db', cap=None, album_ids=None):
         found += lookup(con, todo[i:i + CHUNK])
         print(f"  {min(i + CHUNK, len(todo))}/{len(todo)}, {found} matched")
     print(f"done: {found} of {len(todo)} matched")
+
+
+def recheck_barcode_matches(con):
+    """Albums matched by barcode whose MusicBrainz release now links to the Spotify album: mark them matched by
+    URL (they leave /todo/musicbrainz/albums). One request per 100 albums."""
+    rows = con.execute("""select m.album_id, al.spotify_id from mb_album m join album al using(album_id)
+                          where m.method = 'barcode' and al.spotify_id is not null""").fetchall()
+    by_url = {f"https://open.spotify.com/album/{s}": a for a, s in rows}
+    urls, linked = list(by_url), []
+    for i in range(0, len(urls), URL_BATCH):
+        result = get('url', resource=urls[i:i + URL_BATCH], inc='release-rels') or {}
+        for u in result.get('urls', [result] if 'resource' in result else []):
+            if any('release' in r for r in u.get('relations', [])) and u['resource'] in by_url:
+                linked.append(by_url[u['resource']])
+    with con:
+        con.executemany("update mb_album set method = 'spotify-url' where album_id = ?", [(a,) for a in linked])
+    if rows:
+        print(f"{len(linked)} of {len(rows)} barcode matches now linked to Spotify on MusicBrainz")
 
 
 def lookup(con, todo):

@@ -10,7 +10,8 @@ Spotify's album date, so a recording MusicBrainz knows only from a later
 release doesn't come out newer than the album it's on.
 
 Incremental like enrich_musicbrainz.py: tracks already looked up are skipped,
-except not-found ones are tried again after RETRY_DAYS. Most-played first;
+except not-found ones are tried again after RETRY_DAYS (load_playlist.py
+retries a few each week). Most-played first;
 one request per second, so a full backfill takes a couple of hours.
     python enrich_mb_recordings.py [path/to/birdnest.db]
 """
@@ -53,17 +54,22 @@ def pick(recordings):
     return best['id'], best.get('first-release-date') or None, best.get('disambiguation') or None, len(recordings)
 
 
-def main(db_path='birdnest.db', track_ids=None):
-    """track_ids: look up only these (load_playlist.py passes the night's tracks; a plain run does the backlog)."""
+def main(db_path='birdnest.db', track_ids=None, retries=None):
+    """New tracks (only track_ids, when given: load_playlist.py passes the night's), plus misses due a retry
+    (at most `retries` of them, oldest first; all when None)."""
     con = sqlite3.connect(db_path, timeout=60)  # the web app or tests may be reading
     con.executescript(SCHEMA)
     only = f"and t.track_id in ({','.join(str(int(t)) for t in track_ids)})" if track_ids is not None else ''
-    todo = con.execute(f"""
+    new = con.execute(f"""
         select t.track_id, t.isrc_id from track t
         left join mb_recording m using(track_id) left join playlist_track pt using(track_id)
-        where t.isrc_id is not null {only}
-          and (m.track_id is null or (m.mbid is null and m.checked_at < datetime('now', '-{RETRY_DAYS} days')))
+        where t.isrc_id is not null and m.track_id is null {only}
         group by t.track_id order by count(pt.playlist_id) desc""").fetchall() if track_ids != [] else []
+    due = con.execute(f"""
+        select t.track_id, t.isrc_id from track t join mb_recording m using(track_id)
+        where t.isrc_id is not null and m.mbid is null and m.checked_at < datetime('now', '-{RETRY_DAYS} days')
+        order by m.checked_at limit ?""", (-1 if retries is None else retries,)).fetchall()
+    todo = new + due
     print(f"{len(todo)} tracks to look up")
     found = 0
     for n, (track_id, isrc) in enumerate(todo, 1):

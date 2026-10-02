@@ -86,15 +86,23 @@ show who owns the back catalog.
   from `enrich_mb_albums.py`: matched by the release's own link to the Spotify album, else by an exact barcode
   that leads to one release group (70% matched in a 40-album trial). Backfill started 2026-10-01.
 - [ ]  Compilation and reissue share per show.
-- [ ]  Wikidata to-do for albums: release groups with a Wikidata item lacking the Spotify album ID (P2205).
+- [X]  To-do lists for albums, from the 🤓 in the banner: Wikidata album items lacking our Spotify album ID
+  (`wikidata_album_todo.py`, P2205), and MusicBrainz releases matched only by barcode, which need the Spotify link.
+  Both check live from the browser, like the artist list.
 
-## Wikidata to-do: ways to grow it
+## Linking to-do lists: ways to grow them
 
-Slow and steady is fine; each needs a candidate query plus a review section on `/todo/wikidata`.
+Slow and steady is fine. The lists are under the 🤓 in the banner (`TODO_PAGES` in app.py, one shared template);
+each new one needs a candidate table built at load time plus a live check from the browser. The weekly load
+picks up what people fix: `enrich_wikidata.main(no_data=True)` re-checks artists with no Wikidata item, and
+`enrich_mb_albums.py` re-checks barcode matches for a Spotify link on MusicBrainz. It also retries a few old
+MusicBrainz misses each week (`retries=`). The slow jobs (artist candidates for /todo/wikidata, refreshing
+every artist's links) are in `maintenance.py`, run every month or two.
 
 - Artists whose Wikidata item we reached through MusicBrainz but which has no Spotify artist ID (P1902): near-certain
   matches, since MusicBrainz editors made the link.
-- Albums: Wikidata album items (via MusicBrainz release group, P436) without a Spotify album ID (P2205).
+- [X] Albums: Wikidata album items without a Spotify album ID (P2205); MusicBrainz releases matched by barcode only.
+- Artists MusicBrainz doesn't know at all (no Spotify link on any MusicBrainz artist).
 - Labels, once we have MusicBrainz labels: Wikidata items without a MusicBrainz label ID (P966), and labels with
   no Wikidata item at all.
 - QuickStatements export of reviewed rows (once the account is autoconfirmed).

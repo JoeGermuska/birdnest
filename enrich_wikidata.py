@@ -54,7 +54,9 @@ COLUMNS = {'wikipedia': 'wikipedia', 'wikidata': 'item', 'musicbrainz': 'musicbr
 
 
 # (binding clause, how to write one key in its VALUES list)
-BY_SPOTIFY = ('VALUES ?key { %s } ?item wdt:P1902 ?key .', '"{}"'.format)
+# statement values (p:/ps:), not truthy (wdt:), which can miss a fresh edit; deprecated ones don't count
+BY_SPOTIFY = ('VALUES ?key { %s } ?item p:P1902 ?st . ?st ps:P1902 ?key . '
+              'MINUS { ?st wikibase:rank wikibase:DeprecatedRank }', '"{}"'.format)
 BY_QID = ('VALUES ?item { %s } BIND(STRAFTER(STR(?item), "/entity/") AS ?key)', 'wd:{}'.format)
 
 # MusicBrainz relationship type -> our source name
