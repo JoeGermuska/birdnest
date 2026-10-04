@@ -9,6 +9,7 @@
     .label-albums .sub { display: block; font-size: var(--size-note); color: var(--ink-3); }
     .label-albums .sub a { color: inherit; }
     .label-albums .n { font-family: var(--font-display); font-size: var(--size-small); color: var(--ink-3); white-space: nowrap; }
+    .via-spotify { color: var(--ink-3); font-family: var(--font-display); }
     .label-albums .catno { font-family: ui-monospace, Menlo, monospace; font-size: var(--size-caption); }
 </style>
 {% endblock extra_head %}
@@ -22,8 +23,7 @@
         <p class="detail-meta">
             {{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} · {{ profile.n_plays }} play{{ 's' if profile.n_plays != 1 }}
             · {% if profile.n_shows > 1 %}{{ profile.first.year }}–{{ profile.last.year }}{% else %}{{ profile.first }}{% endif %}
-            {% if profile.parents %}<br>Part of {% for p in profile.parents %}{{ ', ' if not loop.first }}{{ parts([p]) }}{% endfor %}{% endif %}
-            {% if profile.children %}<br>Its labels played here: {% for c in profile.children %}{{ ', ' if not loop.first }}{{ parts([c]) }}{% endfor %}{% endif %}
+            {% for phrase, items in profile.family %}<br>{{ phrase }}{{ ':' if phrase == 'Imprints' }} {{ parts(items) }}{% endfor %}
         </p>
     </header>
 
@@ -37,11 +37,11 @@
         {% for a in profile.albums %}
         <li><span>{{ parts([a.album]) }} · {{ parts(a.artists) }}
                 <span class="sub">{% if a.released %}{{ a.released[:4] }}{% endif %}{% if a.catno %} · <span class="catno">{{ a.catno }}</span>{% endif %}
-                    {% if a.how == 'spotify' %} · label as Spotify lists it{% endif %}</span></span>
+                    {% if a.how == 'spotify' %} <span class="via-spotify" title="Label as Spotify lists it; MusicBrainz doesn't know this album">†</span>{% endif %}</span></span>
             <span class="n">{{ a.dates|length }} show{{ 's' if a.dates|length != 1 }}{% if a.plays > a.dates|length %}, {{ a.plays }} plays{% endif %}</span></li>
         {% endfor %}
     </ol>
-    <p class="detail-meta">Albums count here when this is the label they first came out on, according to MusicBrainz{% if profile.from_spotify %}, or, for
-        albums MusicBrainz doesn't know, when Spotify lists this label{% endif %}.</p>
+    <p class="detail-meta">Albums count here when this is the label they first came out on, according to MusicBrainz{% if profile.from_spotify %}.
+        <span class="via-spotify">†</span> MusicBrainz doesn't know the album, so this is the label Spotify lists{% endif %}.</p>
 </section>
 {% endblock content %}

@@ -35,13 +35,17 @@ def test_oldest_first(app_module):
     assert ds == sorted(ds)
 
 
-def test_most_new_for_its_time(app_module, history):
-    html = get(app_module, '?sort=new')
-    ds = dates(html)
-    lift = {str(s['date']): s['lift'] for s in history.browse()}
-    assert [lift[d] for d in ds] == sorted((lift[d] for d in ds), reverse=True)
+@pytest.mark.parametrize('sort', ['most-songs', 'fewest-songs', 'oldest-music', 'most-new', 'biggest-room'])
+def test_sort_by_an_attribute(app_module, history, sort):
+    import app as app_mod
+    _, key, biggest_first, says = app_mod.BROWSE_BY[sort]
+    html = get(app_module, f'?sort={sort}')
+    by_date = {str(s['date']): key(s) for s in history.browse()}
+    values = [by_date[d] for d in dates(html)]
+    assert values == sorted(values, reverse=biggest_first)
     assert 'class="year-head"' not in html, 'no year dividers out of date order'
-    assert '· novelty ' in html, 'tiles say how new'
+    first = next(s for s in history.browse() if str(s['date']) == dates(html)[0])
+    assert says(first) in html, 'tiles say the number they are sorted by'
 
 
 def test_shuffle_is_repeatable_by_seed(app_module):
@@ -58,18 +62,29 @@ def test_filter_by_who_was_in_the_room(app_module, history):
     assert f'{len(ds)} shows' in html
 
 
+def test_rooms_add_up(app_module, history):
+    """Several DJs: the shows they were all in."""
+    heath, joe = history.dj_by_slug['heath'], history.dj_by_slug['joe']
+    both = {str(history.show_dates[p]) for p in history.dj_shows[heath] & history.dj_shows[joe]}
+    html = get(app_module, '?dj=heath&dj=joe')
+    assert set(dates(html)) == both and 'with Heath and Joe in the room' in html
+    # each chip toggles: Heath's takes Heath out and keeps Joe
+    assert re.search(r'href="/shows\?dj=joe"[^>]*aria-current', html)
+
+
 def test_filter_by_genre_family(app_module, history):
     ds = set(dates(get(app_module, '?family=Jazz')))
-    assert ds == {str(s['date']) for s in history.browse() if 'Jazz' in s['leans']}
-    assert 10 < len(ds) < len(history.show_tracks) / 2
+    assert ds == {str(s['date']) for s in history.browse() if 'Jazz' in s['heavy']}
+    assert 5 < len(ds) < len(history.show_tracks) / 2
 
 
 def test_filters_combine_and_keep_each_other(app_module):
     html = get(app_module, '?dj=heath&family=Jazz&sort=oldest')
     assert set(dates(html)) <= set(dates(get(app_module, '?dj=heath')))
     # the other controls carry the current filters along
-    assert re.search(r'href="/shows\?[^"]*sort=new[^"]*"', html)
-    assert all('dj=heath' in h for h in re.findall(r'href="(/shows\?[^"]*sort=new[^"]*)"', html))
+    assert re.search(r'href="/shows\?[^"]*sort=shuffle[^"]*"', html)
+    assert all('dj=heath' in h for h in re.findall(r'href="(/shows\?[^"]*sort=shuffle[^"]*)"', html))
+    assert '<input type="hidden" name="dj" value="heath">' in html, 'the sort menu keeps the room too'
 
 
 def test_unknown_values_are_ignored(app_module, history):

@@ -20,11 +20,11 @@ ways in are done together, and the design pass fits around them.
    **dark mode** redefines the color tokens (follows the system; the banner's switch picks the other); links are ink
    instead of browser blue; track tables become cards on phones. Dark mode dims cover images a touch (`--image-dim`), and
    the unused `_tracks_table.html` and its preview-clip script are gone (2026-10-04).
-5. **Browse page** (`/shows`, 0e12cfa): option C as its own page. Built, but the filters need rethinking (Joe, 2026-09-28):
-   - "Most new for its time" doesn't mean much to a listener. (Novelty now also counts repeated songs a little
-     against a show: `REPEAT_PENALTY` in `factoids.py`.)
-   - "In the room" should maybe be additive: pick several people, see the shows they were all in.
-   - "Leans <genre>" (a family at 1.5x its usual share) doesn't obviously make anyone want to filter by it.
+5. [X]  **Browse page** (`/shows`): reworked 2026-10-04 after Joe's notes. "In the room" is additive (DJ chips
+   toggle; several means the shows they were all in; each chip counts the shows shown now). "Most new for its time"
+   is gone; a Sort by menu adds most/fewest songs, longest/shortest, oldest/newest music (median release year), most
+   new artists, most repeats and biggest room, and tiles say the number. Genre chips are "Heavy on", the show page's
+   definition. The home page shows a random handful instead of every cover.
 6. [X]  **Cover captions for the older shows**: `load_captions.py` loads the Google Doc's "Birds" section (one heading
    per week, 5/2020 to 10/2024) into `cover_caption`; `show_caption` uses it when the Spotify description has no
    "Playlist image:". 269 of 284 shows now have one. Still none for 2020-04-07, 04-16, 04-23 (before the doc's
@@ -136,8 +136,8 @@ one of the worker's 8 threads), inline SVG icons instead of the Font Awesome kit
 load), year-long caching of versioned static files, robots.txt off the endless radio/search URLs, gunicorn
 `--max-requests` recycling and access logs.
 - [ ]  Maybe `fly scale memory 512` if the OOM kills continue (a dollar or two a month).
-- [ ]  Once /shows is good, lighten the home page: latest show, this week in past years, a few random shows,
-  instead of the whole wall of covers (Joe, 2026-10-01).
+- [X]  Home page lightened (2026-10-04): latest show, this week in past years, and 10 random shows with two note
+  cards, instead of the whole wall. "This week" is laid out for 6 past years; revisit after the next anniversary.
 
 ## Loose ends
 

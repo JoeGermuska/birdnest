@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, parts, room_list, radio_button %}
+{% from "_macros.html" import factoids, parts, room_list, radio_button, mix_lean %}
 {% block title %}Home{% endblock title %}
 {% block content %}
 <section class="home">
@@ -14,8 +14,9 @@
             <div class="mix">
                 <span class="novelty-label">Mix</span>
                 <div class="mix-bar" aria-label="Share of this show's runtime by genre family">
-                    {% for seg in mix.show %}<span class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}" title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}%"></span>{% endfor %}
+                    {% for seg in mix.show %}<span class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}" title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}%{% if seg.family %} (usually {{ (seg.usual * 100)|round|int }}%){% endif %}"></span>{% endfor %}
                 </div>
+                <span class="novelty-context">{{ mix_lean(mix) }}</span>
             </div>
             {{ factoids(facts[:3]) }}
             <p class="latest-links">
@@ -28,13 +29,13 @@
 
     {% if this_week %}
     <h2 class="home-head">This week in past years</h2>
-    <div class="tile-row">
+    <div class="tile-row this-week">
         {% for playlist in this_week %}{% with label=playlist.date.year %}{% include "_playlist_tile.html" %}{% endwith %}{% endfor %}
     </div>
     {% endif %}
 
-    <h2 class="home-head">Every show <span class="muted">{{ n_shows }} since {{ wall[-1].show.date.strftime('%B') }} {{ wall[-1].show.date.year }} · <a href="{{ url_for('browse') }}">sort and filter them</a></span></h2>
-    <div class="tile-grid">
+    <h2 class="home-head">Pulled at random <span class="muted"><a href="{{ url_for('index') }}">shuffle</a> · <a href="{{ url_for('browse') }}">all {{ n_shows }} shows</a></span></h2>
+    <div class="tile-grid pulled">
         {% for item in wall %}
         {% if item.show %}{% with playlist=item.show, label=None %}{% include "_playlist_tile.html" %}{% endwith %}
         {% else %}{% set n = item.note %}

@@ -92,69 +92,98 @@ def robots():
     response.mimetype = 'text/plain'
     return response
 
+HOME_RANDOM_SHOWS = 10
+
+
 @app.route('/')
 def index():
     history = factoids.get_history()
     pids = sorted(history.show_tracks, key=history.show_dates.get, reverse=True)
     tile = lambda p: {**history.shows[p], 'caption': history.show_caption(p)['image']}
     latest = pids[0]
-    # the wall, with a note card after every few shows
+    this_week = history.same_week(latest)
+    # a handful of shows pulled at random (different each visit), with a note card after every few; /shows has them all
+    picks = random.sample([p for p in pids[1:] if p not in this_week], min(HOME_RANDOM_SHOWS, len(pids) - 1 - len(this_week)))
     notes, wall = history.home_notes(), []
-    for i, p in enumerate(pids):
-        if i and i % 9 == 4 and notes:
+    for i, p in enumerate(picks):
+        if i and i % 4 == 2 and notes:
             wall.append({'note': notes.pop(), 'tilt': random.choice((-1.5, -0.8, 0.6, 1.2))})
         wall.append({'show': tile(p)})
     return render_template("index.html", latest=tile(latest), latest_caption=history.show_caption(latest),
                            room=history.show_room(latest), mix=history.show_mix(latest),
                            facts=history.show_factoids(latest), stats=history.show_stats(latest),
-                           this_week=[tile(p) for p in history.same_week(latest)], wall=wall, n_shows=len(pids))
+                           this_week=[tile(p) for p in this_week], wall=wall, n_shows=len(pids))
 
 
-BROWSE_SORTS = {'newest': 'Newest', 'oldest': 'Oldest', 'new': 'Most new for its time', 'shuffle': 'Shuffle'}
+# the browse page's orders: name, sort key, biggest first?, and what the tile says alongside the date
+BROWSE_SORTS = {
+    'newest': ('Newest', lambda s: s['date'], True, None),
+    'oldest': ('Oldest', lambda s: s['date'], False, None),
+    'shuffle': ('Shuffle', None, False, None),
+}
+BROWSE_BY = {
+    'most-songs': ('Most songs', lambda s: s['songs'], True, lambda s: f"{s['songs']} songs"),
+    'fewest-songs': ('Fewest songs', lambda s: s['songs'], False, lambda s: f"{s['songs']} songs"),
+    'longest': ('Longest', lambda s: s['minutes'], True, lambda s: f"{s['minutes'] // 60}h {s['minutes'] % 60:02d}m"),
+    'shortest': ('Shortest', lambda s: s['minutes'], False, lambda s: f"{s['minutes'] // 60}h {s['minutes'] % 60:02d}m"),
+    'oldest-music': ('Oldest music', lambda s: s['median_year'] or 9999, False, lambda s: f"median song {s['median_year']}"),
+    'newest-music': ('Newest music', lambda s: s['median_year'] or 0, True, lambda s: f"median song {s['median_year']}"),
+    'most-new': ('Most new artists', lambda s: s['new_artists'], True, lambda s: f"{round(s['new_artists'] * 100)}% new artists"),
+    'most-repeats': ('Most repeats', lambda s: s['repeats'], True, lambda s: f"{round(s['repeats'] * 100)}% heard before"),
+    'biggest-room': ('Biggest room', lambda s: s['room'], True, lambda s: f"{s['room']} in the room"),
+}
 
 
 @app.route('/shows')
 def browse():
-    """Every show as tiles, sorted and filtered by the query: sort, dj (slug), family (genre family it leans toward)."""
+    """Every show as tiles, sorted and filtered by the query: sort, dj (slugs, repeatable: shows they were all in),
+    family (a genre family the show is heavy on)."""
     history = factoids.get_history()
     shows = history.browse()
-    sort = request.args.get('sort') if request.args.get('sort') in BROWSE_SORTS else 'newest'
-    dj = request.args.get('dj') if request.args.get('dj') in history.dj_by_slug else None
-    families = [f for f in genre_families.FAMILY_NAMES if sum(f in s['leans'] for s in shows) >= 5]
+    sorts = {**BROWSE_SORTS, **BROWSE_BY}
+    sort = request.args.get('sort') if request.args.get('sort') in sorts else 'newest'
+    djs_in = [d for d in dict.fromkeys(request.args.getlist('dj')) if d in history.dj_by_slug]
+    families = [f for f in genre_families.FAMILY_NAMES if sum(f in s['heavy'] for s in shows) >= 3]
     family = request.args.get('family') if request.args.get('family') in families else None
-    if dj:
-        shows = [s for s in shows if history.dj_by_slug[dj] in s['djs']]
+    for d in djs_in:
+        shows = [s for s in shows if history.dj_by_slug[d] in s['djs']]
     if family:
-        shows = [s for s in shows if family in s['leans']]
+        shows = [s for s in shows if family in s['heavy']]
     seed = request.args.get('seed', type=int)
+    name, key, biggest_first, says = sorts[sort]
     if sort == 'shuffle':
         seed = seed if seed is not None else random.randrange(10 ** 6)
         shows = sorted(shows, key=lambda s: s['date'])
         random.Random(seed).shuffle(shows)
     else:
-        key = {'newest': lambda s: s['date'], 'oldest': lambda s: s['date'], 'new': lambda s: s['lift']}[sort]
-        shows = sorted(shows, key=key, reverse=sort != 'oldest')
+        shows = sorted(shows, key=lambda s: (key(s), s['date']), reverse=biggest_first)
 
     def tile(s):
         t = {**history.shows[s['pid']], 'caption': history.show_caption(s['pid'])['image']}
-        if sort == 'new':
-            t['label'] = f"{s['date']:%b} {s['date'].day}, {s['date'].year} · novelty {round(s['novelty'] * 100)}"
+        if says:
+            t['label'] = f"{s['date']:%b} {s['date'].day}, {s['date'].year} · {says(s)}"
         return t
     if sort in ('newest', 'oldest'):
         groups = [(y, [tile(s) for s in g]) for y, g in itertools.groupby(shows, key=lambda s: s['date'].year)]
     else:
         groups = [(None, [tile(s) for s in shows])]
 
-    current = {'sort': sort, 'dj': dj, 'family': family}
+    current = {'sort': sort, 'dj': djs_in, 'family': family}
     def link(**change):  # this view with some controls changed; a fresh shuffle each time it's asked for
         q = {k: v for k, v in {**current, **change}.items() if v and not (k == 'sort' and v == 'newest')}
         if q.get('sort') == 'shuffle':
             q['seed'] = random.randrange(10 ** 6)
         return url_for('browse', **q)
-    djs = sorted(((history.djs[i]['slug'], history.djs[i]['name'], len(p)) for i, p in history.dj_shows.items()),
-                 key=lambda d: (-d[2], d[1]))
-    return render_template('shows.html', groups=groups, count=len(shows), current=current, link=link,
-                           sorts=BROWSE_SORTS, djs=djs, dj_name=dj and history.djs[history.dj_by_slug[dj]]['name'],
+    def toggle(slug):  # the DJ list with this one added or taken out
+        return [d for d in djs_in if d != slug] if slug in djs_in else djs_in + [slug]
+    # each DJ with how many of the shows shown now they were in; once some are chosen, only the ones who share any
+    pids = {s['pid'] for s in shows}
+    djs = sorted(((history.djs[i]['slug'], history.djs[i]['name'], len(p & pids))
+                  for i, p in history.dj_shows.items() if history.djs[i]['slug'] in djs_in or p & pids),
+                 key=lambda d: (d[0] not in djs_in, -d[2], d[1]))
+    return render_template('shows.html', groups=groups, count=len(shows), current=current, link=link, toggle=toggle,
+                           sorts=BROWSE_SORTS, by=BROWSE_BY, sort_name=name, djs=djs,
+                           dj_names=[history.djs[history.dj_by_slug[d]]['name'] for d in djs_in],
                            families=[(f, genre_families.COLORS[f][0]) for f in families])
 
 

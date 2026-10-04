@@ -262,7 +262,7 @@ class History:
             for r in con.execute("select mbid, type, url from mb_label_url"):
                 if r['mbid'] in self.labels:
                     self.labels[r['mbid']]['links'].setdefault(r['type'], r['url'])
-            for r in con.execute("select mbid, type, direction, target_mbid, target_name, end_date from mb_label_rel"):
+            for r in con.execute("select mbid, type, direction, target_mbid, target_name, begin_date, end_date from mb_label_rel"):
                 if r['mbid'] in self.labels:
                     self.labels[r['mbid']]['rels'].append(dict(r))
         self.album_original = {}  # album_id -> {'mbid', 'name', 'catno', 'released'}
@@ -271,9 +271,19 @@ class History:
                                  "where label_mbid is not null"):
                 self.album_original[r['album_id']] = {'mbid': r['label_mbid'], 'name': r['label_name'],
                                                       'catno': r['catalog_number'], 'released': r['released']}
-        # Spotify's label name -> a MusicBrainz label, when the albums we matched agree on it (for albums MusicBrainz
-        # doesn't know, whose Spotify label is all we have)
+        # Spotify's label name -> the label albums under that name first came out on, when the albums we matched
+        # agree (at least two of them, 70%): "Numero Group" albums are Numero originals, so an unmatched one is
+        # credited to Numero; "Rhino Atlantic" albums first came out on Atlantic, Atco, Cotillion..., so it depends
         spotify_names = defaultdict(Counter)
+        if has('mb_album_original'):
+            for r in con.execute("""select al.label, o.label_mbid from album al join mb_album_original o using(album_id)
+                                      where al.label is not null and o.label_mbid is not null"""):
+                spotify_names[_label_key(r['label'])][r['label_mbid']] += 1
+        self.label_by_spotify = {}
+        for key, c in spotify_names.items():
+            mbid, n = c.most_common(1)[0]
+            if n >= 2 and n / sum(c.values()) >= 0.7 and mbid in self.labels and self.labels[mbid]['type'] not in NOT_RELEASING_TYPES:
+                self.label_by_spotify[key] = mbid
         # about each artist, for their page: MusicBrainz's type, home and years, Wikidata's description, socials
         self.artist_about = defaultdict(dict)
         if has('mb_artist'):
@@ -287,16 +297,6 @@ class History:
                 service = social_service(r['url'])
                 if service:
                     self.artist_about[r['artist_id']].setdefault('socials', {}).setdefault(service, r['url'])
-
-        if has('mb_album_label'):
-            for r in con.execute("""select al.label, l.label_mbid from album al join mb_album_label l using(album_id)
-                                      where al.label is not null and l.label_mbid is not null"""):
-                spotify_names[_label_key(r['label'])][r['label_mbid']] += 1
-        self.label_by_spotify = {}
-        for key, c in spotify_names.items():
-            mbid, n = c.most_common(1)[0]
-            if n / sum(c.values()) >= 0.8 and mbid in self.labels and self.labels[mbid]['type'] not in NOT_RELEASING_TYPES:
-                self.label_by_spotify[key] = mbid
         if has('mb_album_label'):
             for r in con.execute("select album_id, name, catalog_number from mb_album_label"):
                 if (r['name'], r['catalog_number']) not in self.album_mb_labels[r['album_id']]:
@@ -909,15 +909,27 @@ class History:
         return {'label': mbid, 'text': text or self.labels[mbid]['name']}
 
     def label_family(self, mbid):
-        """(parents, children): labels this one is an imprint of or currently owned by, and the labels that are its
-        imprints or that it owns and that have plays here."""
-        rels = self.labels[mbid]['rels']
-        kinds = ('imprint', 'label ownership')
-        parents = {r['target_mbid']: r['target_name'] for r in rels
-                   if r['type'] in kinds and r['direction'] == 'backward' and not r['end_date']}
-        children = {r['target_mbid']: r['target_name'] for r in rels
-                    if r['type'] in kinds and r['direction'] == 'forward' and r['target_mbid'] in self.label_plays}
-        return parents, children
+        """How this label relates to others, as phrases for its page: what it's an imprint of or owned by, and its
+        imprints and the labels it owns (those only when they have plays here). Each is (phrase, [label parts]),
+        with dates when a relation began or ended."""
+        def when(r):
+            b, e = (r.get('begin_date') or '')[:4], (r.get('end_date') or '')[:4]
+            return f" ({b}–{e})" if b and e else f" (until {e})" if e else f" (since {b})" if b else ""
+        groups = defaultdict(list)
+        for r in self.labels[mbid]['rels']:
+            if r['type'] not in ('imprint', 'label ownership') or r['target_mbid'] == mbid:
+                continue
+            up = r['direction'] == 'backward'
+            if not up and r['target_mbid'] not in self.label_plays:
+                continue
+            phrase = {('imprint', True): 'An imprint of', ('label ownership', True): 'Owned by',
+                      ('imprint', False): 'Imprints', ('label ownership', False): 'Owns'}[(r['type'], up)]
+            if phrase == 'Owns' and r.get('end_date'):
+                phrase = 'Owned'
+            part = self.label_part(r['target_mbid'], r['target_name']) if r['target_mbid'] in self.labels else r['target_name']
+            groups[phrase].append([part, when(r)])
+        order = ['An imprint of', 'Owned by', 'Imprints', 'Owns', 'Owned']
+        return [(p, _join(groups[p])) for p in order if p in groups]
 
     def label_profile(self, mbid):
         pids = sorted(self.label_shows.get(mbid, ()), key=self.show_dates.get)
@@ -958,13 +970,11 @@ class History:
             room = self._over_represented(set(pids), self.dj_shows, limit=3)
             if room:
                 facts.add('stat', 'Often in the room', *_join([[self._dj_part(i), f" ({k} of {n})"] for i, k in room]))
-        parents, children = self.label_family(mbid)
         links = [(label, lab['links'][src]) for src, label in LABEL_LINK_LABELS if src in lab['links']]
         links.insert(1 if links and links[0][0] == 'Wikipedia' else 0, ('MusicBrainz', f"https://musicbrainz.org/label/{mbid}"))
         return {'label': lab, 'shows': shows, 'albums': albums, 'n_shows': n, 'n_plays': self.label_plays[mbid],
                 'first': shows[0]['date'], 'last': shows[-1]['date'], 'facts': facts, 'links': links,
-                'parents': [self.label_part(m, t) if m in self.labels else {'text': t} for m, t in parents.items()],
-                'children': [self.label_part(m) for m in sorted(children, key=lambda m: -self.label_plays[m])],
+                'family': self.label_family(mbid),
                 'from_spotify': sum(1 for a in albums if a['how'] == 'spotify')}
 
     def genre_profile(self, name):
@@ -1192,21 +1202,23 @@ class History:
         return notes
 
     def browse(self):
-        """Every show with what the browse page sorts and filters on: novelty against the shows around it (lift:
-        its share of new artists minus their median), who was in the room, and the genre families it leans toward
-        (at least 1.5 times the family's average share across the archive, and at least 12% of the show)."""
+        """Every show with what the browse page sorts and filters on: who was in the room, the genre families it's
+        heavy on (as the show page says, against the shows around it), and its numbers for each sort."""
         if not hasattr(self, '_browse'):
-            n, usual = len(self.mix), Counter()
-            for shares, _ in self.mix.values():
-                usual.update({f: v / n for f, v in shares.items() if f})
             self._browse = []
             for pid in self.show_tracks:
-                peers, shares = self.novelty_peers[pid], self.mix[pid][0]
+                tids = self.show_tracks[pid]
+                years = sorted(y for y, _ in self.play_years.get(pid, []))
+                mix = self.show_mix(pid)
                 self._browse.append({
-                    'pid': pid, 'date': self.show_dates[pid], 'novelty': self.novelty[pid],
-                    'lift': self.novelty[pid] - peers[len(peers) // 2],
+                    'pid': pid, 'date': self.show_dates[pid],
                     'djs': {i for i, _ in self.show_djs.get(pid, ())},
-                    'leans': {f for f, v in shares.items() if f and v >= max(0.12, 1.5 * usual[f])}})
+                    'heavy': {f for f in genre_families.FAMILY_NAMES if f.lower() in mix['heavy']},
+                    'songs': len(tids),
+                    'minutes': sum(self.tracks[t]['duration_ms'] or 0 for t in tids) // 60000,
+                    'median_year': years[(len(years) - 1) // 2] if years else None,
+                    'new_artists': self.new_artists[pid], 'repeats': self.repeats[pid],
+                    'room': len(self.show_djs.get(pid, ()))})
         return self._browse
 
     def genre_tree(self):
@@ -1416,14 +1428,26 @@ AGE_BIN = 5  # song age: years per bar in each show year's histogram
 RANKINGS = ['artists', 'albums', 'tracks', 'returns', 'labels', 'djs']  # novelty has its own chart page
 
 
-def _signature(db_path):
-    """Hash of the database file and of the code that builds History from it, so either changing rebuilds the
-    cache (mtimes change on git checkout and Docker COPY, content doesn't)."""
+def _code_hash():
     h = hashlib.sha1()
-    for path in (db_path, __file__, genre_families.__file__):
+    for path in (__file__, genre_families.__file__):
         with open(path, 'rb') as f:
-            for block in iter(lambda: f.read(1 << 20), b''):
-                h.update(block)
+            h.update(f.read())
+    return h.hexdigest()
+
+
+# the code this process is actually running, hashed once at import: a server started before an edit keeps running the
+# old code, so a cache it builds must carry the old code's hash, not the hash of whatever is on disk by then
+CODE_HASH = _code_hash()
+
+
+def _signature(db_path):
+    """Hash of the database file and of the code that builds History from it (as loaded), so either changing
+    rebuilds the cache (mtimes change on git checkout and Docker COPY, content doesn't)."""
+    h = hashlib.sha1(CODE_HASH.encode())
+    with open(db_path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''):
+            h.update(block)
     return h.hexdigest()
 
 

@@ -286,6 +286,14 @@ section.home { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
 .home-head .muted { font-size: var(--size-small); font-weight: normal; margin-left: 8px; }
 .tile-row, .tile-grid { display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(min(45%, 170px), 1fr)); }
 .tile-row .tile-date { font-size: 1rem; }
+/* the home page's random handful: 12 items (10 shows, 2 notes) in 6, 4 or 2 columns, so rows always come out even */
+.tile-grid.pulled { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 1000px) { .tile-grid.pulled { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 600px) { .tile-grid.pulled { grid-template-columns: repeat(2, 1fr); } }
+/* "This week in past years": one tile per past year, 6 as of the 2026 season (revisit after the next anniversary) */
+.tile-row.this-week { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 1000px) { .tile-row.this-week { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 600px) { .tile-row.this-week { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) { .home-latest { grid-template-columns: 1fr; } }
 
 /* note cards mixed into the wall: small facts to wander off from, a little askew */
@@ -856,8 +864,14 @@ section.browse { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
 .seg a + a { border-left: 1px solid var(--control-rule); }
 .seg a:hover { background: var(--wash); }
 .seg a[aria-current] { background: var(--ink); color: var(--bg); }
-.browse-dj label { display: flex; gap: 8px; align-items: center; font-size: var(--size-small); color: var(--ink-2); }
-.browse-dj select { font: inherit; font-size: var(--size-small); }
+.browse-by label { display: flex; gap: 8px; align-items: center; font-size: var(--size-small); color: var(--ink-2); }
+.browse-by select { font: inherit; font-size: var(--size-small); }
+.chips-label { font-size: var(--size-label); text-transform: uppercase; color: var(--ink-3); margin-right: 4px; align-self: center; }
+.dj-chips { display: flex; flex-wrap: wrap; gap: 6px; font-size: var(--size-note); }
+.dj-chips a { padding: 3px 10px; border-radius: 999px; background: var(--wash); color: var(--ink); text-decoration: none; white-space: nowrap; }
+.dj-chips a:hover { background: var(--wash-strong); }
+.dj-chips a .n { color: var(--ink-3); font-size: var(--size-caption); }
+.dj-chips a[aria-current] { background: var(--ink); color: var(--bg); }
 .family-chips { display: flex; flex-wrap: wrap; gap: 6px; font-size: var(--size-note); }
 .family-chips a { padding: 3px 10px; border-radius: 999px; background: var(--wash); color: var(--ink); text-decoration: none; white-space: nowrap; }
 .family-chips a:hover { background: var(--wash-strong); }
