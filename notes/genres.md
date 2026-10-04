@@ -22,7 +22,7 @@ Prompted by the Grateful Dead showing up as philly soul / motown / northern soul
 - Wikidata genre (P136): curated, coarse.
 - Discogs genres/styles: per release (album/single), every track inherits them; good taxonomy, needs a token.
 - Last.fm tags: broad, weighted, noisy; needs a key.
-- Audio features (6,575 tracks) could cluster by sound, but they're about sound, not genre.
+- Audio features (6,575 tracks) could cluster by sound, but they're about sound, not genre. <- this is interesting and we should pursue it, possibly separately, acknowledging that we don't get new data on that any more
 
 ## Experiment to try first: genre per play, from context
 Keep each artist's full tag pool. For each play, weight the artist's tags by how well they match the tags of the

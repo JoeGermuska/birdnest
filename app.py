@@ -221,7 +221,7 @@ def artist(spotify_id):
         abort(404)
     history = factoids.get_history()
     return render_template('artist.html', artist=artist, profile=history.artist_profile(artist.artist_id),
-                           history=history)
+                           about=history.artist_header(artist.artist_id), history=history)
 
 @app.route('/album/<spotify_id>')
 def album(spotify_id):
@@ -272,6 +272,14 @@ def _album_row(history, album_id, shows, **extra):
             'artists': ', '.join(history.artists[x]['name'] for x in history.album_artists[album_id] if x in history.artists),
             'shows': shows, **extra}
 
+
+@app.route('/label/<mbid>')
+def label(mbid):
+    history = factoids.get_history()
+    profile = history.label_profile(mbid) if mbid in history.labels else None
+    if not profile:
+        abort(404)
+    return render_template('label.html', profile=profile, history=history)
 
 @app.route('/todo/wikidata')
 def wikidata_todo():
@@ -497,6 +505,11 @@ def _radio_set(args, seed):
         start_label, start_kind = history.albums[canon]['name'], 'album'
         start_url = url_for('album', spotify_id=history.albums[canon]['spotify_id'])
         lean = ['album', canon] if start is not None else None
+    elif args.get('label') and args['label'] in history.label_shows:
+        start = radio.start_for_lean(('label', args['label']), random.Random(seed))
+        start_label, start_kind = history.labels[args['label']]['name'], 'label'
+        start_url = url_for('label', mbid=args['label'])
+        lean = ['label', args['label']] if start is not None else None
     elif args.get('length') == 'long':
         start = radio.start_for_lean(('length', 'long'), random.Random(seed))
         start_label, start_kind, start_url = 'six-minute songs', 'length', url_for('heath') + '#six'
@@ -555,7 +568,8 @@ def _lean(body):
     kind, key = lean
     ok = {'genre': lambda: key in history.genre_artists, 'show': lambda: key in history.show_tracks,
           'artist': lambda: key in history.artist_shows, 'dj': lambda: key in history.djs,
-          'length': lambda: key == 'long', 'album': lambda: key in history.album_shows}
+          'length': lambda: key == 'long', 'album': lambda: key in history.album_shows,
+          'label': lambda: key in history.label_shows}
     return (kind, key) if kind in ok and ok[kind]() else None
 
 

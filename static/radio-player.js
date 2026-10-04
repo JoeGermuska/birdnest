@@ -481,8 +481,16 @@
         }
         S.nowHtml = `${state.paused ? 'Paused' : 'Now playing'}: <strong>${esc(name)}</strong> · ${esc(artists)}`;
         status(S.nowHtml + (S.previews ? ` <span class="rp-off">(previews only: log in at <a href="https://open.spotify.com">open.spotify.com</a> in this browser for whole tracks)</span>` : ''));
+        showLogin();
         $('rp-play').textContent = state.paused ? '▶' : '⏸';
         $('rp-play').setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
+    }
+    // embed mode playing previews: offer logging in with us right in the bar, back to the page you're on
+    function showLogin() {
+        const a = $('rp-login');
+        if (!a) return;
+        a.hidden = !S.previews;
+        a.href = loginLink();
     }
     function whenReady() {
         S.ready = true;
@@ -792,6 +800,7 @@
             restore();
             S.engine.connect();
         }
+        showLogin();  // its link goes back to the page you're on now
         // reserve the bar's real height at the bottom of the page (it changes with the drawer and on phones)
         const shown = document.querySelector('.radio-player');
         if (shown && shown !== S.measured) {

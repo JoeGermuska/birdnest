@@ -2,6 +2,7 @@
 {%- for p in items -%}
 {%- if p is string -%}{{ p }}
 {%- elif p.artist -%}<a href="{{ url_for('artist', spotify_id=p.artist) }}">{{ p.text }}</a>
+{%- elif p.label -%}<a href="{{ url_for('label', mbid=p.label) }}">{{ p.text }}</a>
 {%- elif p.album -%}<a href="{{ url_for('album', spotify_id=p.album) }}">{{ p.text }}</a>
 {%- elif p.genre -%}<a href="{{ url_for('genre', genre_name=p.genre) }}">{{ p.text }}</a>
 {%- elif p.dj -%}<a href="{{ url_for('dj', slug=p.dj) }}">{{ p.text }}</a>
@@ -55,6 +56,14 @@
 {%- elif name == 'sun' %}<circle cx="12" cy="12" r="4.6" fill="currentColor"/><path d="M12 1.8v3M12 19.2v3M1.8 12h3M19.2 12h3M4.8 4.8l2.1 2.1M17.1 17.1l2.1 2.1M4.8 19.2l2.1-2.1M17.1 6.9l2.1-2.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
 {%- elif name == 'spotify' %}<circle cx="12" cy="12" r="12" fill="currentColor"/><path d="M6.5 9.3c3.7-1.1 7.9-.8 11.2 1.1M7.1 12.4c3-.9 6.4-.6 9.1.9M7.7 15.3c2.4-.6 4.9-.4 7 .7" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/>
 {%- endif %}</svg>
+{%- endmacro %}
+
+{# What stands out in a show's mix against the shows around it (factoids.mix_summary), in words #}
+{% macro mix_lean(mix) -%}
+{%- if mix.heavy or mix.light -%}
+{%- if mix.heavy %}heavy on {{ mix.heavy|join(' and ') }}{% endif %}{% if mix.heavy and mix.light %}; {% endif %}
+{%- if mix.light %}light on {{ mix.light|join(' and ') }}{% endif %}
+{%- else %}a typical mix for its time{% endif -%}
 {%- endmacro %}
 
 {# the Birds radio icon: next to every link that starts the radio (radio-player.js has a copy for its messages) #}

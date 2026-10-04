@@ -1,0 +1,47 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import factoids, action_row, parts %}
+{% set lab = profile.label %}
+{% block title %}{{ lab.name }}{% endblock title %}
+{% block extra_head %}
+<style>
+    .label-albums { list-style: none; padding: 0; margin: 0; }
+    .label-albums li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 6px 0; border-top: 1px solid var(--rule); }
+    .label-albums .sub { display: block; font-size: var(--size-note); color: var(--ink-3); }
+    .label-albums .sub a { color: inherit; }
+    .label-albums .n { font-family: var(--font-display); font-size: var(--size-small); color: var(--ink-3); white-space: nowrap; }
+    .label-albums .catno { font-family: ui-monospace, Menlo, monospace; font-size: var(--size-caption); }
+</style>
+{% endblock extra_head %}
+{% block content %}
+<section class="detail label-page">
+    <header>
+        <hgroup class="title-unit"><h1>{{ lab.name }}</h1>
+            <p class="subtitle">{{ lab.type or 'Label' }}{% if lab.area or lab.country %} · {{ lab.area or lab.country }}{% endif %}
+                {%- if lab.begin %} · {{ lab.begin[:4] }}{% if lab.end %}–{{ lab.end[:4] }}{% else %}–{% endif %}{% endif %}</p></hgroup>
+        {{ action_row(url_for('radio_page', label=lab.mbid), profile.links) }}
+        <p class="detail-meta">
+            {{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} · {{ profile.n_plays }} play{{ 's' if profile.n_plays != 1 }}
+            · {% if profile.n_shows > 1 %}{{ profile.first.year }}–{{ profile.last.year }}{% else %}{{ profile.first }}{% endif %}
+            {% if profile.parents %}<br>Part of {% for p in profile.parents %}{{ ', ' if not loop.first }}{{ parts([p]) }}{% endfor %}{% endif %}
+            {% if profile.children %}<br>Its labels played here: {% for c in profile.children %}{{ ', ' if not loop.first }}{{ parts([c]) }}{% endfor %}{% endif %}
+        </p>
+    </header>
+
+    {% set marks = [] %}
+    {% for s in profile.shows %}{% set _ = marks.append({'date': s.date, 'label': s.date ~ ': ' ~ (s.tracks|join(', '))}) %}{% endfor %}
+    {% include "_timeline.html" %}
+    {{ factoids(profile.facts) }}
+
+    <h2>Albums played</h2>
+    <ol class="label-albums">
+        {% for a in profile.albums %}
+        <li><span>{{ parts([a.album]) }} · {{ parts(a.artists) }}
+                <span class="sub">{% if a.released %}{{ a.released[:4] }}{% endif %}{% if a.catno %} · <span class="catno">{{ a.catno }}</span>{% endif %}
+                    {% if a.how == 'spotify' %} · label as Spotify lists it{% endif %}</span></span>
+            <span class="n">{{ a.dates|length }} show{{ 's' if a.dates|length != 1 }}{% if a.plays > a.dates|length %}, {{ a.plays }} plays{% endif %}</span></li>
+        {% endfor %}
+    </ol>
+    <p class="detail-meta">Albums count here when this is the label they first came out on, according to MusicBrainz{% if profile.from_spotify %}, or, for
+        albums MusicBrainz doesn't know, when Spotify lists this label{% endif %}.</p>
+</section>
+{% endblock content %}

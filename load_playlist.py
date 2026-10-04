@@ -60,6 +60,7 @@ enrich_mb_recordings.main(track_ids=[t.track_id for t in playlist.tracks], retri
 enrich_mb_albums.main(album_ids=list({t.album_id for t in playlist.tracks if t.album_id}), retries=50)
 # no_data: also re-check artists with no Wikidata item yet, which picks up IDs added from /todo/wikidata
 enrich_wikidata.main(no_data=True)
+enrich_wikidata.describe()  # new artists' short descriptions, for artist pages
 wikidata_album_todo.main()  # albums whose Wikidata item lacks our Spotify ID (/todo/wikidata/albums)
 
 # small tile copies of any new show images (also made at image build)

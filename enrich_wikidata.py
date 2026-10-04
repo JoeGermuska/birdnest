@@ -11,8 +11,11 @@ before with no Wikidata item found, e.g. after adding their Spotify IDs to
 Wikidata from /todo/wikidata; pass --all to re-query everyone, e.g. to pick up
 pages created on Wikipedia since.
     python enrich_wikidata.py [--no-data | --all] [path/to/birdnest.db]
+    python enrich_wikidata.py --descriptions [--all] [path/to/birdnest.db]   (Wikidata's short description of each
+                                                                              artist, for artist pages)
 """
 import json
+from collections import defaultdict
 import sqlite3
 import sys
 import time
@@ -138,6 +141,36 @@ def main(db_path='birdnest.db', refresh_all=False, no_data=False):
     print(f"{len(rows)} links for {len(links)} of {len(targets)} artists")
 
 
+def describe(db_path='birdnest.db', refresh_all=False):
+    """Store Wikidata's short English description of each artist with a Wikidata item ("American jazz trumpeter,
+    bandleader and composer") in artist_description, for artist pages. Only artists without one, unless refresh_all."""
+    con = sqlite3.connect(db_path, timeout=60)
+    con.execute("""create table if not exists artist_description (
+        artist_id integer primary key references artist(artist_id), qid varchar, description varchar)""")
+    rows = con.execute("select artist_id, url from artist_link where source = 'wikidata'" +
+                       ("" if refresh_all else " and artist_id not in (select artist_id from artist_description)")).fetchall()
+    by_qid = defaultdict(list)
+    for artist_id, url in rows:
+        by_qid[url.rsplit('/', 1)[-1]].append(artist_id)
+    qids, found = sorted(by_qid), []
+    for i in range(0, len(qids), 50):
+        query = urllib.parse.urlencode({'action': 'wbgetentities', 'ids': '|'.join(qids[i:i + 50]),
+                                        'props': 'descriptions', 'languages': 'en', 'format': 'json'})
+        req = urllib.request.Request(f"https://www.wikidata.org/w/api.php?{query}", headers={'User-Agent': USER_AGENT})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            for qid, ent in json.load(resp).get('entities', {}).items():
+                text = ((ent.get('descriptions') or {}).get('en') or {}).get('value')
+                found += [(a, qid, text) for a in by_qid.get(qid, [])]
+        time.sleep(0.2)
+    with con:  # artists without an English description get a row too, so they aren't asked about every week
+        con.executemany("insert or replace into artist_description values (?, ?, ?)", found)
+    print(f"descriptions for {sum(1 for *_, t in found if t)} of {len(rows)} artists")
+
+
 if __name__ == '__main__':
     args = sys.argv[1:]
-    main(*[a for a in args if not a.startswith('--')], refresh_all='--all' in args, no_data='--no-data' in args)
+    paths = [a for a in args if not a.startswith('--')]
+    if '--descriptions' in args:
+        describe(*paths, refresh_all='--all' in args)
+    else:
+        main(*paths, refresh_all='--all' in args, no_data='--no-data' in args)

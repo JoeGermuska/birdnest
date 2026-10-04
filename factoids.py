@@ -71,6 +71,45 @@ def _competition_ranks(values):
     return ranks
 
 
+SOCIALS = [('instagram.com', 'Instagram'), ('bsky.app', 'Bluesky'), ('tiktok.com', 'TikTok'), ('youtube.com', 'YouTube'),
+           ('soundcloud.com', 'SoundCloud'), ('facebook.com', 'Facebook'), ('threads.net', 'Threads'),
+           ('threads.com', 'Threads'), ('twitter.com', 'Twitter'), ('x.com', 'X')]
+
+
+def social_service(url):
+    """The service a social link is on, by its host (see SOCIALS), or None for ones we don't show."""
+    host = re.sub(r'^https?://(www\.|m\.)?', '', url or '').split('/')[0].lower()
+    return next((name for domain, name in SOCIALS if host == domain or host.endswith('.' + domain)), None)
+
+
+def flag(country):
+    """A two-letter country code as its flag emoji."""
+    return ''.join(chr(0x1F1E6 + ord(c) - ord('A')) for c in country) if country and len(country) == 2 and country.isalpha() else ''
+
+
+def mix_summary(shares, usual, tracks, lean):
+    """A mix bar's segments (each with its usual share, for the tooltip) and the families that stand out:
+    heavy (at least `points` more of the runtime than usual, and `ratio` times as much) and light (the reverse).
+    lean: (points, ratio). Untagged runtime never counts as standing out."""
+    points, ratio = lean
+    order = genre_families.FAMILY_NAMES + [None]
+    segments = [{'family': f, 'share': shares[f], 'usual': usual.get(f, 0),
+                 'color': genre_families.COLORS.get(f, ('#ddd', '#222'))[0], 'tracks': (tracks or {}).get(f, [])}
+                for f in order if shares.get(f, 0) > 0.001]
+    diff = lambda f: shares.get(f, 0) - usual.get(f, 0)
+    heavy = sorted((f for f in order if f and diff(f) >= points and shares.get(f, 0) >= usual.get(f, 0) * ratio),
+                   key=diff, reverse=True)
+    light = sorted((f for f in order if f and -diff(f) >= points and shares.get(f, 0) * ratio <= usual.get(f, 0)),
+                   key=diff)
+    return {'show': segments, 'heavy': [f.lower() for f in heavy], 'light': [f.lower() for f in light]}
+
+
+def _label_key(name):
+    """A label name for matching: case, punctuation and words like "Records" don't count."""
+    name = re.sub(r'\b(records?|recordings?|music|label|ltd|llc|inc|co|company)\b', '', (name or '').lower())
+    return re.sub(r'\W', '', name)
+
+
 def best_release(dates):
     """(date, source) for when a recording first came out, from [(recording's MusicBrainz date, source), (album's
     MusicBrainz date, source), (Spotify's album date, source)], each YYYY[-MM[-DD]] or None. The earliest date wins
@@ -213,6 +252,51 @@ class History:
                                  (r['sp'] if 'release_date' in cols else None, 'spotify')])
             if best:
                 self.track_released[r['track_id']] = best
+        # Labels (enrich_mb_labels.py): what MusicBrainz knows about each, and each album's original label
+        self.labels = {}  # mbid -> {'mbid', 'name', 'type', 'country', 'area', 'begin', 'end', 'links', 'rels'}
+        if has('mb_label'):
+            for r in con.execute("select mbid, name, type, country, area, begin_date, end_date from mb_label"):
+                self.labels[r['mbid']] = {'mbid': r['mbid'], 'name': r['name'], 'type': r['type'], 'country': r['country'],
+                                          'area': r['area'], 'begin': r['begin_date'], 'end': r['end_date'],
+                                          'links': {}, 'rels': []}
+            for r in con.execute("select mbid, type, url from mb_label_url"):
+                if r['mbid'] in self.labels:
+                    self.labels[r['mbid']]['links'].setdefault(r['type'], r['url'])
+            for r in con.execute("select mbid, type, direction, target_mbid, target_name, end_date from mb_label_rel"):
+                if r['mbid'] in self.labels:
+                    self.labels[r['mbid']]['rels'].append(dict(r))
+        self.album_original = {}  # album_id -> {'mbid', 'name', 'catno', 'released'}
+        if has('mb_album_original'):
+            for r in con.execute("select album_id, label_mbid, label_name, catalog_number, released from mb_album_original "
+                                 "where label_mbid is not null"):
+                self.album_original[r['album_id']] = {'mbid': r['label_mbid'], 'name': r['label_name'],
+                                                      'catno': r['catalog_number'], 'released': r['released']}
+        # Spotify's label name -> a MusicBrainz label, when the albums we matched agree on it (for albums MusicBrainz
+        # doesn't know, whose Spotify label is all we have)
+        spotify_names = defaultdict(Counter)
+        # about each artist, for their page: MusicBrainz's type, home and years, Wikidata's description, socials
+        self.artist_about = defaultdict(dict)
+        if has('mb_artist'):
+            for r in con.execute("select artist_id, type, country, area, begin_date, end_date from mb_artist where mbid is not null"):
+                self.artist_about[r['artist_id']].update({k: r[k] for k in ('type', 'country', 'area', 'begin_date', 'end_date')})
+        if has('artist_description'):
+            for r in con.execute("select artist_id, description from artist_description where description is not null"):
+                self.artist_about[r['artist_id']]['description'] = r['description']
+        if has('mb_artist_url'):
+            for r in con.execute("select artist_id, url from mb_artist_url where type in ('social network', 'youtube', 'soundcloud')"):
+                service = social_service(r['url'])
+                if service:
+                    self.artist_about[r['artist_id']].setdefault('socials', {}).setdefault(service, r['url'])
+
+        if has('mb_album_label'):
+            for r in con.execute("""select al.label, l.label_mbid from album al join mb_album_label l using(album_id)
+                                      where al.label is not null and l.label_mbid is not null"""):
+                spotify_names[_label_key(r['label'])][r['label_mbid']] += 1
+        self.label_by_spotify = {}
+        for key, c in spotify_names.items():
+            mbid, n = c.most_common(1)[0]
+            if n / sum(c.values()) >= 0.8 and mbid in self.labels and self.labels[mbid]['type'] not in NOT_RELEASING_TYPES:
+                self.label_by_spotify[key] = mbid
         if has('mb_album_label'):
             for r in con.execute("select album_id, name, catalog_number from mb_album_label"):
                 if (r['name'], r['catalog_number']) not in self.album_mb_labels[r['album_id']]:
@@ -302,6 +386,30 @@ class History:
         # rank albums (singles aside) by number of shows; ties share a rank
         self.album_rank = {a: first_at[len(v)] for a, v in self.album_shows.items() if self.albums[a].get('album_type') != 'single'}
 
+        # Labels: each album's label is its original one (MusicBrainz), else Spotify's when that maps to a label that
+        # releases music (not a reissue arm, distributor or holding company); else none
+        self.album_label = {}  # album_id -> label mbid
+        self.album_label_how = {}  # album_id -> 'original' | 'spotify'
+        for aid, a in self.albums.items():
+            group = self.album_members.get(self.album_group.get(aid), [aid])
+            orig = next((self.album_original[m] for m in [aid] + group if m in self.album_original), None)
+            if orig and orig['mbid'] in self.labels:
+                self.album_label[aid], self.album_label_how[aid] = orig['mbid'], 'original'
+            elif a.get('label') and _label_key(a['label']) in self.label_by_spotify:
+                self.album_label[aid], self.album_label_how[aid] = self.label_by_spotify[_label_key(a['label'])], 'spotify'
+        self.label_shows, self.label_plays = defaultdict(set), Counter()
+        for pid, tids in self.show_tracks.items():
+            for t in tids:
+                mbid = self.album_label.get(self.tracks[t]['album_id'])
+                if mbid:
+                    self.label_shows[mbid].add(pid)
+                    self.label_plays[mbid] += 1
+        order = sorted(self.label_plays.values(), reverse=True)
+        first_at = {}
+        for i, n in enumerate(order):
+            first_at.setdefault(n, i + 1)
+        self.label_rank = {m: first_at[n] for m, n in self.label_plays.items()}
+
         # Song age: each play's release year, when we know it. Spotify's placeholder dates (1900, 0000) and dates
         # after the show itself don't count.
         self.play_years = {}  # playlist_id -> [(year, track_id)] for the plays with a usable date
@@ -360,7 +468,10 @@ class History:
         """Everything the show page's track table needs, without touching the ORM."""
         notes = self.track_notes(playlist_id)
         return [{**self.tracks[t], 'artists': [self.artists[a] for a in self.track_artists[t]], 'notes': notes[t],
-                 'album_page': self._album_page(t)} for t in self.show_tracks[playlist_id]]
+                 'album_page': self._album_page(t), 'label_page': self.album_label.get(self.tracks[t]['album_id']),
+                 'label_name': self.labels[self.album_label[self.tracks[t]['album_id']]]['name']
+                 if self.tracks[t]['album_id'] in self.album_label else self.tracks[t]['label']}
+                for t in self.show_tracks[playlist_id]]
 
     def _album_page(self, track_id):
         """The Spotify id an album page lives at, for a track's album (None if unknown)."""
@@ -408,7 +519,7 @@ class History:
         return shares, tracks
 
     def show_mix(self, playlist_id):
-        """This show's family mix and the average mix of the shows around it."""
+        """This show's family mix, and what stands out against the shows around it (see mix_summary)."""
         ordered = sorted(self.show_tracks, key=self.show_dates.get)
         i = ordered.index(playlist_id)
         lo = max(0, min(i - NOVELTY_WINDOW, len(ordered) - 2 * NOVELTY_WINDOW - 1))
@@ -417,13 +528,7 @@ class History:
         for p in peers:
             usual.update({f: v / len(peers) for f, v in self.mix[p][0].items()})
         shares, tracks = self.mix[playlist_id]
-        order = genre_families.FAMILY_NAMES + [None]
-
-        def segments(values, with_tracks):
-            return [{'family': f, 'share': values[f], 'color': genre_families.COLORS.get(f, ('#ddd', '#222'))[0],
-                     'tracks': tracks[f] if with_tracks else []}
-                    for f in order if values.get(f, 0) > 0.001]
-        return {'show': segments(shares, True), 'usual': segments(usual, False)}
+        return mix_summary(shares, usual, tracks, SHOW_LEAN)
 
     def _dj_part(self, dj_id):
         return {'dj': self.djs[dj_id]['slug'], 'text': self.djs[dj_id]['name']}
@@ -477,36 +582,16 @@ class History:
         if opened and n > 1:
             facts.add('stat', 'First in the room', f"{opened} of {n} shows")
 
-        ys = sorted(y for p in pids for y, _ in self.play_years.get(p, []))
-        if n >= 4 and ys:
-            everyone = sorted(y for plays in self.play_years.values() for y, _ in plays)
-            facts.add('stat', 'Song age', f"the median song on their nights came out in {ys[(len(ys) - 1) // 2]} "
-                      f"(all shows: {everyone[(len(everyone) - 1) // 2]})",
-                      more={'ranking': 'age', 'anchor': 'djs', 'text': 'song age'})
-
         crew = Counter(i for p in pids for i, _ in self.show_djs[p] if i != dj_id)
         regulars = [{**self.djs[i], 'shows': k, 'share': k / n} for i, k in crew.most_common()]
 
         # what this person's shows lean toward (we can't know who picked what)
         artists = self._over_represented(set(pids), self.artist_shows) if n >= 4 else []
-        families = Counter()
-        for p in pids:
-            families.update({f: v / n for f, v in self.mix[p][0].items()})
-        overall = Counter()
-        for p in self.show_tracks:
-            overall.update({f: v / len(self.show_tracks) for f, v in self.mix[p][0].items()})
-        order = genre_families.FAMILY_NAMES + [None]
-
-        def segments(values):
-            return [{'family': f, 'share': values[f], 'color': genre_families.COLORS.get(f, ('#ddd', '#222'))[0],
-                     'tracks': []} for f in order if values.get(f, 0) > 0.001]
-
         return {'dj': self.djs[dj_id], 'n_shows': n, 'share': n / len(self.show_tracks),
                 'first': dates[0], 'last': dates[-1], 'facts': facts, 'regulars': regulars,
                 'notes': [(self.show_dates[p], note) for p in pids for i, note in self.show_djs[p]
                           if i == dj_id and note],
                 'artists': [{**self.artists[a], 'shows': k, 'of': len(self.artist_shows[a])} for a, k in artists],
-                'mix': {'show': segments(families), 'usual': segments(overall)},
                 'shows': [{**self.shows[p], 'room': self.show_room(p)} for p in reversed(pids)]}
 
     def show_stats(self, playlist_id):
@@ -632,11 +717,11 @@ class History:
                           f": out less than two weeks", more={'ranking': 'age', 'anchor': 'fresh', 'text': 'song age'})
 
         # Label concentration
-        labels = Counter(self.tracks[t]['label'] for t in tids if self.tracks[t]['label'])
-        for label, n in labels.most_common(1):
+        labels = Counter(self.album_label[self.tracks[t]['album_id']] for t in tids if self.tracks[t]['album_id'] in self.album_label)
+        for mbid, n in labels.most_common(1):
             if n >= 3:
-                facts.add('label', 'Label of the night', f"{label} ({n} tracks)",
-                          more={'ranking': 'labels', 'anchor': _slug(label), 'text': 'top labels'})
+                facts.add('label', 'Label of the night', self.label_part(mbid), f" ({n} tracks)",
+                          more={'ranking': 'labels', 'anchor': mbid, 'text': 'top labels'})
 
         # Obscure-to-famous range, using follower counts from around the show
         followers = {a: self.followers_at(a, d) for a in distinct}
@@ -657,6 +742,20 @@ class History:
 
     def year_x(self, year, width):
         return self.timeline_x(max(self.first_date, date(year, 1, 1)), width)
+
+    def artist_header(self, artist_id):
+        """What an artist page says about who they are: Wikidata's description, where they're from (with a flag),
+        their years (left out when the description already gives them), and social links, in SOCIALS order."""
+        a = self.artist_about.get(artist_id, {})
+        desc = a.get('description')
+        begin, end = (a.get('begin_date') or '')[:4], (a.get('end_date') or '')[:4]
+        group = a.get('type') in ('Group', 'Orchestra', 'Choir')
+        years = None
+        if begin and not (desc and begin in desc):
+            years = f"{begin}–{end}" if end else f"formed {begin}" if group else f"born {begin}"
+        order = [name for _, name in SOCIALS]
+        socials = sorted((a.get('socials') or {}).items(), key=lambda kv: order.index(kv[0]))
+        return {'description': desc, 'home': a.get('area'), 'flag': flag(a.get('country')), 'years': years, 'socials': socials}
 
     def artist_profile(self, artist_id):
         pids = sorted(self.artist_shows.get(artist_id, ()), key=self.show_dates.get)
@@ -774,14 +873,19 @@ class History:
             facts.add('stat', 'Released', f"{original[:4]}, first (MusicBrainz); this edition {released[:4]}")
         elif released and not released.startswith('0000'):
             facts.add('stat', 'Released', released[:4])
-        # MusicBrainz's label (with catalog number) for the release, then Spotify's when it says something else
-        norm = lambda x: re.sub(r'\W', '', (x or '').lower().replace('records', '').replace('recordings', ''))
-        mb_labels = [f"{name} ({cat})" if cat else name for name, cat in self.album_mb_labels.get(album_id, []) if name]
-        label = '; '.join(dict.fromkeys(mb_labels))
-        if album.get('label') and all(norm(album['label']) != norm(n) for n, _ in self.album_mb_labels.get(album_id, [])):
-            label = f"{label}; on Spotify, {album['label']}" if label else album['label']
-        if label:
-            facts.add('stat', 'Label', label)
+        # the original label (linked), with its catalog number; then Spotify's label when it's someone else
+        mbid = self.album_label.get(album_id)
+        orig = next((self.album_original[m] for m in self.album_members[album_id] if m in self.album_original), None)
+        parts = []
+        if mbid:
+            parts.append(self.label_part(mbid))
+            if orig and orig['mbid'] == mbid:
+                parts.append(f" ({orig['catno']}, {orig['released'][:4]})" if orig.get('catno') and orig.get('released')
+                             else f" ({orig['released'][:4]})" if orig.get('released') else "")
+        if album.get('label') and (not mbid or _label_key(album['label']) != _label_key(self.labels[mbid]['name'])):
+            parts.append(f"{'; ' if parts else ''}on Spotify, {album['label']}" if parts else album['label'])
+        if parts:
+            facts.add('stat', 'Label', *parts)
         if n >= 3 and self.dj_shows:
             room = self._over_represented(set(pids), self.dj_shows, limit=3)
             if room:
@@ -800,6 +904,68 @@ class History:
                 'first': shows[0]['date'], 'last': shows[-1]['date'], 'facts': facts, 'links': links,
                 'copyright': album.get('copyright_p'),
                 'editions': [self.albums[m] for m in self.album_members[album_id] if m != album_id]}
+
+    def label_part(self, mbid, text=None):
+        return {'label': mbid, 'text': text or self.labels[mbid]['name']}
+
+    def label_family(self, mbid):
+        """(parents, children): labels this one is an imprint of or currently owned by, and the labels that are its
+        imprints or that it owns and that have plays here."""
+        rels = self.labels[mbid]['rels']
+        kinds = ('imprint', 'label ownership')
+        parents = {r['target_mbid']: r['target_name'] for r in rels
+                   if r['type'] in kinds and r['direction'] == 'backward' and not r['end_date']}
+        children = {r['target_mbid']: r['target_name'] for r in rels
+                    if r['type'] in kinds and r['direction'] == 'forward' and r['target_mbid'] in self.label_plays}
+        return parents, children
+
+    def label_profile(self, mbid):
+        pids = sorted(self.label_shows.get(mbid, ()), key=self.show_dates.get)
+        if not pids:
+            return None
+        lab = self.labels[mbid]
+        shows, albums, artists = [], {}, Counter()
+        for pid in pids:
+            items = [t for t in self.show_tracks[pid] if self.album_label.get(self.tracks[t]['album_id']) == mbid]
+            shows.append({'date': self.show_dates[pid], 'tracks': [self.tracks[t]['name'] for t in items]})
+            for t in items:
+                aid = self.tracks[t]['album_id']
+                canon = self.album_group.get(aid, aid)
+                orig = self.album_original.get(aid) or next((self.album_original[m] for m in self.album_members.get(canon, [])
+                                                             if m in self.album_original), None)
+                a = albums.setdefault(canon, {
+                    'album': {'album': self.albums[canon]['spotify_id'], 'text': self.albums[canon]['name']},
+                    'artists': _join([self._artist_part(x) for x in self.album_artists[canon] if x in self.artists]),
+                    'released': (orig or {}).get('released') or self.albums[aid].get('release_date'),
+                    'catno': (orig or {}).get('catno') if orig and orig['mbid'] == mbid else None,
+                    'how': self.album_label_how.get(aid), 'plays': 0, 'dates': set()})
+                a['plays'] += 1
+                a['dates'].add(self.show_dates[pid])
+                artists.update(self.track_artists[t])
+        albums = sorted(albums.values(), key=lambda a: (-len(a['dates']), -a['plays'], a['album']['text'].lower()))
+        n = len(pids)
+        facts = Facts()
+        rank = self.label_rank[mbid]
+        facts.add('regular', 'Standing', f"#{rank} most-played label" if rank <= 50 else f"{self.label_plays[mbid]} plays",
+                  more={'ranking': 'labels', 'anchor': mbid, 'text': 'see ranking'})
+        facts.add('stat', 'Most played', *_join([[self._artist_part(a), f" ({k})"] for a, k in artists.most_common(5)
+                                                 if a in self.artists]))
+        years = sorted(int(a['released'][:4]) for a in albums if a['released'] and a['released'][:4].isdigit()
+                       and int(a['released'][:4]) > 1900)
+        if years:
+            facts.add('stat', 'Released', f"{years[0]}" if years[0] == years[-1] else f"{years[0]} to {years[-1]}")
+        if n >= 4 and self.dj_shows:
+            room = self._over_represented(set(pids), self.dj_shows, limit=3)
+            if room:
+                facts.add('stat', 'Often in the room', *_join([[self._dj_part(i), f" ({k} of {n})"] for i, k in room]))
+        parents, children = self.label_family(mbid)
+        links = [(label, lab['links'][src]) for src, label in LABEL_LINK_LABELS if src in lab['links']]
+        links.insert(1 if links and links[0][0] == 'Wikipedia' else 0, ('MusicBrainz', f"https://musicbrainz.org/label/{mbid}"))
+        return {'label': lab, 'shows': shows, 'albums': albums, 'n_shows': n, 'n_plays': self.label_plays[mbid],
+                'first': shows[0]['date'], 'last': shows[-1]['date'], 'facts': facts, 'links': links,
+                'parents': [self.label_part(m, t) if m in self.labels else {'text': t} for m, t in parents.items()],
+                'children': [self.label_part(m) for m in sorted(children, key=lambda m: -self.label_plays[m])],
+                'from_spotify': sum(1 for a in albums if a['how'] == 'spotify')}
 
     def genre_profile(self, name):
         aids = self.genre_artists.get(name)
@@ -916,19 +1082,28 @@ class History:
                          'show. Copies of one album under different Spotify ids, and its editions, count together.'}
 
     def _rank_labels(self):
-        dates, artists = defaultdict(list), defaultdict(Counter)
+        artists = defaultdict(Counter)
         for pid, tids in self.show_tracks.items():
             for t in tids:
-                label = self.tracks[t]['label']
-                if label:
-                    dates[label].append(self.show_dates[pid])
-                    artists[label].update(self.track_artists[t])
-        items = sorted(((l, sorted(d)) for l, d in dates.items() if len(d) >= 5), key=lambda kv: (-len(kv[1]), kv[0]))
-        rows = self._dated_rows(items, _slug, lambda l: [l], lambda l, d: f"{l}: {len(d)} plays. Most played: " +
-                                ', '.join(self.artists[a]['name'] for a, _ in artists[l].most_common(3)))
+                mbid = self.album_label.get(self.tracks[t]['album_id'])
+                if mbid:
+                    artists[mbid].update(self.track_artists[t])
+        dates = defaultdict(list)
+        for pid, tids in self.show_tracks.items():
+            for t in tids:
+                mbid = self.album_label.get(self.tracks[t]['album_id'])
+                if mbid:
+                    dates[mbid].append(self.show_dates[pid])
+        items = sorted(((m, sorted(d)) for m, d in dates.items() if len(d) >= 5),
+                       key=lambda kv: (-len(kv[1]), self.labels[kv[0]]['name'].lower()))
+        rows = self._dated_rows(items, lambda m: m, lambda m: [self.label_part(m)],
+                                lambda m, d: f"{self.labels[m]['name']}: {len(d)} plays. Most played: " +
+                                ', '.join(self.artists[a]['name'] for a, _ in artists[m].most_common(3) if a in self.artists))
+        credited = sum(self.label_plays.values())
         return {'title': 'Top labels', 'unit': 'plays', 'rows': rows,
-                'blurb': "Labels as Spotify reports them (reissue imprints like Rhino and Legacy aren't merged "
-                         "with their parents); each tick is a play."}
+                'blurb': f"Labels the music first came out on, from MusicBrainz (Atlantic, not today's Rhino reissue), "
+                         f"by plays; each tick is a play. {credited / self.total_track_plays:.0%} of plays have a label "
+                         "we can name this way."}
 
     def _rank_returns(self):
         # co-credited artists returning together on the same track share one row
@@ -1207,19 +1382,11 @@ class History:
         oldest = sorted(oldest.values(), key=lambda o: (o['released'], o['name']))[:15]
         fresh.sort(key=lambda f: (f['date'], -f['days']), reverse=True)
 
-        # the nights each regular was in the room (we can't know who picked what)
         overall = sorted(y for plays in self.play_years.values() for y, _ in plays)
-        djs = []
-        for dj_id, pids in self.dj_shows.items():
-            if len(pids) >= 10:
-                ys = sorted(y for p in pids for y, _ in self.play_years[p])
-                djs.append({'dj': self._dj_part(dj_id), 'shows': len(pids), 'median': ys[(len(ys) - 1) // 2],
-                            'old': sum(y < 1980 for y in ys) / len(ys), 'new': sum(y >= self.last_date.year - 2 for y in ys) / len(ys)})
-        djs.sort(key=lambda x: (x['median'], -x['old']))
         known = sum(len(p) for p in self.play_years.values())
         mb = sum(1 for plays in self.play_years.values() for _, t in plays if self.track_released[t][1].startswith('musicbrainz'))
         return {'shows': shows, 'spread': spread, 'bins': bins, 'peak': peak, 'oldest': oldest, 'fresh': fresh[:15], 'n_fresh': len(fresh),
-                'djs': djs, 'median': overall[(len(overall) - 1) // 2], 'known': known, 'plays': self.total_track_plays,
+                'median': overall[(len(overall) - 1) // 2], 'known': known, 'plays': self.total_track_plays,
                 'mb_share': mb / known if known else 0,
                 'year_min': min(s['median'] for s in shows) // 10 * 10, 'year_max': self.last_date.year}
 
@@ -1241,6 +1408,10 @@ class History:
 SIX_MINUTES = 6 * 60 * 1000
 OLDEST_DECADE = 1950  # song age: older decades count with the 1950s ("1950s and earlier")
 FRESH_DAYS = 14  # song age: played within this many days of coming out
+NOT_RELEASING_TYPES = {'Reissue Production', 'Distributor', 'Holding', 'Rights Society', 'Manufacturer', 'Publisher'}
+LABEL_LINK_LABELS = [('wikipedia', 'Wikipedia'), ('musicbrainz', 'MusicBrainz'), ('discogs', 'Discogs'),
+                     ('bandcamp', 'Bandcamp'), ('official site', 'Website'), ('wikidata', 'Wikidata')]
+SHOW_LEAN = (0.10, 1.5)  # a show's mix: a family stands out at 10 points of runtime and 1.5x (or half) its usual
 AGE_BIN = 5  # song age: years per bar in each show year's histogram
 RANKINGS = ['artists', 'albums', 'tracks', 'returns', 'labels', 'djs']  # novelty has its own chart page
 

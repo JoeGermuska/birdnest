@@ -38,6 +38,7 @@
     --bad-wash: #fbeaea;
     --highlight: #fbeee6;
     --flash: #fff1c2;
+    --image-dim: none;     /* cover images: dimmed a touch in dark mode so white ones don't glare */
     color-scheme: light;
 }
 /* Dark: follows the system unless the banner's switch has chosen (data-theme on <html>, set in _base.html) */
@@ -73,6 +74,7 @@
         --bad-wash: #3d1f1f;
         --highlight: #3d2b22;
         --flash: #4a3f1c;
+        --image-dim: brightness(0.85);
         --moon: none;
         --sun: inline-block;
         color-scheme: dark;
@@ -109,6 +111,7 @@
     --bad-wash: #3d1f1f;
     --highlight: #3d2b22;
     --flash: #4a3f1c;
+    --image-dim: brightness(0.85);
     --moon: none;
     --sun: inline-block;
     color-scheme: dark;
@@ -235,11 +238,6 @@ section.playlist { padding: 0 16px; }
      font-size: 1rem;
  }
  
- table.tracks-table a.spotify-link,
- table.tracks-table a.preview-track {
-     color: inherit;
- }
- 
 /* Show tiles: the image, the date on a bar at the bottom, and the playlist image credit on hover */
 .playlist-tile {
   display: block;
@@ -250,7 +248,8 @@ section.playlist { padding: 0 16px; }
   color: #f4f1ea;
   text-decoration: none;
 }
-.playlist-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
+.playlist-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; filter: var(--image-dim); }
+.detail-image, img.playlist-image { filter: var(--image-dim); }
 .playlist-tile .tile-date {
   position: absolute; left: 0; right: 0; bottom: 0;
   padding: 5px 8px;
@@ -692,15 +691,10 @@ a.more:hover { color: var(--ink) !important; }
 .era-bars rect { fill: var(--bar); }
 .era-bars line { stroke: var(--rule); }
 .mix { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--size-small); color: var(--ink-2); }
-.mix-bars { display: flex; flex-direction: column; gap: 3px; width: 200px; }
-.mix-bar { display: flex; height: 12px; gap: 1px; border-radius: 3px; overflow: hidden; }
-.mix-bar.usual { height: 6px; opacity: 0.45; }
+.mix-bar { display: flex; flex: none; width: 200px; height: 12px; gap: 1px; border-radius: 3px; overflow: hidden; }
 .mix-seg { display: block; height: 100%; min-width: 1px; }
 .mix-seg.untagged { background: repeating-linear-gradient(135deg, var(--rule) 0 3px, var(--wash) 3px 6px) !important; }
 a.mix-seg:hover { filter: brightness(0.85); }
-.mix-key { display: flex; flex-direction: column; gap: 3px; color: var(--ink-2); }
-.mix-key-show { font-size: var(--size-caption); line-height: 12px; }
-.mix-key-usual { font-size: 0.6rem; line-height: 6px; color: var(--ink-3); }
 
 /* Per-track Spotify link: faint until the row is hovered (always visible without hover) */
 /* track icons: quiet grey, in their service's color on hover */
@@ -762,6 +756,8 @@ table.artist-tracks .played a.date { display: block; font-variant-numeric: tabul
 .rp-embed { padding: 8px 16px 0; }
 .rp-embed iframe { display: block; border: 0; border-radius: 12px; }
 .rp-embed.folded { height: 0; padding-top: 0; overflow: hidden; }  /* still there and playing, just out of sight */
+.rp-login { flex: none; font-family: var(--font-display); font-size: var(--size-small); white-space: nowrap; }
+.rp-login[hidden] { display: none; }
 .rp-login-note { flex-basis: 100%; margin: 0; font-size: var(--size-note); color: var(--ink-3); }
 .radio-player button { font: inherit; padding: 4px 12px; border: 1px solid var(--control-rule); border-radius: 4px; background: var(--bg); cursor: pointer; }
 .radio-player button:disabled { opacity: 0.5; cursor: default; }
@@ -842,6 +838,11 @@ a.radio-start-link .radio-icon, .rp-now .radio-icon { vertical-align: -2px; colo
 .title-unit { margin: 0 0 18px; }
 .title-unit .eyebrow { margin: 0 0 2px; }
 .title-unit h1, section.detail .title-unit h1, .show-header .title-unit h1 { margin: 0; line-height: 1.1; }
+.artist-from { margin: 0 0 6px; font-family: var(--font-display); color: var(--ink-2); }
+.socials { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 8px; font-family: var(--font-display); font-size: var(--size-label);
+    text-transform: uppercase; letter-spacing: 0.03em; }
+.socials a { color: var(--ink-3); text-decoration: none; }
+.socials a:hover { color: var(--ink); }
 .title-unit .subtitle { margin: 4px 0 0; font-family: var(--font-display); font-size: 1.05rem; color: var(--ink-2); }
 .title-unit .subtitle a { color: inherit; }
 .title-unit .show-cover { margin: 4px 0 0; font-style: italic; color: var(--ink-2); font-size: 0.95rem; }

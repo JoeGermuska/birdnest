@@ -44,7 +44,7 @@ def test_age_page(app_module, history):
     resp = app_module.app.test_client().get('/rankings/age')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    for anchor in ('id="djs"', 'id="oldest"', 'id="fresh"'):
+    for anchor in ('id="oldest"', 'id="fresh"'):
         assert anchor in html
 
 

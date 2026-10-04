@@ -18,8 +18,8 @@ ways in are done together, and the design pass fits around them.
 
 4. [X]  **Design pass on the other pages**: colors, fonts and small type sizes are tokens on `:root` in `style.css`;
    **dark mode** redefines the color tokens (follows the system; the banner's switch picks the other); links are ink
-   instead of browser blue; track tables become cards on phones. Still open: images with white borders glare a bit in
-   dark mode; `templates/_tracks_table.html` isn't used anywhere.
+   instead of browser blue; track tables become cards on phones. Dark mode dims cover images a touch (`--image-dim`), and
+   the unused `_tracks_table.html` and its preview-clip script are gone (2026-10-04).
 5. **Browse page** (`/shows`, 0e12cfa): option C as its own page. Built, but the filters need rethinking (Joe, 2026-09-28):
    - "Most new for its time" doesn't mean much to a listener. (Novelty now also counts repeated songs a little
      against a show: `REPEAT_PENALTY` in `factoids.py`.)
@@ -59,7 +59,7 @@ ways in are done together, and the design pass fits around them.
   page must stop feeding when they switch to other listening. Default to it on iPhones. A server-side feeder
   would survive closed tabs but needs persistent per-user token storage, which the deployment doesn't have.
   (Since 2001df9 the player no longer queues ahead, so switching playback to the Spotify app now stops the radio
-  after that track.)
+  after that track.) 
 - Later: Apple Music (see the ISRC-based plan discussed earlier: `track_provider` table, MusicKit JS adapter).
 
 ## Albums and labels (2026-10-01)
@@ -94,6 +94,13 @@ show who owns the back catalog.
 - [X]  To-do lists for albums, from the 🤓 in the banner: Wikidata album items lacking our Spotify album ID
   (`wikidata_album_todo.py`, P2205), and MusicBrainz releases matched only by barcode, which need the Spotify link.
   Both check live from the browser, like the artist list.
+
+## Artist pages (2026-10-04)
+
+- [X]  Wikidata's short description under the name (`enrich_wikidata.py --descriptions`; new artists weekly,
+  everyone in `maintenance.py`), home area with a flag and years from MusicBrainz (years left out when the
+  description has them), and social links (Instagram, Bluesky, TikTok, YouTube, SoundCloud, Facebook, Threads,
+  Twitter/X) as their own quiet row.
 
 ## Linking to-do lists: ways to grow them
 
@@ -134,7 +141,10 @@ load), year-long caching of versioned static files, robots.txt off the endless r
 
 ## Loose ends
 
-- Dark mode: on the show page, the "usual" row of the mix bars is hard to read.
+- [X] The show page's "usual" mix row (hard to read, worse in dark mode) is now words: "heavy on soul, funk & blues",
+  "light on jazz" or "a typical mix for its time" (`mix_summary`, `SHOW_LEAN`); hovering a segment gives the usual
+  share. DJ pages dropped their mix and song age comparisons: with no way to tell who picked what, the nights a
+  regular was in differ from all shows only by noise (2026-10-04).
 
 - Spotify: app is in development mode (add each friend to its user list)
 - Genres: see notes/genres.md (backburner).

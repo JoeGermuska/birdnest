@@ -21,7 +21,7 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 - `pip install -r requirements-dev.txt`, then `pytest tests` (about 30s). `tests/test_radio.py` covers the sequencer
   and its endpoints; `tests/test_player.py` drives the radio player in Chromium against a fake Spotify
   (`tests/fake_spotify.js`: the Web API and Web Playback SDK; `tests/fake_spotify_embed.js`: the Embed iFrame API; both controllable from tests). Browser tests skip without
-  Playwright/Chromium. Change the player? Add or adjust a test there first.
+  Playwright/Chromium. Change the player's playback function? Add or adjust a test there first. No need to test if it's just layout of the player or tracks components.
 
 ## Notes
 

@@ -23,9 +23,6 @@
     .age .age-list .sub { display: block; font-size: var(--size-note); color: var(--ink-3); }
     .age .age-list .sub a { color: inherit; }
     .age .src { font-size: var(--size-caption); color: var(--ink-4); }
-    .age table.dj-age { border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    .age .dj-age th { font-family: var(--font-display); font-size: var(--size-label); text-transform: uppercase; color: var(--ink-3); font-weight: normal; text-align: left; padding: 4px 16px 4px 0; }
-    .age .dj-age td { padding: 4px 16px 4px 0; border-top: 1px solid var(--rule); }
     .age h2[id] { scroll-margin-top: 16px; }
 </style>
 {% endblock extra_head %}
@@ -86,14 +83,6 @@
         <div class="axis">{% for dec in range(first, last + 1, 10) %}<span style="left: {{ ((dec - first) / span * 100)|round(2) }}%">{{ dec }}</span>{% endfor %}</div>
         <span></span>
     </div>
-
-    <h2 id="djs">The nights each regular was in the room</h2>
-    <p class="detail-meta">Everyone shares the room, so these differ only a little, and we can't know who picked what.</p>
-    <table class="dj-age">
-        <thead><tr><th>DJ</th><th>Shows</th><th>Median song</th><th>Before 1980</th><th>From the last 2 years</th></tr></thead>
-        <tbody>{% for d in A.djs %}<tr><td>{{ parts([d.dj]) }}</td><td>{{ d.shows }}</td><td>{{ d.median }}</td>
-            <td>{{ (d.old * 100)|round|int }}%</td><td>{{ (d.new * 100)|round|int }}%</td></tr>{% endfor %}</tbody>
-    </table>
 
     <div class="pair">
         <div>

@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import factoids, track_links, room_list, action_row %}
+{% from "_macros.html" import factoids, track_links, room_list, action_row, mix_lean %}
 
 {% block title %}Playlist for {{ date }}{% endblock title %}
 
@@ -40,17 +40,11 @@
                 </div>
                 <div class="mix">
                     <span class="novelty-label">Mix</span>
-                    <div class="mix-bars">
-                        <div class="mix-bar" aria-label="Share of this show's runtime by genre family">
-                            {% for seg in mix.show %}<a href="{{ url_for('genre_map') }}" class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}"
-                               title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}% of runtime{{ '\n' }}{{ seg.tracks|join('\n') }}"></a>{% endfor %}
-                        </div>
-                        <div class="mix-bar usual" aria-label="Usual mix across nearby shows">
-                            {% for seg in mix.usual %}<span class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}"
-                               title="Usual {{ seg.family or 'no genre data' }}: {{ (seg.share * 100)|round|int }}%"></span>{% endfor %}
-                        </div>
+                    <div class="mix-bar" aria-label="Share of this show's runtime by genre family">
+                        {% for seg in mix.show %}<a href="{{ url_for('genre_map') }}" class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}"
+                           title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}% of runtime{% if seg.family %} (usually {{ (seg.usual * 100)|round|int }}%){% endif %}{{ '\n' }}{{ seg.tracks|join('\n') }}"></a>{% endfor %}
                     </div>
-                    <span class="mix-key"><span class="mix-key-show">this show</span><span class="mix-key-usual">usual</span></span>
+                    <span class="novelty-context" title="Compared with the shows around this one">{{ mix_lean(mix) }}</span>
                 </div>
                 {% if age %}{% set peak = age.decades|map(attribute=1)|max %}
                 <div class="era" title="When this show's songs first came out ({{ age.known }} of {{ age.tracks }} with a known year), by decade{% if age.decades[0][1] %}; the first bar includes anything older than the 1950s{% endif %}">
@@ -85,7 +79,7 @@
                         {% if track.album %}<div class="album">{% if track.album_page %}<a href="{{ url_for('album', spotify_id=track.album_page) }}">{{ track.album }}</a>{% else %}{{ track.album }}{% endif %}</div>{% endif %}
                     </td>
                     <td>{% for artist in track.artists %}{% if not loop.first %}, {% endif %}<a href="{{ url_for('artist', spotify_id=artist.spotify_id) }}">{{ artist.name }}</a>{% endfor %}</td>
-                    <td class="label">{{ track.label or '' }}</td>
+                    <td class="label">{% if track.label_page %}<a href="{{ url_for('label', mbid=track.label_page) }}">{{ track.label_name }}</a>{% else %}{{ track.label_name or '' }}{% endif %}</td>
                     <td class="num">{% if track.duration_ms %}{{ track.duration_ms // 60000 }}:{{ '%02d' % (track.duration_ms // 1000 % 60) }}{% endif %}</td>
                     <td class="notes">
                         {% if n %}

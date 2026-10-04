@@ -8,15 +8,17 @@
         {% if image %}<img class="detail-image" src="{{ image }}" alt="">{% endif %}
         {% endwith %}
         <div>
-            <hgroup class="title-unit"><h1>{{ artist.name }}</h1></hgroup>
+            <hgroup class="title-unit"><h1>{{ artist.name }}</h1>{% if about.description %}<p class="subtitle">{{ about.description }}</p>{% endif %}</hgroup>
             {% set links = [('Spotify', artist.spotify_url)] + ((profile.links|list) if profile and profile.links else []) %}
             {% if profile %}{{ action_row(url_for('radio_page', artist=artist.spotify_id), links) }}{% endif %}
+            {% if about.home or about.years %}<p class="artist-from">{% if about.home %}{{ about.home }}{% if about.flag %} {{ about.flag }}{% endif %}{% endif %}{% if about.home and about.years %} · {% endif %}{{ about.years or '' }}</p>{% endif %}
             <p class="detail-meta">
                 {% if profile %}{{ profile.n_shows }} show{{ 's' if profile.n_shows != 1 }} · {{ profile.n_plays }} play{{ 's' if profile.n_plays != 1 }} ·
                 {% if profile.n_shows > 1 %}{{ profile.first.year }}–{{ profile.last.year }}{% else %}{{ profile.first }}{% endif %} ·{% endif %}
                 {% if artist.followers is not none %}{{ "{:,}".format(artist.followers) }} followers{% endif %}
                 {% if not profile %}· <a href="{{ artist.spotify_url }}">{{ icon('spotify') }} Spotify</a>{% endif %}
             </p>
+            {% if about.socials %}<p class="socials">{% for name, url in about.socials %}<a href="{{ url }}" target="_blank" rel="noopener">{{ name }}</a>{% endfor %}</p>{% endif %}
             {% if profile and profile.genres %}
             <p class="chips">{% for g in profile.genres %}<a class="chip" href="{{ url_for('genre', genre_name=g) }}">{{ g }}</a>{% endfor %}</p>
             {% endif %}

@@ -13,9 +13,9 @@
             <p class="show-meta">{{ stats.tracks }} tracks · {{ stats.artists }} artists</p>
             <div class="mix">
                 <span class="novelty-label">Mix</span>
-                <div class="mix-bars"><div class="mix-bar" aria-label="Share of this show's runtime by genre family">
+                <div class="mix-bar" aria-label="Share of this show's runtime by genre family">
                     {% for seg in mix.show %}<span class="mix-seg{% if not seg.family %} untagged{% endif %}" style="width: {{ (seg.share * 100)|round(2) }}%; background: {{ seg.color }}" title="{{ seg.family or 'No genre data' }}: {{ (seg.share * 100)|round|int }}%"></span>{% endfor %}
-                </div></div>
+                </div>
             </div>
             {{ factoids(facts[:3]) }}
             <p class="latest-links">

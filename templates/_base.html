@@ -37,53 +37,8 @@
     {% block extra_head %}<!-- no extra head -->{% endblock %}
 
     <script>
-
-
-        function pauseAudio(audio) {
-            let control = document.querySelector(`#control-${audio.dataset['spotifyId']}`)
-            audio.pause();
-            if (control) {
-                control.classList.remove('fa-pause')
-                control.classList.add('fa-play')
-            }
-        }
-
-        function playAudio(audio) {
-            let control = document.querySelector(`#control-${audio.dataset['spotifyId']}`)
-            audio.play();
-            if (control) {
-                control.classList.remove('fa-play')
-                control.classList.add('fa-pause')
-            }
-        }
-
-        function togglePlaying(audio) {
-            if( audio.paused || audio.ended ) {
-                playAudio(audio)
-            } else {
-                pauseAudio(audio)
-            }
-        }
-
         // runs on every page view: Turbo swaps pages without reloading (see radio-player.js)
-        document.addEventListener('turbo:load', () => {
-            if (window.Sortable) Sortable.init();
-            document.querySelectorAll('.preview-track').forEach(
-                (elem) => {
-                    elem.addEventListener('click', (evt) => {
-                        let clicked_audio = document.getElementById(evt.currentTarget.dataset['audioId'])
-                        window.stash = clicked_audio
-                        document.querySelectorAll('audio.preview').forEach(e => {
-                            if (e == clicked_audio) {
-                                togglePlaying(clicked_audio)
-                            } else {
-                                pauseAudio(e)
-                            }
-                        })
-                    })
-                }
-            )
-        })
+        document.addEventListener('turbo:load', () => { if (window.Sortable) Sortable.init(); });
         // "/" jumps to search, unless you're typing somewhere (search selects what's there; see _nav.html)
         window.addEventListener('keydown', (evt) => {
             const t = evt.target;
@@ -133,6 +88,8 @@
             <button type="button" id="rp-add" hidden aria-label="Add to your queue playlist" title="Add to your queue playlist">＋</button>
             {% endif %}
             {% if not radio_listener %}<button type="button" id="rp-embed-toggle" hidden aria-pressed="false">Hide Spotify</button>{% endif %}
+            {% if not radio_listener and radio_available %}<a id="rp-login" class="rp-login" href="{{ url_for('spotify_login') }}" data-turbo="false" hidden
+               title="Whole tracks, ♥ and ＋. Spotify lets this site have only five logged-in listeners, so it works only if you're one of them.">Log in with Spotify</a>{% endif %}
             <button type="button" id="rp-toggle" aria-expanded="false" aria-controls="rp-drawer">Tracks ▴</button>
         </div>
     </div>

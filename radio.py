@@ -136,7 +136,8 @@ def lean_recs(lean):
     ('artist', artist_id): the artist and the artists who turn up in their shows more than chance would suggest;
     ('dj', dj_id): the artists who turn up more than chance would suggest in shows that DJ was in the room for;
     ('length', 'long'): six-minute songs and longer;
-    ('album', album_id): the album's tracks and its artists' other recordings."""
+    ('album', album_id): the album's tracks and its artists' other recordings;
+    ('label', mbid): recordings from albums that first came out on the label."""
     cat = catalog()
     if lean in cat.genre_cache:
         return cat.genre_cache[lean]
@@ -173,6 +174,9 @@ def lean_recs(lean):
         recs = {r for r in cat.all_recs
                 if h.album_group.get(cat.track(r)['album_id']) == key or set(cat.rec_artists[r]) & artists}
         reason = f"more from around {h.albums[key]['name']}"
+    elif kind == 'label':
+        recs = {r for r in cat.all_recs if h.album_label.get(cat.track(r)['album_id']) == key}
+        reason = f"more from {h.labels[key]['name']}"
     elif kind == 'length' and key == 'long':
         recs = {r for r in cat.all_recs if (cat.track(r)['duration_ms'] or 0) >= factoids.SIX_MINUTES}
         reason = "another six-minute song"
