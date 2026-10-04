@@ -27,6 +27,13 @@
     .wd-found { color: var(--good); font-size: var(--size-note); }
     .badge-check { background: var(--warn-wash); color: var(--warn); }
     .wd-target { margin: 4px 0 0; font-size: var(--size-small); }
+    .wd-also { color: var(--ink-2); }
+    .wd-pick { display: none; margin: 0 6px 0 0; vertical-align: -2px; }
+    body.bulk-mode .wd-pick { display: inline-block; }
+    .wd-bulk { margin: 0 0 16px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 6px; }
+    .wd-bulk summary { cursor: pointer; font-family: var(--font-display); font-weight: 600; }
+    #wd-qs { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; font-size: var(--size-note);
+        background: var(--wash); color: var(--ink); border: 1px solid var(--control-rule); border-radius: 4px; padding: 6px; }
     .wd-target .qid { font-family: ui-monospace, Menlo, monospace; font-size: var(--size-label); color: var(--ink-3); }
     body.hide-finished .wd-row.is-done, body.hide-finished .wd-row.is-skipped { display: none; }
     @media (max-width: 600px) { .wd-row { grid-template-columns: minmax(0, 1fr) auto; } .wd-state { grid-column: 1 / -1; } }
@@ -49,10 +56,32 @@
         <label><input type="checkbox" id="wd-hide"> Hide finished</label>
         <span class="wd-status" id="wd-status"></span>
     </div>
+    {% if page.bulk %}
+    <details class="wd-bulk" id="wd-bulk">
+        <summary>Bulk edit with QuickStatements</summary>
+        <p class="detail-meta compact">For Wikidata accounts that are autoconfirmed (at least 4 days old with 50 edits);
+            otherwise QuickStatements won't run the batch. Tick rows{% if page.kind == 'artist' %} (only the ones with a
+            single likely match can be ticked; check each one){% endif %}, make the commands, then in QuickStatements choose
+            <em>New batch</em>, paste, and <em>Import V1 commands</em>.</p>
+        <div class="wd-controls">
+            <button type="button" id="wd-pick-all">Select all to do</button>
+            <button type="button" id="wd-pick-none">Clear</button>
+            <button type="button" id="wd-make">Make commands</button>
+            <span class="wd-status" id="wd-picked"></span>
+        </div>
+        <div id="wd-out" hidden>
+            <textarea id="wd-qs" rows="8" readonly spellcheck="false"></textarea>
+            <div class="wd-controls">
+                <button type="button" id="wd-qs-copy">Copy commands</button>
+                <a href="https://quickstatements.toolforge.org/#/batch" target="_blank" rel="noopener">Open QuickStatements</a>
+            </div>
+        </div>
+    </details>
+    {% endif %}
     <ol class="wd-list" data-check="{{ page.check }}" data-property="{{ page.property or '' }}" data-kind="{{ page.kind }}" data-store="{{ page.endpoint }}">
         {% for r in rows %}
-        <li class="wd-row" data-spotify="{{ r.spotify_id }}">
-            <span class="wd-state">To do</span>
+        <li class="wd-row" data-spotify="{{ r.spotify_id }}"{% if r.qs %} data-qs="{{ r.qs|join('\n') }}"{% endif %}>
+            <span class="wd-state">{% if r.qs %}<input type="checkbox" class="wd-pick" aria-label="Include in bulk edit">{% endif %}<span class="wd-state-text">To do</span></span>
             <div>
                 <h2><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.name }}</a><span class="muted">{% if r.artists %}{{ r.artists }} · {% endif %}{{ r.shows }} show{{ 's' if r.shows != 1 }}</span>
                     {% if r.tier == 'check' %}<span class="badge badge-check">check</span>{% endif %}</h2>
@@ -79,6 +108,11 @@
                 {% if r.target.others %}<p class="wd-target wd-note">The item already has Spotify ID{{ 's' if r.target.others|length > 1 }}
                     {% for o in r.target.others %}<a href="https://open.spotify.com/{{ page.kind }}/{{ o }}" target="_blank" rel="noopener"><code>{{ o }}</code></a>{{ ', ' if not loop.last }}{% endfor %}
                     (another edition or copy); add ours alongside.</p>{% endif %}
+                {% if r.target.needs_streaming or r.target.label or r.target.needs_label %}<p class="wd-target wd-also">Also:
+                    {% if r.target.needs_streaming %}<em>distribution format</em> (P437): music streaming{% endif %}
+                    {%- if r.target.needs_streaming and r.target.needs_label %}; {% endif %}
+                    {% if r.target.label %}default label (<code>mul</code>): “{{ r.target.label }}”, {{ r.target.label_why }}
+                    {%- elif r.target.needs_label %}a default label (<code>mul</code>), if the title is the same in every language{% endif %}</p>{% endif %}
                 {% endif %}
                 <div class="wd-found" hidden></div>
             </div>
@@ -103,7 +137,9 @@
             const id = row.dataset.spotify, qid = linked[id], skip = !qid && skipped[id];
             row.classList.toggle('is-done', !!qid);
             row.classList.toggle('is-skipped', !!skip);
-            row.querySelector('.wd-state').textContent = qid ? 'Linked' : skip ? 'Skipped' : 'To do';
+            row.querySelector('.wd-state-text').textContent = qid ? 'Linked' : skip ? 'Skipped' : 'To do';
+            const pick = row.querySelector('.wd-pick');
+            if (pick) { pick.disabled = !!(qid || skip); if (pick.disabled) pick.checked = false; }
             row.querySelector('.wd-skip').textContent = skip ? 'Unskip' : 'Skip';
             row.querySelector('.wd-skip').hidden = !!qid;
             const found = row.querySelector('.wd-found');
@@ -195,6 +231,36 @@
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && Date.now() - lastCheck > 20000) check();
     });
+    // bulk mode: ticked rows' QuickStatements commands, for pasting into QuickStatements
+    const bulk = document.getElementById('wd-bulk');
+    if (bulk) {
+        const picks = () => rows.filter(r => r.querySelector('.wd-pick:checked'));
+        const count = () => { document.getElementById('wd-picked').textContent = `${picks().length} selected`; };
+        bulk.addEventListener('toggle', () => document.body.classList.toggle('bulk-mode', bulk.open));
+        list.addEventListener('change', e => { if (e.target.classList.contains('wd-pick')) count(); });
+        document.getElementById('wd-pick-all').addEventListener('click', () => {
+            rows.forEach(r => { const p = r.querySelector('.wd-pick'); if (p && !p.disabled && !r.hidden) p.checked = true; });
+            count();
+        });
+        document.getElementById('wd-pick-none').addEventListener('click', () => {
+            rows.forEach(r => { const p = r.querySelector('.wd-pick'); if (p) p.checked = false; });
+            count();
+        });
+        document.getElementById('wd-make').addEventListener('click', () => {
+            const text = picks().map(r => r.dataset.qs).join('\n');
+            document.getElementById('wd-out').hidden = !text;
+            document.getElementById('wd-qs').value = text;
+        });
+        document.getElementById('wd-qs-copy').addEventListener('click', e => {
+            const area = document.getElementById('wd-qs'), btn = e.target;
+            navigator.clipboard.writeText(area.value).then(() => {
+                btn.textContent = 'Copied';
+                setTimeout(() => btn.textContent = 'Copy commands', 1200);
+            }, () => area.select());
+        });
+        count();
+    }
+
     paint();
     check();
 })();

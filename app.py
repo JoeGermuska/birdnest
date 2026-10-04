@@ -236,17 +236,19 @@ def album(spotify_id):
         abort(404)
     return render_template('album.html', profile=profile, history=history)
 
+STREAMING_FORMAT = 'Q15982450'  # music streaming: Wikidata requires it as distribution format (P437) with a Spotify album ID
+
 TODO_PAGES = [
     {'endpoint': 'wikidata_todo', 'tab': 'Artists on Wikidata', 'title': 'Wikidata to-do: artists', 'kind': 'artist',
-     'check': 'wikidata', 'property': 'P1902', 'source': 'Wikidata', 'account': 'a Wikipedia account',
+     'check': 'wikidata', 'property': 'P1902', 'source': 'Wikidata', 'account': 'a Wikipedia account', 'bulk': True,
      'how': 'Artists with no links whose name matches a musician or group on Wikidata, most-played first, then the ones '
             'with several possible matches. Open the Wikidata item, check it\'s the same act, and add the Spotify ID as '
             '<em>Spotify artist ID</em> (P1902).'},
     {'endpoint': 'wikidata_album_todo', 'tab': 'Albums on Wikidata', 'title': 'Wikidata to-do: albums', 'kind': 'album',
-     'check': 'wikidata', 'property': 'P2205', 'source': 'Wikidata', 'account': 'a Wikipedia account',
+     'check': 'wikidata', 'property': 'P2205', 'source': 'Wikidata', 'account': 'a Wikipedia account', 'bulk': True,
      'how': 'Albums whose Wikidata item (found through MusicBrainz, which links the two) doesn\'t have our Spotify ID yet, '
-            'most-played first. Open the item and add the Spotify ID as <em>Spotify album ID</em> (P2205). An item can '
-            'have more than one, so add ours even when it already has another.'},
+            'most-played first. Open the item and add the Spotify ID as <em>Spotify album ID</em> (P2205), plus anything '
+            'else the row lists. An item can have more than one Spotify ID, so add ours even when it already has another.'},
     {'endpoint': 'musicbrainz_album_todo', 'tab': 'Albums on MusicBrainz', 'title': 'MusicBrainz to-do: albums', 'kind': 'album',
      'check': 'musicbrainz', 'source': 'MusicBrainz', 'account': 'a MusicBrainz account',
      'how': 'Albums we matched to a MusicBrainz release by barcode alone, most-played first. Open the release, check it\'s '
@@ -288,6 +290,9 @@ def wikidata_todo():
                                            'url': url_for('artist', spotify_id=spotify_id), 'candidates': [],
                                            'shows': len(history.artist_shows.get(artist_id, ()))})
         a['candidates'].append(dict(zip(('qid', 'label', 'description', 'wikipedia', 'spotify_ids'), cand)))
+    for a in artists.values():  # bulk mode only for the likely ones: a single candidate to check
+        if a['tier'] == 'likely' and len(a['candidates']) == 1:
+            a['qs'] = [f'{a["candidates"][0]["qid"]}\tP1902\t"{a["spotify_id"]}"']
     rows = sorted(artists.values(), key=lambda a: (a['tier'] != 'likely', -a['shows'], a['name']))
     return _todo('wikidata_todo', rows)
 
@@ -299,17 +304,27 @@ def wikidata_album_todo():
     con = app.session.connection().connection
     if not _table(con, 'wikidata_album_todo'):
         abort(404)
+    cols = {r[1] for r in con.execute("pragma table_info(wikidata_album_todo)")}
+    extra = ', needs_streaming, needs_label, suggest_label, suggest_why' if 'needs_streaming' in cols else ', 0, 0, null, null'
     rows = []
-    for album_id, qid, others in con.execute("select album_id, qid, spotify_ids from wikidata_album_todo"):
+    for album_id, qid, others, needs_streaming, needs_label, label, why in con.execute(
+            f"select album_id, qid, spotify_ids{extra} from wikidata_album_todo"):
         if album_id not in history.album_shows:
             continue
+        spotify_id = history.albums[album_id]['spotify_id']
         wikipedia = next((h.get('wikipedia') for h in (history.album_links.get(m, {}) for m in history.album_members[album_id])
                           if h.get('wikipedia')), None)
-        rows.append(_album_row(history, album_id, len(history.album_shows[album_id]),
-                               clip=history.albums[album_id]['spotify_id'],
+        # QuickStatements (V1) for the bulk mode: the ID, plus what Wikidata wants alongside it
+        qs = [f'{qid}\tP2205\t"{spotify_id}"']
+        if needs_streaming:
+            qs.append(f'{qid}\tP437\t{STREAMING_FORMAT}')
+        if label and '"' not in label:
+            qs.append(f'{qid}\tLmul\t"{label}"')
+        rows.append(_album_row(history, album_id, len(history.album_shows[album_id]), clip=spotify_id, qs=qs,
                                target={'url': f"https://www.wikidata.org/wiki/{qid}", 'text': 'Wikidata item', 'id': qid,
-                                       'wikipedia': wikipedia,
-                                       'others': others.split() if others else []}))
+                                       'wikipedia': wikipedia, 'others': others.split() if others else [],
+                                       'needs_streaming': needs_streaming, 'needs_label': needs_label,
+                                       'label': label, 'label_why': why}))
     rows.sort(key=lambda r: (-r['shows'], r['name'].lower()))
     return _todo('wikidata_album_todo', rows)
 
