@@ -52,6 +52,20 @@
                     </div>
                     <span class="mix-key"><span class="mix-key-show">this show</span><span class="mix-key-usual">usual</span></span>
                 </div>
+                {% if age %}{% set peak = age.decades|map(attribute=1)|max %}
+                <div class="era" title="When this show's songs first came out ({{ age.known }} of {{ age.tracks }} with a known year), by decade{% if age.decades[0][1] %}; the first bar includes anything older than the 1950s{% endif %}">
+                    <span class="novelty-label">Era</span>
+                    <svg class="era-bars" viewBox="0 0 200 16" width="200" height="16" role="img" aria-label="{% for dec, n in age.decades %}{% if n %}{{ dec }}s: {{ n }}; {% endif %}{% endfor %}">
+                        {% set bw = 200 / age.decades|length %}
+                        {% for dec, n in age.decades %}{% set h = (n / peak * 15)|round(1) if n else 0 %}
+                        <rect x="{{ (loop.index0 * bw + 1)|round(1) }}" y="{{ 16 - h }}" width="{{ (bw - 2)|round(1) }}" height="{{ h }}" rx="1.5"><title>{{ dec }}s: {{ n }} song{{ 's' if n != 1 }}</title></rect>
+                        <line x1="{{ (loop.index0 * bw + 1)|round(1) }}" x2="{{ ((loop.index0 + 1) * bw - 1)|round(1) }}" y1="15.5" y2="15.5" />
+                        {% endfor %}
+                    </svg>
+                    <span class="novelty-context">{{ age.first }}–{{ age.last }} · median {{ age.median }}</span>
+                    <a class="more" href="{{ url_for('song_age', h=date) }}">song age →</a>
+                </div>
+                {% endif %}
             </div>
         </header>
         {{ factoids(facts) }}

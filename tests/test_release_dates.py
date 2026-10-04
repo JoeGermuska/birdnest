@@ -28,21 +28,15 @@ def test_pick_takes_earliest_dated_recording():
     assert enrich_mb_recordings.pick([]) == (None, None, None, 0)
 
 
-def test_track_release_prefers_the_earlier_date():
-    con = sqlite3.connect(':memory:')
-    con.executescript("""
-        create table album (album_id integer primary key, release_date varchar);
-        create table track (track_id integer primary key, album_id integer);
-        insert into album values (1, '2004-01-01'), (2, '0000'), (3, '1999');
-        insert into track values (10, 1), (11, 1), (12, 2), (13, 3), (14, 3);
-    """)
-    con.executescript(enrich_mb_recordings.SCHEMA)
-    con.executemany("insert into mb_recording (track_id, mbid, first_release_date) values (?, ?, ?)", [
-        (10, 'm', '1967-03'),      # reissue: MusicBrainz knows the original
-        (12, 'm', '1971'),         # Spotify's date is a placeholder
-        (13, 'm', '2010-05-01'),   # MusicBrainz only knows a later release
-        (14, None, None),          # not on MusicBrainz
-    ])
-    got = dict((t, (r, s)) for t, r, s in con.execute("select * from track_release"))
-    assert got == {10: ('1967-03', 'musicbrainz'), 11: ('2004-01-01', 'spotify'), 12: ('1971', 'musicbrainz'),
-                   13: ('1999', 'spotify'), 14: ('1999', 'spotify')}
+def test_best_release_picks_the_believable_earliest():
+    from factoids import best_release as best
+    rec, alb, sp = 'musicbrainz', 'musicbrainz-album', 'spotify'
+    assert best([('1967-03', rec), (None, alb), ('2004-01-01', sp)]) == ('1967-03', rec)        # a reissue
+    assert best([(None, rec), ('1969', alb), ('2006-01-01', sp)]) == ('1969', alb)               # the album knows
+    assert best([('1975', rec), ('1969', alb), ('2010', sp)]) == ('1975', rec)                   # a bonus track
+    assert best([('2010-05-01', rec), (None, alb), ('1999', sp)]) == ('1999', sp)                # MusicBrainz missed one
+    assert best([('1985', rec), (None, alb), ('1900-01-01', sp)]) == ('1985', rec)               # Spotify's placeholder
+    assert best([('1972', rec), (None, alb), ('1972-10-11', sp)]) == ('1972', rec)               # a bare year comes first
+    assert best([('2020-06-26', rec), (None, alb), ('2020-05-05', sp)]) == ('2020-05-05', sp)    # the single came out first
+    assert best([(None, rec), ('2026-10-02', alb), ('2026-09-20', sp)]) == ('2026-09-20', sp)    # same year: Spotify's day
+    assert best([(None, rec), (None, alb), ('0000', sp)]) is None

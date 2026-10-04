@@ -71,11 +71,16 @@ show who owns the back catalog.
 - [X]  **Album details from Spotify** (`refresh_albums.py`; new albums get them on load): release date, album type
   (album/single/compilation), track count, UPC, ℗/© lines. Spotify's date is the date of whatever release it serves,
   so often a reissue's.
-- [ ]  **First release dates from MusicBrainz** (`enrich_mb_recordings.py`, by ISRC, into `mb_recording`); the
-  `track_release` view takes the earlier of that and Spotify's album date. Backfill started 2026-10-01; about 60% of
-  the most-played tracks are found. Maybe later: fall back to an artist + title search for the rest (less reliable;
-  keep it marked as such).
-- [ ]  **Song age**: each show's span and median age, decade mix per show/DJ/year, "oldest thing played".
+- [X]  **First release dates from MusicBrainz** (`enrich_mb_recordings.py`, by ISRC, into `mb_recording`).
+  `factoids.best_release` picks each track's date: the earliest of the recording's MusicBrainz date and Spotify's
+  album date, with the album's MusicBrainz release-group date standing in when the recording has none (it fills
+  in as more albums match). Spotify's 1900/0000 placeholders never win. Backfill done 2026-10-02: 46% of plays get
+  their year from MusicBrainz. Maybe later: fall back to an artist + title search
+  for the rest (less reliable; keep it marked as such).
+- [X]  **Song age** (2026-10-04): Rankings > Song age (`/rankings/age`: each show's median song over time, decades
+  year by year, the nights each regular was in the room, oldest songs, songs played within two weeks of release);
+  an Era row on show pages; Oldest song and Hot off the press facts; a Song age fact on DJ pages. Spotify's 1900
+  placeholder dates, and dates after the show, don't count.
 - [ ]  **Labels from MusicBrainz**: UPC → release → label (with MBID, type, country, parent/imprint relations,
   Wikidata, Discogs, Bandcamp); the earliest release of each recording for its original label. Then group label
   strings under parents, and add label pages (`/label/<slug>`, label radio), DJ label fingerprints, indie vs. major
@@ -131,7 +136,5 @@ load), year-long caching of versioned static files, robots.txt off the endless r
 
 - Dark mode: on the show page, the "usual" row of the mix bars is hard to read.
 
-- Wikidata to-do page: code on main, but `wikidata_candidate` isn't built; run `python wikidata_candidates.py`,
-  commit birdnest.db, deploy. Bulk QuickStatements once the Wikidata account is autoconfirmed.
 - Spotify: app is in development mode (add each friend to its user list)
 - Genres: see notes/genres.md (backburner).

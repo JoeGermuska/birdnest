@@ -688,6 +688,9 @@ a.more:hover { color: var(--ink) !important; }
 .viz-tip { position: absolute; pointer-events: none; background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; font-size: var(--size-label); color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,0.12); max-width: 260px; z-index: 10; }
 
 /* Show page genre-family mix */
+.era { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--size-small); color: var(--ink-2); flex-wrap: wrap; }
+.era-bars rect { fill: var(--bar); }
+.era-bars line { stroke: var(--rule); }
 .mix { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--size-small); color: var(--ink-2); }
 .mix-bars { display: flex; flex-direction: column; gap: 3px; width: 200px; }
 .mix-bar { display: flex; height: 12px; gap: 1px; border-radius: 3px; overflow: hidden; }

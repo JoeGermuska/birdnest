@@ -384,7 +384,13 @@ def mmss(ms):
 def novelty():
     history = factoids.get_history()
     return render_template('novelty.html', series=history.novelty_series(), history=history,
-                           highlight=request.args.get('h'), rankings=factoids.RANKINGS + ['novelty'], kind='novelty')
+                           highlight=request.args.get('h'), rankings=factoids.RANKINGS + ['novelty', 'age'], kind='novelty')
+
+@app.route('/rankings/age')
+def song_age():
+    history = factoids.get_history()
+    return render_template('age.html', A=history.age_page(), history=history, highlight=request.args.get('h'),
+                           rankings=factoids.RANKINGS + ['novelty', 'age'], kind='age')
 
 @app.route('/rankings/<kind>')
 def ranking(kind):
@@ -394,7 +400,7 @@ def ranking(kind):
     if not table:
         abort(404)
     return render_template('ranking.html', kind=kind, table=table, highlight=highlight, history=history,
-                           rankings=factoids.RANKINGS + ['novelty'])
+                           rankings=factoids.RANKINGS + ['novelty', 'age'])
 
 
 @app.route('/playlist/<date_str>')
@@ -413,7 +419,7 @@ def show_playlist(date_str):
                            number=ordered.index(pid) + 1, n_shows=len(ordered), caption=history.show_caption(pid),
                            rows=history.show_rows(pid),
                            room=history.show_room(pid),
-                           stats=history.show_stats(pid),
+                           stats=history.show_stats(pid), age=history.show_age(pid),
                            mix=history.show_mix(pid),
                            facts=history.show_factoids(pid),
                            prev_date=prev_date, next_date=next_date)

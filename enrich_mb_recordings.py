@@ -5,8 +5,9 @@ knows of for the recording itself ("Black Satin": 1972, whatever the reissue).
 
 An ISRC can map to several MusicBrainz recordings (usually the same recording
 entered twice, sometimes a mistake); we keep the one with the earliest date and
-how many there were. The track_release view picks the earlier of that date and
-Spotify's album date, so a recording MusicBrainz knows only from a later
+how many there were. factoids.best_release picks the date the site uses: the
+earlier of that and Spotify's album date (the album's MusicBrainz date stands in
+when the recording has none), so a recording MusicBrainz knows only from a later
 release doesn't come out newer than the album it's on.
 
 Incremental like enrich_musicbrainz.py: tracks already looked up are skipped,
@@ -32,17 +33,7 @@ create table if not exists mb_recording (
     n_recordings integer,       -- recordings sharing the ISRC
     checked_at timestamp default current_timestamp
 );
-drop view if exists track_release;
-create view track_release as
-select t.track_id,
-       case when m.first_release_date is not null
-                 and (al.release_date is null or al.release_date like '0000%' or m.first_release_date <= al.release_date)
-            then m.first_release_date
-            when al.release_date not like '0000%' then al.release_date end as released,
-       case when m.first_release_date is not null
-                 and (al.release_date is null or al.release_date like '0000%' or m.first_release_date <= al.release_date)
-            then 'musicbrainz' when al.release_date not like '0000%' then 'spotify' end as source
-from track t left join album al using(album_id) left join mb_recording m using(track_id);
+drop view if exists track_release;  -- History picks the date now (factoids.best_release)
 """
 
 

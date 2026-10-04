@@ -71,6 +71,19 @@ def _competition_ranks(values):
     return ranks
 
 
+def best_release(dates):
+    """(date, source) for when a recording first came out, from [(recording's MusicBrainz date, source), (album's
+    MusicBrainz date, source), (Spotify's album date, source)], each YYYY[-MM[-DD]] or None. The earliest date wins
+    (a bare year counts as that year's start), so a new single Spotify has before its album still counts on the
+    night it was played. The album's date counts only when the recording's own is unknown: an album's first
+    release before the recording's means the track wasn't on it then (a deluxe edition's bonus track, say).
+    Spotify's placeholder dates (1900, 0000) don't count."""
+    ok = lambda d: d and d[:4].isdigit() and int(d[:4]) > 1900
+    rec, alb, sp = dates
+    usable = [(d, s) for d, s in ([rec, sp] if ok(rec[0]) else [rec, sp, alb]) if ok(d)]
+    return min(usable, key=lambda u: u[0]) if usable else None
+
+
 def _slug(text):
     return re.sub(r'[^a-z0-9]+', '-', (text or '').lower()).strip('-')
 
@@ -187,6 +200,19 @@ class History:
         if has('album_link'):
             for r in con.execute("select album_id, source, url from album_link"):
                 self.album_links[r['album_id']][r['source']] = r['url']
+        # when each recording first came out: the earliest believable date among MusicBrainz's for the recording,
+        # MusicBrainz's for the album (its release group's first release), and Spotify's album date (see best_release)
+        self.track_released = {}  # track_id -> (YYYY[-MM[-DD]], 'musicbrainz' | 'musicbrainz-album' | 'spotify')
+        rec = 'm.first_release_date' if has('mb_recording') else 'null'
+        alb = 'ma.first_release_date' if has('mb_album') else 'null'
+        for r in con.execute(f"""select t.track_id, {rec} rec, {alb} alb, al.{'release_date' if 'release_date' in cols else 'name'} sp
+                from track t left join album al using(album_id)
+                {'left join mb_recording m using(track_id)' if has('mb_recording') else ''}
+                {'left join mb_album ma on ma.album_id = t.album_id' if has('mb_album') else ''}"""):
+            best = best_release([(r['rec'], 'musicbrainz'), (r['alb'], 'musicbrainz-album'),
+                                 (r['sp'] if 'release_date' in cols else None, 'spotify')])
+            if best:
+                self.track_released[r['track_id']] = best
         if has('mb_album_label'):
             for r in con.execute("select album_id, name, catalog_number from mb_album_label"):
                 if (r['name'], r['catalog_number']) not in self.album_mb_labels[r['album_id']]:
@@ -275,6 +301,13 @@ class History:
             first_at.setdefault(n, i + 1)
         # rank albums (singles aside) by number of shows; ties share a rank
         self.album_rank = {a: first_at[len(v)] for a, v in self.album_shows.items() if self.albums[a].get('album_type') != 'single'}
+
+        # Song age: each play's release year, when we know it. Spotify's placeholder dates (1900, 0000) and dates
+        # after the show itself don't count.
+        self.play_years = {}  # playlist_id -> [(year, track_id)] for the plays with a usable date
+        for pid, tids in self.show_tracks.items():
+            d = self.show_dates[pid]
+            self.play_years[pid] = [(y, t) for t in tids for y in [self.release_year(t, d)] if y]
 
         self.dj_by_slug = {dj['slug']: i for i, dj in self.djs.items()}
         self.dj_shows = defaultdict(set)
@@ -444,6 +477,13 @@ class History:
         if opened and n > 1:
             facts.add('stat', 'First in the room', f"{opened} of {n} shows")
 
+        ys = sorted(y for p in pids for y, _ in self.play_years.get(p, []))
+        if n >= 4 and ys:
+            everyone = sorted(y for plays in self.play_years.values() for y, _ in plays)
+            facts.add('stat', 'Song age', f"the median song on their nights came out in {ys[(len(ys) - 1) // 2]} "
+                      f"(all shows: {everyone[(len(everyone) - 1) // 2]})",
+                      more={'ranking': 'age', 'anchor': 'djs', 'text': 'song age'})
+
         crew = Counter(i for p in pids for i, _ in self.show_djs[p] if i != dj_id)
         regulars = [{**self.djs[i], 'shows': k, 'share': k / n} for i, k in crew.most_common()]
 
@@ -575,6 +615,21 @@ class History:
                       *_join([[self._artist_part(a), f" (went on to {total} shows)"] for _, total, a in firsts[:3]]),
                       more={'ranking': 'artists', 'anchor': self.artists[firsts[0][2]]['spotify_id'],
                             'text': 'most played artists'})
+
+        # Song age: the oldest song, and anything out less than two weeks
+        plays = self.play_years.get(playlist_id, [])
+        if plays:
+            y, t = min(plays, key=lambda p: (self.track_released[p[1]][0], p[1]))
+            if d.year - y >= 30:
+                facts.add('stat', 'Oldest song', f"“{self.tracks[t]['name']}” by ",
+                          *_join([self._artist_part(a) for a in self.track_artists[t]]), f" ({y})",
+                          more={'ranking': 'age', 'anchor': 'oldest', 'text': 'song age'})
+            fresh = [t for _, t in plays if len(self.track_released[t][0]) == 10
+                     and 0 <= (d - date.fromisoformat(self.track_released[t][0])).days <= FRESH_DAYS]
+            if fresh:
+                names = _join([f"“{self.tracks[t]['name']}”" for t in fresh[:3]])
+                facts.add('stat', 'Hot off the press', *names, " and more" if len(fresh) > 3 else "",
+                          f": out less than two weeks", more={'ranking': 'age', 'anchor': 'fresh', 'text': 'song age'})
 
         # Label concentration
         labels = Counter(self.tracks[t]['label'] for t in tids if self.tracks[t]['label'])
@@ -1091,6 +1146,87 @@ class History:
         return {'runs': runs, 'n': len(runs), 'shows': len({r['date'] for r in runs}), 'total_shows': len(self.show_tracks),
                 'repeat': [{'artist': [self._artist_part(a)], 'dates': d} for a, d in repeat[:12]]}
 
+    def release_year(self, track_id, on=None):
+        """The year a track's recording first came out, or None if unknown or not believable (Spotify's 1900
+        placeholder, or after `on`, the date it was played)."""
+        released = self.track_released.get(track_id)
+        if not released or not released[0][:4].isdigit():
+            return None
+        year = int(released[0][:4])
+        if year <= 1900 or (on and released[0][:10] > on.isoformat()):
+            return None
+        return year
+
+    def show_age(self, playlist_id):
+        """Song age for a show's header: the span and median of its songs' release years, and a count per decade."""
+        years = sorted(y for y, _ in self.play_years.get(playlist_id, []))
+        if not years:
+            return None
+        decades = Counter(min(max(y // 10 * 10, OLDEST_DECADE), self.last_date.year // 10 * 10) for y in years)
+        return {'first': years[0], 'last': years[-1], 'median': years[(len(years) - 1) // 2], 'known': len(years),
+                'tracks': len(self.show_tracks[playlist_id]),
+                'decades': [(dec, decades.get(dec, 0)) for dec in range(OLDEST_DECADE, self.last_date.year // 10 * 10 + 1, 10)]}
+
+    def age_page(self):
+        """Everything the song age page shows."""
+        shows = []
+        for pid in sorted(self.show_tracks, key=self.show_dates.get):
+            years = sorted(y for y, _ in self.play_years[pid])
+            if len(years) >= 5:
+                shows.append({'date': self.show_dates[pid], 'median': years[(len(years) - 1) // 2],
+                              'first': years[0], 'last': years[-1], 'known': len(years), 'tracks': len(self.show_tracks[pid])})
+        for i, sh in enumerate(shows):  # the median of the shows around each one, for the trend line
+            near = sorted(x['median'] for x in shows[max(0, i - NOVELTY_WINDOW):i + NOVELTY_WINDOW + 1])
+            sh['trend'] = near[len(near) // 2]
+
+        # each show year's spread of release years, in 5-year bins (older songs in the first bin), for small multiples
+        first_bin, last_bin = OLDEST_DECADE, self.last_date.year // AGE_BIN * AGE_BIN
+        bins = list(range(first_bin, last_bin + 1, AGE_BIN))
+        by_year = defaultdict(list)
+        for pid, plays in self.play_years.items():
+            by_year[self.show_dates[pid].year].extend(y for y, _ in plays)
+        spread = []
+        for yr, ys in sorted(by_year.items()):
+            ys.sort()
+            c = Counter(min(max(y // AGE_BIN * AGE_BIN, first_bin), last_bin) for y in ys)
+            spread.append({'year': yr, 'total': len(ys), 'median': ys[(len(ys) - 1) // 2],
+                           'bins': [(b, c.get(b, 0) / len(ys), c.get(b, 0)) for b in bins]})
+        peak = max(share for row in spread for _, share, _ in row['bins'])
+
+        # the oldest recordings played, and songs played within a fortnight of coming out
+        oldest, fresh = {}, []
+        for pid, plays in self.play_years.items():
+            d = self.show_dates[pid]
+            for y, t in plays:
+                released, source = self.track_released[t]
+                key = self.recording_key(t)
+                o = oldest.setdefault(key, {'year': y, 'released': released, 'source': source, 'dates': [], **self._track_row(t)})
+                o['dates'].append(d)
+                if len(released) == 10 and 0 <= (d - date.fromisoformat(released)).days <= FRESH_DAYS:
+                    fresh.append({'date': d, 'days': (d - date.fromisoformat(released)).days, **self._track_row(t)})
+        oldest = sorted(oldest.values(), key=lambda o: (o['released'], o['name']))[:15]
+        fresh.sort(key=lambda f: (f['date'], -f['days']), reverse=True)
+
+        # the nights each regular was in the room (we can't know who picked what)
+        overall = sorted(y for plays in self.play_years.values() for y, _ in plays)
+        djs = []
+        for dj_id, pids in self.dj_shows.items():
+            if len(pids) >= 10:
+                ys = sorted(y for p in pids for y, _ in self.play_years[p])
+                djs.append({'dj': self._dj_part(dj_id), 'shows': len(pids), 'median': ys[(len(ys) - 1) // 2],
+                            'old': sum(y < 1980 for y in ys) / len(ys), 'new': sum(y >= self.last_date.year - 2 for y in ys) / len(ys)})
+        djs.sort(key=lambda x: (x['median'], -x['old']))
+        known = sum(len(p) for p in self.play_years.values())
+        mb = sum(1 for plays in self.play_years.values() for _, t in plays if self.track_released[t][1].startswith('musicbrainz'))
+        return {'shows': shows, 'spread': spread, 'bins': bins, 'peak': peak, 'oldest': oldest, 'fresh': fresh[:15], 'n_fresh': len(fresh),
+                'djs': djs, 'median': overall[(len(overall) - 1) // 2], 'known': known, 'plays': self.total_track_plays,
+                'mb_share': mb / known if known else 0,
+                'year_min': min(s['median'] for s in shows) // 10 * 10, 'year_max': self.last_date.year}
+
+    def _track_row(self, t):
+        return {'name': self.tracks[t]['name'], 'spotify_url': self.tracks[t]['spotify_url'],
+                'artists': _join([self._artist_part(a) for a in self.track_artists[t]])}
+
     def novelty_series(self):
         """Every show's novelty and its neighborhood median, in date order, for the novelty chart."""
         out = []
@@ -1103,6 +1239,9 @@ class History:
 
 
 SIX_MINUTES = 6 * 60 * 1000
+OLDEST_DECADE = 1950  # song age: older decades count with the 1950s ("1950s and earlier")
+FRESH_DAYS = 14  # song age: played within this many days of coming out
+AGE_BIN = 5  # song age: years per bar in each show year's histogram
 RANKINGS = ['artists', 'albums', 'tracks', 'returns', 'labels', 'djs']  # novelty has its own chart page
 
 
