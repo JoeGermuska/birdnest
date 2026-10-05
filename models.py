@@ -381,9 +381,11 @@ class Artist(Base):
         except KeyError: pass
 
         try:
+            have = {g.name for g in o.genre_objs}
             for g in init_data['genres']:
-                if g not in o.genres:
-                    o.genres.append(g)
+                if g not in have:
+                    o.genre_objs.append(Genre.get_or_create(session, g))
+                    have.add(g)
         except KeyError: pass
 
         return o
@@ -496,7 +498,7 @@ class CoverCaption(Base):
 class Genre(Base):
     __tablename__ = 'genre'
     genre_id = Column(Integer, primary_key=True)
-    name = Column(String)
+    name = Column(String, unique=True)
     artists = relationship('Artist', secondary=artist_genre, back_populates='genre_objs')
 
     def __init__(self,genre) -> None:
@@ -505,9 +507,11 @@ class Genre(Base):
 
     @staticmethod
     def get_or_create(session, name):
-        o = session.query(Genre).filter_by(name=name).scalar()
+        o = session.query(Genre).filter_by(name=name).first()
         if o is None:
-            o = Genre(name=name)
+            o = Genre(name)
+            session.add(o)
+            session.flush()  # so the next artist with this genre finds it instead of making another
         return o
 
 PITCH_CLASSES = [
