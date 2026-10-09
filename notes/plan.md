@@ -1,3 +1,5 @@
+****
+
 # Plan: design pass + ways into the archive
 
 Combined from `notes/design-pass.md` (paused design pass) and `notes/home-page-options.md` (ways in), 2026-09-26.
@@ -15,7 +17,6 @@ ways in are done together, and the design pass fits around them.
 3. [X]  **Banner**: a paper masthead (`_nav.html`), two rows on phones with the links scrolling sideways if they outgrow it.
    With it, new type: Alegreya Sans for titles, labels and controls, David Libre for reading (quote marks from
    Alegreya), as `--font-display`/`--font-body` and a few color tokens on `:root` in `style.css`.
-
 4. [X]  **Design pass on the other pages**: colors, fonts and small type sizes are tokens on `:root` in `style.css`;
    **dark mode** redefines the color tokens (follows the system; the banner's switch picks the other); links are ink
    instead of browser blue; track tables become cards on phones. Dark mode dims cover images a touch (`--image-dim`), and
@@ -31,6 +32,7 @@ ways in are done together, and the design pass fits around them.
    list), 2020-12-10, 2024-11-21, 2025-01-02, 01-30, 02-27, 03-13, 10-01, 10-30, 2026-01-08, 04-02, 04-16, 06-11.
    Rerun from a Markdown download of the doc (File > Download > Markdown) to fix a caption or get the emoji back
    (one in 12/23/2021 was lost in the export used).
+
 7. **Later**: Apple Music in the radio player.
 
 ## Birds radio player
@@ -59,7 +61,7 @@ ways in are done together, and the design pass fits around them.
   page must stop feeding when they switch to other listening. Default to it on iPhones. A server-side feeder
   would survive closed tabs but needs persistent per-user token storage, which the deployment doesn't have.
   (Since 2001df9 the player no longer queues ahead, so switching playback to the Spotify app now stops the radio
-  after that track.) 
+  after that track.)
 - Later: Apple Music (see the ISRC-based plan discussed earlier: `track_provider` table, MusicKit JS adapter).
 
 ## Albums and labels (2026-10-01)
@@ -113,7 +115,9 @@ every artist's links) are in `maintenance.py`, run every month or two.
 
 - Artists whose Wikidata item we reached through MusicBrainz but which has no Spotify artist ID (P1902): near-certain
   matches, since MusicBrainz editors made the link.
-- [X] Albums: Wikidata album items without a Spotify album ID (P2205); MusicBrainz releases matched by barcode only.
+
+- [X]  Albums: Wikidata album items without a Spotify album ID (P2205); MusicBrainz releases matched by barcode only.
+
 - Artists MusicBrainz doesn't know at all (no Spotify link on any MusicBrainz artist).
 - Labels, once we have MusicBrainz labels: Wikidata items without a MusicBrainz label ID (P966), and labels with
   no Wikidata item at all.
@@ -124,6 +128,7 @@ every artist's links) are in `maintenance.py`, run every month or two.
 Heath asked for most and fewest songs per show, longest and shortest songs, six-minute songs, and back-to-back
 runs of one artist. Built at `/heath` (`History.lengths()`, `History.back_to_back()`), with six-minute radio
 (`/radio?length=long`). Linked from Heath's DJ page only. Ideas for more:
+
 - Song length by release decade, once the MusicBrainz dates are in.
 - Per-DJ pace: average song length on the nights each DJ is in the room.
 - Back-to-backs by the same album, or the same label.
@@ -135,16 +140,18 @@ over and over. Done: tile-size cover images (`make_tiles.py`; covers were up to 
 one of the worker's 8 threads), inline SVG icons instead of the Font Awesome kit (a blocking script on every
 load), year-long caching of versioned static files, robots.txt off the endless radio/search URLs, gunicorn
 `--max-requests` recycling and access logs.
+
 - [ ]  Maybe `fly scale memory 512` if the OOM kills continue (a dollar or two a month).
 - [X]  Home page lightened (2026-10-04): latest show, this week in past years, and 10 random shows with two note
   cards, instead of the whole wall. "This week" is laid out for 6 past years; revisit after the next anniversary.
 
 ## Loose ends
 
-- [X] The show page's "usual" mix row (hard to read, worse in dark mode) is now words: "heavy on soul, funk & blues",
+- [X]  The show page's "usual" mix row (hard to read, worse in dark mode) is now words: "heavy on soul, funk & blues",
   "light on jazz" or "a typical mix for its time" (`mix_summary`, `SHOW_LEAN`); hovering a segment gives the usual
   share. DJ pages dropped their mix and song age comparisons: with no way to tell who picked what, the nights a
   regular was in differ from all shows only by noise (2026-10-04).
 
 - Spotify: app is in development mode (add each friend to its user list)
 - Genres: see notes/genres.md (backburner).
+- in dark mode using search, the highlight for the suggestion is too hard to see

@@ -8,7 +8,7 @@
     </div>
     <div class="browse-controls">
         <nav class="seg" aria-label="Order">
-            {% for key, v in sorts.items() %}<a href="{{ link(sort=key) }}"{% if key == current.sort %} aria-current="true"{% endif %}>{{ v[0] }}</a>{% endfor %}
+            {% for key, v in sorts.items() %}<a href="{{ link(sort=key) }}"{% if key == 'shuffle' %} rel="nofollow"{% endif %}{% if key == current.sort %} aria-current="true"{% endif %}>{{ v[0] }}</a>{% endfor %}
         </nav>
         <form class="browse-by" action="{{ url_for('browse') }}" method="get">
             {% for d in current.dj %}<input type="hidden" name="dj" value="{{ d }}">{% endfor %}

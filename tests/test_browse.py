@@ -102,3 +102,14 @@ def test_banner_and_home_lead_here(app_module):
     client = app_module.app.test_client()
     assert 'href="/shows"' in client.get('/genres').get_data(as_text=True)
     assert 'href="/shows"' in client.get('/').get_data(as_text=True)
+
+
+def test_shuffle_links_carry_no_seed_and_crawlers_are_told_off(app_module):
+    """A fresh seed in every link made an endless crawl space; links are plain now and the seed is only accepted."""
+    html = get(app_module, '?sort=shuffle')
+    assert 'seed=' not in html
+    assert re.search(r'href="/shows\?sort=shuffle" rel="nofollow"', html)
+    robots = app_module.app.test_client().get('/robots.txt').get_data(as_text=True)
+    for bot in ('Amazonbot', 'GPTBot'):
+        assert f'User-agent: {bot}\nDisallow: /\n' in robots
+    assert 'Disallow: /*seed=' in robots and 'Disallow: /*sort=shuffle' in robots

@@ -87,7 +87,10 @@ def error_page(e):
 def robots():
     # Birds radio has a URL for every seed, and search for every query: endless, and each one costs real work.
     # (Pages already carry noindex; this keeps polite crawlers from fetching what they'd never index.)
-    body = "User-agent: *\nDisallow: /radio\nDisallow: /search\nDisallow: /autocomplete\nDisallow: /spotify/\nDisallow: /todo/\nCrawl-delay: 5\n"
+    # A bot with its own group ignores the * group, so the blocked ones need nothing else.
+    body = "".join(f"User-agent: {bot}\nDisallow: /\n\n" for bot in ('Amazonbot', 'GPTBot'))
+    body += ("User-agent: *\nDisallow: /radio\nDisallow: /search\nDisallow: /autocomplete\nDisallow: /spotify/\n"
+             "Disallow: /todo/\nDisallow: /*seed=\nDisallow: /*sort=shuffle\nCrawl-delay: 5\n")
     response = make_response(body)
     response.mimetype = 'text/plain'
     return response
@@ -169,10 +172,8 @@ def browse():
         groups = [(None, [tile(s) for s in shows])]
 
     current = {'sort': sort, 'dj': djs_in, 'family': family}
-    def link(**change):  # this view with some controls changed; a fresh shuffle each time it's asked for
+    def link(**change):  # this view with some controls changed; no seed, so a shuffle link is one URL and every visit reshuffles
         q = {k: v for k, v in {**current, **change}.items() if v and not (k == 'sort' and v == 'newest')}
-        if q.get('sort') == 'shuffle':
-            q['seed'] = random.randrange(10 ** 6)
         return url_for('browse', **q)
     def toggle(slug):  # the DJ list with this one added or taken out
         return [d for d in djs_in if d != slug] if slug in djs_in else djs_in + [slug]
