@@ -1,0 +1,256 @@
+[
+ {
+  "name": "Aquarium Drunkard",
+  "home_url": "https://aquariumdrunkard.com",
+  "feed_url": "https://aquariumdrunkard.com/feed/",
+  "kind": "essay",
+  "members_only": true,
+  "note": "mostly member-only; public feed has title, artist tags and an excerpt"
+ },
+ {
+  "name": "The Quietus",
+  "home_url": "https://thequietus.com",
+  "feed_url": "https://thequietus.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "A Closer Listen",
+  "home_url": "https://acloserlisten.com",
+  "feed_url": "https://acloserlisten.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Nate Chinen: The Gig",
+  "home_url": "https://thegig.substack.com",
+  "feed_url": "https://thegig.substack.com/feed",
+  "kind": "essay",
+  "roundup": true,
+  "note": "Substack; some posts paid"
+ },
+ {
+  "name": "Peter Margasak: Nowhere Street",
+  "home_url": "https://petermargasak.substack.com",
+  "feed_url": "https://petermargasak.substack.com/feed",
+  "kind": "essay",
+  "roundup": true,
+  "note": "Substack; some posts paid"
+ },
+ {
+  "name": "Ted Gioia: The Honest Broker",
+  "home_url": "https://www.honest-broker.com",
+  "feed_url": "https://www.honest-broker.com/feed",
+  "kind": "essay",
+  "roundup": true,
+  "note": "Substack; some posts paid"
+ },
+ {
+  "name": "The Wire",
+  "home_url": "https://www.thewire.co.uk",
+  "feed_url": "https://www.thewire.co.uk/rss",
+  "kind": "criticism",
+  "members_only": true
+ },
+ {
+  "name": "PopMatters",
+  "home_url": "https://www.popmatters.com",
+  "feed_url": "https://www.popmatters.com/feed",
+  "kind": "criticism"
+ },
+ {
+  "name": "Pitchfork",
+  "home_url": "https://pitchfork.com",
+  "feed_url": "https://pitchfork.com/feed/rss",
+  "kind": "criticism"
+ },
+ {
+  "name": "Stereogum",
+  "home_url": "https://stereogum.com",
+  "feed_url": "https://stereogum.com/feed",
+  "kind": "news"
+ },
+ {
+  "name": "Bandcamp Daily",
+  "home_url": "https://daily.bandcamp.com",
+  "feed_url": "https://daily.bandcamp.com/feed/",
+  "kind": "criticism",
+  "roundup": true
+ },
+ {
+  "name": "Spectrum Culture",
+  "home_url": "https://spectrumculture.com",
+  "feed_url": "https://spectrumculture.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Brainwashed",
+  "home_url": "https://brainwashed.com",
+  "feed_url": "https://brainwashed.com/index.php?option=com_content&view=category&layout=blog&id=167&Itemid=855&format=feed&type=rss",
+  "kind": "criticism"
+ },
+ {
+  "name": "FACT",
+  "home_url": "https://factmag.com",
+  "feed_url": "https://www.factmag.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Gorilla vs. Bear",
+  "home_url": "https://gorillavsbear.net",
+  "feed_url": "https://www.gorillavsbear.net/feed/",
+  "kind": "news"
+ },
+ {
+  "name": "Tiny Mix Tapes",
+  "home_url": "https://tinymixtapes.com",
+  "feed_url": "https://www.tinymixtapes.com/feeds/news.xml",
+  "kind": "criticism",
+  "note": "archive; last post 2019"
+ },
+ {
+  "name": "Disquiet",
+  "home_url": "https://disquiet.com",
+  "feed_url": "https://disquiet.com/feed/",
+  "kind": "essay"
+ },
+ {
+  "name": "Avant Music News",
+  "home_url": "https://avantmusicnews.com",
+  "feed_url": "https://avantmusicnews.com/feed/",
+  "kind": "news",
+  "roundup": true
+ },
+ {
+  "name": "Burning Ambulance",
+  "home_url": "https://burningambulance.com",
+  "feed_url": "https://burningambulance.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "London Jazz News",
+  "home_url": "https://londonjazznews.com",
+  "feed_url": "https://ukjazznews.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Ethan Iverson: Do the Math",
+  "home_url": "https://ethaniverson.com",
+  "feed_url": "https://ethaniverson.com/feed/",
+  "kind": "essay"
+ },
+ {
+  "name": "JazzTimes",
+  "home_url": "https://jazztimes.com",
+  "feed_url": "https://www.jazztimes.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Jazz Journal",
+  "home_url": "https://jazzjournal.co.uk",
+  "feed_url": "https://jazzjournal.co.uk/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "fRoots",
+  "home_url": "https://frootsmag.com",
+  "feed_url": "https://frootsmag.com/feed",
+  "kind": "criticism",
+  "note": "last post 2021"
+ },
+ {
+  "name": "Rhythm Passport",
+  "home_url": "https://rhythmpassport.com",
+  "feed_url": "https://rhythmpassport.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Folk Radio",
+  "home_url": "https://folkradio.co.uk",
+  "feed_url": "https://klofmag.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Ambient Blog",
+  "home_url": "https://ambientblog.net",
+  "feed_url": "https://www.ambientblog.net/feed/",
+  "kind": "criticism",
+  "roundup": true
+ },
+ {
+  "name": "Musique Machine",
+  "home_url": "https://musiquemachine.com",
+  "feed_url": "https://www.musiquemachine.com/feed.xml",
+  "kind": "criticism"
+ },
+ {
+  "name": "No Depression",
+  "home_url": "https://nodepression.com",
+  "feed_url": "https://nodepression.org/rss/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Beats Per Minute",
+  "home_url": "https://beatsperminute.com",
+  "feed_url": "https://beatsperminute.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "The Line of Best Fit",
+  "home_url": "https://thelineofbestfit.com",
+  "feed_url": "https://thelineofbestfit.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Loud and Quiet",
+  "home_url": "https://loudandquiet.com",
+  "feed_url": "https://www.loudandquiet.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Treble",
+  "home_url": "https://treblezine.com",
+  "feed_url": "https://www.treblezine.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Under the Radar",
+  "home_url": "https://undertheradarmag.com",
+  "feed_url": "http://www.undertheradarmag.com/site/rss",
+  "kind": "criticism"
+ },
+ {
+  "name": "Paste",
+  "home_url": "https://pastemagazine.com",
+  "feed_url": "https://www.pastemagazine.com/feed/",
+  "kind": "news"
+ },
+ {
+  "name": "Spin",
+  "home_url": "https://spin.com",
+  "feed_url": "https://www.spinmagazine.com/feed/",
+  "kind": "news"
+ },
+ {
+  "name": "Rock and Roll Globe",
+  "home_url": "https://rockandrollglobe.com",
+  "feed_url": "https://rockandrollglobe.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Something Else! Reviews",
+  "home_url": "https://somethingelsereviews.com",
+  "feed_url": "https://somethingelsereviews.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Invisible Oranges",
+  "home_url": "https://invisibleoranges.com",
+  "feed_url": "https://www.invisibleoranges.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Decibel",
+  "home_url": "https://decibelmagazine.com",
+  "feed_url": "https://www.decibelmagazine.com/feed/",
+  "kind": "criticism"
+ }
+]

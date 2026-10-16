@@ -301,6 +301,17 @@ class History:
             for r in con.execute("select album_id, name, catalog_number from mb_album_label"):
                 if (r['name'], r['catalog_number']) not in self.album_mb_labels[r['album_id']]:
                     self.album_mb_labels[r['album_id']].append((r['name'], r['catalog_number']))
+        # music writing matched to artists and albums (writing.py publishes it), newest first
+        self.reading_by_artist, self.reading_by_album = defaultdict(list), defaultdict(list)
+        if has('writing') and has('writing_match'):
+            for r in con.execute("""select w.writing_id, w.url, w.title, w.published, w.source, w.members_only,
+                                           m.artist_id, m.album_id, m.kind
+                                    from writing_match m join writing w using (writing_id)
+                                    order by w.published desc, w.writing_id desc"""):
+                piece = {k: r[k] for k in ('writing_id', 'url', 'title', 'published', 'source', 'members_only', 'kind')}
+                self.reading_by_artist[r['artist_id']].append(piece)
+                if r['album_id'] is not None:
+                    self.reading_by_album[r['album_id']].append(piece)
         con.close()
 
         # Recordings can appear under several Spotify track ids (single vs. album,
@@ -742,6 +753,21 @@ class History:
 
     def year_x(self, year, width):
         return self.timeline_x(max(self.first_date, date(year, 1, 1)), width)
+
+    def reading_for(self, artist_id=None, album_id=None):
+        """Music writing about an artist, or about an album (all its editions, see album_group):
+        {'about': pieces that are about them, 'mentions': pieces that mention them}, newest first."""
+        if album_id is not None:
+            pieces = [p for a in self.album_members.get(album_id, [album_id]) for p in self.reading_by_album.get(a, ())]
+            pieces.sort(key=lambda p: (p['published'] or '', p['writing_id']), reverse=True)
+        else:
+            pieces = self.reading_by_artist.get(artist_id, [])
+        seen, out = set(), {'about': [], 'mentions': []}
+        for p in pieces:
+            if p['writing_id'] not in seen:
+                seen.add(p['writing_id'])
+                out[p['kind']].append(p)
+        return out
 
     def artist_header(self, artist_id):
         """What an artist page says about who they are: Wikidata's description, where they're from (with a flag),

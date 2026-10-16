@@ -16,3 +16,4 @@ __pycache__/
 *.history.pickle
 .pytest_cache/
 static/images/tiles/
+writing_crawl.db*

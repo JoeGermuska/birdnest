@@ -43,5 +43,6 @@
         {% if profile.editions %}<br>Also played from {% for e in profile.editions %}<a href="{{ e.spotify_url }}">{{ e.name }}{% if e.release_date %} ({{ e.release_date[:4] }}){% endif %}</a>{% if not loop.last %}, {% endif %}{% endfor %} on Spotify; counted together here.{% endif %}
     </p>
     {% endif %}
+{% set reading = history.reading_for(album_id=album.album_id) %}{% include "_reading.html" %}
 </section>
 {% endblock content %}

@@ -46,5 +46,6 @@
         </tbody>
     </table>
     {% endif %}
+{% set reading = history.reading_for(artist_id=artist.artist_id) %}{% include "_reading.html" %}
 </section>
 {% endblock content %}

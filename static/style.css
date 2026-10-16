@@ -925,3 +925,12 @@ body table[data-sortable] th { font-weight: 500; }
     .radio-set { --pick-col: 2.8em; }
     .radio-set .play-from { font-size: 0.85rem; width: 2.3em; padding: 5px 0; }
 }
+
+/* music writing about an artist or album (Further reading) */
+.reading { list-style: none; padding: 0; margin: 0 0 12px; }
+.reading li { margin: 0 0 8px; }
+.reading-meta { color: var(--ink-3); font-size: smaller; }
+.reading-more { margin: -4px 0 12px; color: var(--ink-2); }
+.reading-more summary { cursor: pointer; }
+.reading-more .reading { margin: 8px 0 0; }
+.reading-also { color: var(--ink-2); }

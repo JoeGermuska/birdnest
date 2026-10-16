@@ -14,6 +14,8 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 
 - Weekly, after each show: `python load_playlist.py` (the show, its artists, albums and tracks, a few MusicBrainz
   retries, and links people added through the to-do lists under the 🤓 in the banner).
+- Weekly too: `python writing.py run` (music writing from the feeds in `writing_sources.json`, matched to artists and albums,
+  kept in the local `writing_crawl.db` and published into `birdnest.db` for the Further reading sections; see its docstring).
 - Every month or two: `python maintenance.py` (the slow Wikidata jobs). Then commit `birdnest.db` and deploy.
 
 ## Tests
