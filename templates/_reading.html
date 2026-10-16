@@ -1,6 +1,6 @@
 {# Music writing about an artist or album: reading = history.reading_for(...). Pieces are other people's; we link out. #}
 {% macro piece(w) -%}
-<a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.title }}</a> <span class="reading-meta">{{ w.source }}{% if w.members_only %} · members{% endif %}{% if w.published %} · {{ w.published }}{% endif %}</span>
+<a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.title }}</a> <span class="reading-meta"><a href="{{ url_for('reading_source', slug=w.source_slug) }}">{{ w.source }}</a>{% if w.members_only %} · members{% endif %}{% if w.published %} · {{ w.published }}{% endif %}</span>
 {%- endmacro %}
 {% if reading.about or reading.mentions %}
 <h2>Further reading</h2>
@@ -16,7 +16,7 @@
 {% endif %}
 {% if reading.mentions %}
 <p class="reading-also">{% if reading.about %}Also mentioned in{% else %}Mentioned in{% endif %}:
-    {% for w in reading.mentions[:6] %}<a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.title }}</a> <span class="reading-meta">({{ w.source }}{% if w.members_only %}, members{% endif %})</span>{% if not loop.last %}; {% endif %}{% endfor %}
+    {% for w in reading.mentions[:6] %}<a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.title }}</a> <span class="reading-meta">(<a href="{{ url_for('reading_source', slug=w.source_slug) }}">{{ w.source }}</a>{% if w.members_only %}, members{% endif %})</span>{% if not loop.last %}; {% endif %}{% endfor %}
 </p>
 {% if reading.mentions|length > 6 %}
 <details class="reading-more"><summary>and {{ reading.mentions|length - 6 }} more</summary>

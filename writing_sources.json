@@ -47,8 +47,7 @@
   "name": "The Wire",
   "home_url": "https://www.thewire.co.uk",
   "feed_url": "https://www.thewire.co.uk/rss",
-  "kind": "criticism",
-  "members_only": true
+  "kind": "criticism"
  },
  {
   "name": "PopMatters",

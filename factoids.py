@@ -303,15 +303,20 @@ class History:
                     self.album_mb_labels[r['album_id']].append((r['name'], r['catalog_number']))
         # music writing matched to artists and albums (writing.py publishes it), newest first
         self.reading_by_artist, self.reading_by_album = defaultdict(list), defaultdict(list)
-        if has('writing') and has('writing_match'):
-            for r in con.execute("""select w.writing_id, w.url, w.title, w.published, w.source, w.members_only,
+        self.reading_sources, self.reading_pieces = {}, {}
+        if has('writing') and has('writing_match') and has('writing_source'):
+            for r in con.execute("select slug, name, kind, home_url, members_only, note from writing_source"):
+                self.reading_sources[r['slug']] = dict(r)
+            for r in con.execute("""select w.writing_id, w.url, w.title, w.published, w.source, w.source_slug, w.members_only,
                                            m.artist_id, m.album_id, m.kind
                                     from writing_match m join writing w using (writing_id)
                                     order by w.published desc, w.writing_id desc"""):
-                piece = {k: r[k] for k in ('writing_id', 'url', 'title', 'published', 'source', 'members_only', 'kind')}
+                piece = {k: r[k] for k in ('writing_id', 'url', 'title', 'published', 'source', 'source_slug', 'members_only', 'kind')}
                 self.reading_by_artist[r['artist_id']].append(piece)
                 if r['album_id'] is not None:
                     self.reading_by_album[r['album_id']].append(piece)
+                whole = self.reading_pieces.setdefault(r['writing_id'], {**piece, 'artists': []})
+                whole['artists'].append((r['artist_id'], r['kind']))
         con.close()
 
         # Recordings can appear under several Spotify track ids (single vs. album,
@@ -753,6 +758,54 @@ class History:
 
     def year_x(self, year, width):
         return self.timeline_x(max(self.first_date, date(year, 1, 1)), width)
+
+    READING_KINDS = [('criticism', 'Criticism and reviews'), ('essay', 'Essays and newsletters'), ('interview', 'Interviews')]
+
+    def _reading_piece(self, p):
+        """A published piece with the artists it is about and the ones it mentions, as artist rows, most-played first."""
+        out = {k: v for k, v in p.items() if k != 'artists'}
+        for kind in ('about', 'mentions'):
+            ids = [a for a, k in p['artists'] if k == kind and a in self.artists]
+            out[kind] = [self.artists[a] for a in sorted(ids, key=lambda a: (-len(self.artist_shows.get(a, ())), a))]
+        return out
+
+    def reading_index(self):
+        """The Reading page: the publications by kind, the latest pieces that are about artists we've played, and
+        the artists most written about."""
+        stats = defaultdict(lambda: {'pieces': 0, 'artists': set(), 'latest': ''})
+        for p in self.reading_pieces.values():
+            s = stats[p['source_slug']]
+            s['pieces'] += 1
+            s['artists'] |= {a for a, _ in p['artists']}
+            s['latest'] = max(s['latest'], p['published'] or '')
+        groups = []
+        for kind, label in self.READING_KINDS:
+            pubs = [{**src, 'pieces': stats[slug]['pieces'], 'artists': len(stats[slug]['artists']), 'latest': stats[slug]['latest']}
+                    for slug, src in self.reading_sources.items() if src['kind'] == kind and slug in stats]
+            if pubs:
+                groups.append((label, sorted(pubs, key=lambda s: (-s['pieces'], s['name']))))
+        latest = sorted((p for p in self.reading_pieces.values() if any(k == 'about' for _, k in p['artists'])),
+                        key=lambda p: (p['published'] or '', p['writing_id']), reverse=True)
+        counts = defaultdict(int)
+        for p in self.reading_pieces.values():
+            for a, k in p['artists']:
+                if k == 'about' and a in self.artists:
+                    counts[a] += 1
+        most = sorted(counts.items(), key=lambda kv: (-kv[1], self.artists[kv[0]]['name']))[:15]
+        return {'groups': groups, 'latest': [self._reading_piece(p) for p in latest[:15]],
+                'most': [(self.artists[a], n) for a, n in most], 'n_pieces': len(self.reading_pieces),
+                'n_publications': sum(len(pubs) for _, pubs in groups),
+                'n_artists': len({a for p in self.reading_pieces.values() for a, _ in p['artists'] if a in self.artists})}
+
+    def reading_source(self, slug):
+        """One publication and every piece of its we matched, newest first, or None."""
+        src = self.reading_sources.get(slug)
+        if not src:
+            return None
+        pieces = sorted((p for p in self.reading_pieces.values() if p['source_slug'] == slug),
+                        key=lambda p: (p['published'] or '', p['writing_id']), reverse=True)
+        return {**src, 'pieces': [self._reading_piece(p) for p in pieces],
+                'artists': len({a for p in pieces for a, _ in p['artists']})}
 
     def reading_for(self, artist_id=None, album_id=None):
         """Music writing about an artist, or about an album (all its editions, see album_group):

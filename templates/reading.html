@@ -1,0 +1,35 @@
+{% extends "_base.html" %}
+{% block title %}Reading{% endblock title %}
+{% block content %}
+<section class="detail reading-page">
+    <hgroup class="title-unit"><h1>Reading</h1><p class="subtitle">Writing about the music we play, from a hand-picked list of publications and writers</p></hgroup>
+    {% if not index.n_pieces %}<p>Nothing here yet.</p>{% else %}
+    <p class="detail-meta">{{ index.n_pieces }} pieces · {{ index.n_publications }} publications · {{ index.n_artists }} artists</p>
+
+    <h2>Latest about artists we've played</h2>
+    <ul class="reading">
+        {% for w in index.latest %}
+        <li>
+            <a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.title }}</a>
+            <span class="reading-meta"><a href="{{ url_for('reading_source', slug=w.source_slug) }}">{{ w.source }}</a>{% if w.members_only %} · members{% endif %}{% if w.published %} · {{ w.published }}{% endif %}</span>
+            <div class="reading-about">{% for a in w.about[:4] %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if w.about|length > 4 %} and {{ w.about|length - 4 }} more{% endif %}</div>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <h2>Publications</h2>
+    {% for label, pubs in index.groups %}
+    <h3 class="reading-kind">{{ label }}</h3>
+    <ul class="reading">
+        {% for s in pubs %}
+        <li><a href="{{ url_for('reading_source', slug=s.slug) }}">{{ s.name }}</a>{% if s.members_only %} <span class="reading-meta">members</span>{% endif %}
+            <span class="reading-meta">· {{ s.pieces }} piece{{ 's' if s.pieces != 1 }}, {{ s.artists }} artist{{ 's' if s.artists != 1 }}{% if s.latest %} · latest {{ s.latest }}{% endif %}</span></li>
+        {% endfor %}
+    </ul>
+    {% endfor %}
+
+    <h2>Most written about</h2>
+    <p class="chips">{% for a, n in index.most %}<a class="chip" href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }} <span class="reading-meta">{{ n }}</span></a>{% endfor %}</p>
+    {% endif %}
+</section>
+{% endblock content %}

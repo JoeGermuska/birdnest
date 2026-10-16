@@ -1,0 +1,20 @@
+{% extends "_base.html" %}
+{% block title %}{{ source.name }}{% endblock title %}
+{% block content %}
+<section class="detail reading-page">
+    <hgroup class="title-unit"><h1>{{ source.name }}</h1><p class="subtitle">{{ source.pieces|length }} piece{{ 's' if source.pieces|length != 1 }} about {{ source.artists }} artist{{ 's' if source.artists != 1 }} we've played</p></hgroup>
+    <p class="detail-meta">
+        {% if source.home_url %}<a href="{{ source.home_url }}" target="_blank" rel="noopener">{{ source.home_url|replace('https://', '')|replace('http://', '')|trim('/') }}</a> ·{% endif %}
+        {% if source.members_only %}mostly for members; we list titles and links only · {% endif %}
+        <a href="{{ url_for('reading') }}">all reading</a>
+    </p>
+    <ul class="reading">
+        {% for w in source.pieces %}
+        <li>
+            <a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.title }}</a>{% if w.published %} <span class="reading-meta">{{ w.published }}</span>{% endif %}
+            <div class="reading-about">{% if w.about %}{% for a in w.about[:5] %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if w.about|length > 5 %} and {{ w.about|length - 5 }} more{% endif %}{% endif %}{% if w.mentions %}{% if w.about %}; also {% else %}mentions {% endif %}{% for a in w.mentions[:5] %}<a href="{{ url_for('artist', spotify_id=a.spotify_id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if w.mentions|length > 5 %} and {{ w.mentions|length - 5 }} more{% endif %}{% endif %}</div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock content %}

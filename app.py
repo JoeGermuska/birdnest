@@ -188,6 +188,19 @@ def browse():
                            families=[(f, genre_families.COLORS[f][0]) for f in families])
 
 
+@app.route('/reading')
+def reading():
+    return render_template('reading.html', index=factoids.get_history().reading_index())
+
+
+@app.route('/reading/<slug>')
+def reading_source(slug):
+    src = factoids.get_history().reading_source(slug)
+    if src is None:
+        abort(404)
+    return render_template('reading_source.html', source=src)
+
+
 @app.route('/shows/random')
 def random_show():
     history = factoids.get_history()

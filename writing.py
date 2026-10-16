@@ -282,13 +282,20 @@ PUBLISH_KINDS = ('criticism', 'essay', 'interview')  # news is kept and matched,
 PUBLISH_SCHEMA = """
 drop table if exists writing_match;
 drop table if exists writing;
+drop table if exists writing_source;
+create table writing_source (
+    slug text primary key, name text, kind text, home_url text, members_only integer, note text);
 create table writing (
     writing_id integer primary key, url text, title text, published text,
-    source text, source_kind text, members_only integer);
+    source text, source_slug text references writing_source(slug), source_kind text, members_only integer);
 create table writing_match (
     writing_id integer references writing(writing_id), artist_id integer, album_id integer, kind text, score real);
 create index writing_match_artist on writing_match(artist_id);
 """
+
+
+def slugify(name):
+    return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
 
 
 def publish(conn, birds_path=BIRDS_DB):
@@ -296,18 +303,23 @@ def publish(conn, birds_path=BIRDS_DB):
     pieces from sources we list (not news) and matches not rejected; just titles, dates and links, never text."""
     marks = ','.join('?' * len(PUBLISH_KINDS))
     rows = conn.execute(
-        f"select i.item_id, i.url, i.title, i.published, s.name source, s.kind source_kind, s.members_only, "
+        f"select i.item_id, i.url, i.title, i.published, s.name source, s.kind source_kind, s.members_only, s.home_url, s.note, "
         f"m.artist_id, m.album_id, m.kind, m.score from match m join item i using (item_id) join source s using (source_id) "
         f"where m.status in ('auto','confirmed') and s.active=1 and s.kind in ({marks})", PUBLISH_KINDS).fetchall()
     birds = sqlite3.connect(birds_path)
     birds.executescript(PUBLISH_SCHEMA)
-    seen = set()
+    seen, sources = set(), set()
     for r in rows:
+        slug = slugify(r['source'])
+        if slug not in sources:
+            sources.add(slug)
+            birds.execute('insert into writing_source values (?,?,?,?,?,?)',
+                          (slug, r['source'], r['source_kind'], r['home_url'], r['members_only'], r['note']))
         if r['item_id'] not in seen:
             seen.add(r['item_id'])
-            birds.execute('insert into writing values (?,?,?,?,?,?,?)',
+            birds.execute('insert into writing values (?,?,?,?,?,?,?,?)',
                           (r['item_id'], r['url'], r['title'], (r['published'] or '')[:10] or None,
-                           r['source'], r['source_kind'], r['members_only']))
+                           r['source'], slug, r['source_kind'], r['members_only']))
         birds.execute('insert into writing_match values (?,?,?,?,?)',
                       (r['item_id'], r['artist_id'], r['album_id'], r['kind'], r['score']))
     birds.commit()
@@ -398,12 +410,27 @@ def cmd_report(args):
 
 
 def cmd_sources(args):
+    """Every source with what it has yielded, to see the whole set at once and decide which earn their place."""
     conn = connect()
     sync_sources(conn)
-    for r in conn.execute('select s.*, (select count(*) from item i where i.source_id=s.source_id) n from source s order by name'):
-        state = 'off' if not r['active'] else f"every {r['interval_hours']:.0f}h" if r['interval_hours'] else 'new'
-        err = f"  ! {r['last_error']}" if r['last_error'] else ''
-        print(f"{r['name']:34} {r['kind']:10} {state:10} {r['n']:6} items{err}")
+    rows = conn.execute("""
+        select s.*, count(i.item_id) items, max(i.published) latest,
+               count(distinct case when m.status in ('auto','confirmed') then i.item_id end) matched_items,
+               count(distinct case when m.status in ('auto','confirmed') and m.kind='about' then i.item_id end) about_items,
+               count(distinct case when m.status in ('auto','confirmed') then m.artist_id end) artists
+        from source s left join item i using (source_id) left join match m on m.item_id = i.item_id
+        group by s.source_id order by about_items desc, s.name""").fetchall()
+    print(f"{'source':32} {'kind':10} {'check':8} {'items':>5} {'matched':>8} {'about':>6} {'artists':>7}  {'latest post':11}  notes")
+    for r in rows:
+        check = 'OFF' if not r['active'] else f"{r['interval_hours']:.0f}h" if r['interval_hours'] else 'new'
+        pct = f"{100 * r['matched_items'] / r['items']:.0f}%" if r['items'] else '-'
+        notes = [n for n in (
+            'not listed (news)' if r['kind'] not in PUBLISH_KINDS else '', 'members' if r['members_only'] else '',
+            'roundups' if r['roundup'] else '', f"! {r['last_error']}" if r['last_error'] else '',
+            'no matches yet' if r['items'] and not r['matched_items'] else '',
+            'quiet: nothing new in 60+ days' if r['latest'] and r['latest'] < iso(now() - timedelta(days=60)) else '') if n]
+        print(f"{r['name']:32} {r['kind']:10} {check:8} {r['items']:5} {pct:>8} {r['about_items']:6} {r['artists']:7}  {(r['latest'] or '')[:10]:11}  {'; '.join(notes)}")
+    print(f"\n{len(rows)} sources, {sum(r['items'] for r in rows)} items. matched = items with an accepted match; about = items about an artist we've played.")
 
 
 def cmd_toggle(args):

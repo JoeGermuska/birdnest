@@ -151,3 +151,28 @@ def test_artist_pages_list_the_writing(app_module):
     piece = next(p for p in history.reading_by_artist[aid] if p['kind'] == 'about')
     html = app_module.app.test_client().get(f"/artist/{history.artists[aid]['spotify_id']}").get_data(as_text=True)
     assert 'Further reading' in html and piece['url'] in html and 'reading-excerpt' not in html
+
+
+def test_reading_pages(app_module):
+    import factoids
+    history = factoids.get_history()
+    if not history.reading_sources:
+        pytest.skip('no published writing in this database')
+    client = app_module.app.test_client()
+    index = client.get('/reading').get_data(as_text=True)
+    slug, src = next(iter(history.reading_sources.items()))
+    assert 'Reading' in index and f'/reading/{slug}' in index
+    page = client.get(f'/reading/{slug}')
+    assert page.status_code == 200 and src['name'] in page.get_data(as_text=True)
+    assert client.get('/reading/no-such-publication').status_code == 404
+    # a piece's source links back to that publication's page
+    aid = next(a for a, ps in history.reading_by_artist.items() if ps and history.artists[a]['spotify_id'])
+    p = history.reading_by_artist[aid][0]
+    html = client.get(f"/artist/{history.artists[aid]['spotify_id']}").get_data(as_text=True)
+    assert f"/reading/{p['source_slug']}" in html
+    assert 'href="/reading"' in client.get('/').get_data(as_text=True)
+
+
+def test_slugs():
+    assert writing.slugify('Nate Chinen: The Gig') == 'nate-chinen-the-gig'
+    assert writing.slugify('Something Else! Reviews') == 'something-else-reviews'
