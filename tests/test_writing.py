@@ -1,4 +1,5 @@
 """The music-writing index: matching pieces to artists and albums, and reading feeds. Offline, no network."""
+import json
 import sqlite3
 
 import pytest
@@ -394,3 +395,57 @@ def test_veto_names_that_are_not_one_artist(tmp_path):
     conn, birds = _veto_fixture(tmp_path)
     lines = []
     assert writing.veto(conn, birds, 'nobody', out=lines.append) == (0, False) and 'no artist' in lines[0]
+
+
+class _Resp:
+    def __init__(self, url, body, status=200):
+        self.url, self.status_code = url, status
+        self.content = body if isinstance(body, bytes) else body.encode()
+        self.text = self.content.decode()
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.status_code)
+
+
+class _Site:
+    """A fake site: {path: body}; anything else is a 404."""
+    def __init__(self, pages, host='https://blog.example'):
+        self.pages, self.host = pages, host
+
+    def get(self, url, **kw):
+        path = url.replace(self.host, '') or '/'
+        return _Resp(url, self.pages[path], 200) if path in self.pages else _Resp(url, '', 404)
+
+
+HOME = ('<html><head><title>Blog Example - music writing</title>'
+        '<link rel="alternate" type="application/rss+xml" title="comments" href="/comments/feed/">'
+        '<link rel="alternate" type="application/rss+xml" title="Blog Example" href="/feed/"></head></html>')
+
+
+def test_discover_a_feed_from_the_home_page():
+    site = _Site({'/': HOME, '/feed/': RSS, '/comments/feed/': RSS})
+    found = writing.discover_feed('https://blog.example/', site)
+    assert found['feed_url'] == 'https://blog.example/feed/' and found['title'].startswith('Blog Example') and found['items'] == 1
+    assert writing.discover_feed('https://blog.example/feed/', site)['home_url'] == 'https://blog.example'  # a feed's own address
+    with pytest.raises(ValueError):
+        writing.discover_feed('https://blog.example/', _Site({'/': '<html></html>'}))
+
+
+def test_add_and_remove_a_source(tmp_path):
+    f = tmp_path / 'sources.json'
+    f.write_text('[{"name": "Old", "home_url": "https://old.example", "feed_url": "https://old.example/feed", "kind": "criticism"}]')
+    site = _Site({'/': HOME, '/feed/': RSS, '/sitemap.xml': '<urlset></urlset>'})
+    lines = []
+    entry = writing.add_source('blog.example', kind='essay', roundup=True, sources_file=str(f), session=site, log=lines.append)
+    assert entry == {'name': 'Blog Example', 'home_url': 'https://blog.example', 'feed_url': 'https://blog.example/feed/',
+                     'kind': 'essay', 'roundup': True}        # a sitemap exists, so no 'backfill': 'feed'
+    assert 'has a sitemap' in lines[0] and [s['name'] for s in json.loads(f.read_text())] == ['Old', 'Blog Example']
+    with pytest.raises(ValueError, match='already listed'):
+        writing.add_source('blog.example', sources_file=str(f), session=site)
+    with pytest.raises(ValueError, match='kind'):
+        writing.add_source('blog.example', kind='gossip', sources_file=str(f), session=site)
+    assert writing.remove_source('blog example', str(f)) == 'Blog Example' and writing.remove_source('nope', str(f)) is None
+    # a site with no sitemap gets paged through its feed or API instead
+    bare = _Site({'/': HOME, '/feed/': RSS})
+    assert writing.add_source('blog.example', name='Bare', sources_file=str(f), session=bare, log=lambda *a: None)['backfill'] == 'feed'

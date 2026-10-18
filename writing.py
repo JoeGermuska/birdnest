@@ -11,7 +11,7 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
     python writing.py publish                       copy the accepted matches into birdnest.db (run does this too)
     python writing.py report [--days N]             what matched lately, again
     python writing.py sources                       sync writing_sources.json into the database and list it
-    python writing.py source off|on NAME            stop (or resume) checking one
+    python writing.py source add URL | remove NAME | off|on NAME   change the list of sources
     python writing.py review [--artist NAME] [--list]   confirm or reject the borderline matches, one at a time
     python writing.py veto ARTIST | hide URL | unhide URL | duplicates   keep wrong matches and duplicates off the site
 
@@ -99,6 +99,95 @@ def sync_sources(conn, path=SOURCES_FILE):
         if name not in names:
             conn.execute('update source set active=0 where name=?', (name,))
     conn.commit()
+
+
+# ---- adding and removing sources
+
+KINDS = ('criticism', 'essay', 'interview', 'news')
+FEED_GUESSES = ('/feed/', '/feed', '/rss', '/atom.xml', '/rss.xml', '/index.xml')
+
+
+def discover_feed(url, session):
+    """Find a site's feed from its address (or from the feed's own). -> {feed_url, home_url, title, items}; ValueError if none."""
+    headers = {'User-Agent': USER_AGENT}
+    r = session.get(url, headers=headers, timeout=25)
+    r.raise_for_status()
+    root = '{0.scheme}://{0.netloc}'.format(urlparse(r.url))
+    try:  # the address might be a feed already
+        items = parse_feed(r.content, r.url)
+        if items:
+            return {'feed_url': r.url, 'home_url': root, 'title': None, 'items': len(items)}
+    except ET.ParseError:
+        pass
+    text = r.text
+    title = (re.search(r'<meta[^>]+property=["\']og:site_name["\'][^>]+content=["\']([^"\']+)', text)
+             or re.search(r'<title[^>]*>([^<]+)', text))
+    title = plain(title.group(1)) if title else None
+    found = []
+    for tag in re.findall(r'<link[^>]+type=["\']application/(?:rss|atom)\+xml["\'][^>]*>', text):
+        href, label = re.search(r'href=["\']([^"\']+)', tag), re.search(r'title=["\']([^"\']*)', tag)
+        if href and 'comment' not in (label.group(1).lower() if label else '') and '/comments/' not in href.group(1):
+            found.append(urljoin(r.url, html.unescape(href.group(1))))
+    for cand in dict.fromkeys(found + [root + g for g in FEED_GUESSES]):
+        try:
+            fr = session.get(cand, headers=headers, timeout=25)
+            items = parse_feed(fr.content, cand) if fr.status_code < 400 else []
+        except Exception:
+            continue
+        if items:
+            return {'feed_url': cand, 'home_url': root, 'title': title, 'items': len(items)}
+    raise ValueError(f'no feed found at {url}')
+
+
+def has_sitemap(home_url, session):
+    """Does the site announce a sitemap (so the backfill can read it), or must it be paged through its feed or API?"""
+    try:
+        r = session.get(home_url.rstrip('/') + '/robots.txt', headers={'User-Agent': USER_AGENT}, timeout=25)
+        if r.status_code < 400 and re.search(r'(?im)^sitemap:', r.text):
+            return True
+        r = session.get(home_url.rstrip('/') + '/sitemap.xml', headers={'User-Agent': USER_AGENT}, timeout=25)
+        return r.status_code < 400 and (b'<urlset' in r.content[:2000] or b'<sitemapindex' in r.content[:2000])
+    except Exception:
+        return False
+
+
+def add_source(url, name=None, kind='criticism', members_only=False, roundup=False, sources_file=SOURCES_FILE, session=None, log=print):
+    """Add a site to writing_sources.json (and say what it found); the next sync puts it in the database."""
+    session = session or requests.Session()
+    if kind not in KINDS:
+        raise ValueError(f'kind must be one of {", ".join(KINDS)}')
+    if '://' not in url:
+        url = 'https://' + url
+    found = discover_feed(url, session)
+    existing = json.load(open(sources_file))
+    name = name or re.split(r'\s+[|–—-]\s+', found['title'] or '')[0].strip() or urlparse(found['home_url']).netloc.removeprefix('www.')
+    for s in existing:
+        if s['feed_url'] == found['feed_url'] or s['name'].lower() == name.lower():
+            raise ValueError(f"already listed as {s['name']!r} ({s['feed_url']})")
+    entry = {'name': name, 'home_url': found['home_url'], 'feed_url': found['feed_url'], 'kind': kind}
+    if members_only:
+        entry['members_only'] = True
+    if roundup:
+        entry['roundup'] = True
+    mapped = has_sitemap(found['home_url'], session)
+    if not mapped:
+        entry['backfill'] = 'feed'
+    existing.append(entry)
+    json.dump(existing, open(sources_file, 'w'), indent=1, ensure_ascii=False)
+    log(f"added {name!r} ({kind}): {found['feed_url']}, {found['items']} items in the feed; "
+        + ('has a sitemap, so the backfill can read its archive' if mapped else
+           'no sitemap found: the backfill will try its WordPress API or a paged feed'))
+    return entry
+
+
+def remove_source(name, sources_file=SOURCES_FILE):
+    """Take a source out of writing_sources.json (the next sync switches it off; what it gave stays stored). -> name or None"""
+    existing = json.load(open(sources_file))
+    keep = [s for s in existing if s['name'].lower() != name.lower()]
+    if len(keep) == len(existing):
+        return None
+    json.dump(keep, open(sources_file, 'w'), indent=1, ensure_ascii=False)
+    return next(s['name'] for s in existing if s['name'].lower() == name.lower())
 
 
 # ---- feeds
@@ -592,6 +681,24 @@ def cmd_sources(args):
 
 
 def cmd_toggle(args):
+    if args.state == 'add':
+        try:
+            entry = add_source(args.name, args.as_name, args.kind, args.members, args.roundup)
+        except (ValueError, requests.RequestException) as e:
+            print(f'not added: {e}')
+            return
+        conn = connect()
+        sync_sources(conn)
+        print(f"next: python writing.py run --source \"{entry['name']}\"   (fetch it now; the weekly run will pick it up anyway)")
+        return
+    if args.state == 'remove':
+        name = remove_source(args.name)
+        if name:
+            sync_sources(connect())
+            print(f'removed {name!r}: switched off, and what it gave stays stored but is no longer published (run: python writing.py publish)')
+        else:
+            print(f'no source named {args.name!r}')
+        return
     conn = connect()
     cur = conn.execute('update source set active=? where name=?', (1 if args.state == 'on' else 0, args.name))
     conn.commit()
@@ -779,7 +886,11 @@ Deciding:
   hide URL [--reason WHY]           keep one piece off the site (junk, not writing, a duplicate you'd rather not show)
   unhide URL                        bring it back
   duplicates                        pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically
-  source off|on NAME                stop or resume checking one source. To add or remove one, edit writing_sources.json
+  source add URL [--kind K] [--name N] [--members] [--roundup]
+                                    add a site: finds its feed, notes whether the backfill can read its sitemap, writes
+                                    writing_sources.json. Then: run --source NAME to fetch it now
+  source remove NAME                take one out of the file (switched off, not published; what it gave stays stored)
+  source off|on NAME                stop or resume checking one source without removing it
 
 Whatever changes birdnest.db (publish does), commit it and deploy. See the top of writing.py for how it all works."""
 
@@ -810,9 +921,13 @@ def main(argv=None):
     rp.set_defaults(fn=cmd_report)
     sub.add_parser('publish', help='copy accepted matches into birdnest.db').set_defaults(fn=cmd_publish)
     sub.add_parser('sources', help='every source and what it yields').set_defaults(fn=cmd_sources)
-    so = sub.add_parser('source', help='turn a source on or off')
-    so.add_argument('state', choices=['on', 'off'])
-    so.add_argument('name')
+    so = sub.add_parser('source', help='add, remove, turn on or off a source')
+    so.add_argument('state', choices=['add', 'remove', 'on', 'off'])
+    so.add_argument('name', help='its name; for add, the site or feed address')
+    so.add_argument('--name', dest='as_name', help='add: what to call it (default: the site\'s own name)')
+    so.add_argument('--kind', default='criticism', choices=KINDS, help='add: criticism (default), essay, interview or news (matched but not listed)')
+    so.add_argument('--members', action='store_true', help='add: mostly for paying members (we still only use the public feed)')
+    so.add_argument('--roundup', action='store_true', help='add: posts that cover many artists at once')
     so.set_defaults(fn=cmd_toggle)
     hd = sub.add_parser('hide', help='keep one piece off the site')
     hd.add_argument('url')
