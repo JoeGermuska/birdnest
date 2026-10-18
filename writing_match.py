@@ -89,6 +89,22 @@ COMMON_NAME_WORDS = {
     'quartet', 'trio', 'project', 'collective', 'society', 'machine', 'machines', 'system', 'habits', 'drama', 'electronic',
     'original', 'soundtrack', 'cast', 'various', 'artists', 'internet', 'weather', 'news', 'digital', 'online',
 }
+# 'Brad Mehldau Trio' does not claim 'Brad Mehldau' (the leader is the same musician): what follows the shorter name is an
+# ensemble word, or starts one ('and the Bad Seeds'). 'Gia Margaret' and 'Bonnie Prince Billy' do claim 'Margaret' and 'Prince'.
+ENSEMBLE_WORDS = {'trio', 'quartet', 'quintet', 'sextet', 'septet', 'octet', 'nonet', 'orchestra', 'band', 'ensemble', 'arkestra',
+                  'experience', 'group', 'collective', 'project', 'players', 'combo', 'choir', 'chorale', 'singers', 'allstars',
+                  'unit', 'tentet', 'quartette', 'sound', 'system', 'revue', 'revival'}
+BAND_STARTS = {'and', 'the', 'with', 'his', 'her', 'plus', 'featuring', 'feat', 'presents'}
+
+
+def band_of(short, long):
+    """Is `long` just `short` with a band attached ('brad mehldau' -> 'brad mehldau trio', 'nick cave and the bad seeds')?"""
+    if not long.startswith(short + ' '):
+        return False
+    rest = long[len(short) + 1:].split()
+    return rest[0] in BAND_STARTS or rest[-1] in ENSEMBLE_WORDS
+
+
 TOO_COMMON = {'and', 'the', 'of', 'a', 'an', 'in', 'on', 'to', 'for', 'with', 'by', 'at', 'various', 'artists'}
 
 
@@ -135,6 +151,23 @@ class Matcher:
         except Exception:  # a database without those tables (a test): the lowest id stands in
             pop = {}
         self.primary = {k: max(ids, key=lambda a: (pop.get(a, (0, 0)), -a)) for k, ids in self.artist_idx.items() if len(ids) > 1}
+        # two rows for one musician ('Shabaka', 'Shabaka Hutchings'): same MusicBrainz or Wikidata id. One doesn't rival the other.
+        parent = {}
+
+        def find(x):
+            while parent.setdefault(x, x) != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        try:
+            ids = conn.execute('select artist_id, mbid, wikidata from mb_artist where mbid is not null').fetchall()
+        except Exception:  # no wikidata column (a test database)
+            ids = [(a, m, None) for a, m in conn.execute('select artist_id, mbid from mb_artist where mbid is not null')]
+        for aid, mbid, wd in ids:
+            parent[find(aid)] = find(('mb', mbid))
+            if wd:
+                parent[find(aid)] = find(('wd', wd))
+        self.entity = {aid: find(aid) for aid, _, _ in ids}
         # exact pages
         self.sp_artist = {s: a for s, a in conn.execute("select spotify_id, artist_id from artist where spotify_id is not null")}
         self.mb_artist = {m: a for m, a in conn.execute("select mbid, artist_id from mb_artist where mbid is not null")}
@@ -148,6 +181,13 @@ class Matcher:
                 h = (urlparse(url).hostname or '').lower().removeprefix('www.')
                 if h and h not in NOT_ARTIST_HOSTS:
                     self.bandcamp[h] = aid
+
+    def _same_musician(self, a, b):
+        return self.entity.get(a, ('a', a)) == self.entity.get(b, ('b', b))
+
+    def _rivals(self, short_key, long_key):
+        """Could the artists named `long_key` crowd out those named `short_key`? Not when they're one musician."""
+        return not any(self._same_musician(a, b) for a in self.artist_idx[short_key] for b in self.artist_idx[long_key])
 
     def _distinctive(self, key):
         """A name of two or more words, written with capitals, that has a word outside the everyday ones."""
@@ -165,21 +205,23 @@ class Matcher:
         writes it as the artist does ('The Internet', not 'the internet'); a URL slug has no capitals, so those never do."""
         ambiguous = self.ambiguous_strict if strict else self.ambiguous
         toks = norm(text).split()
-        found, claimed = {}, set()  # the longest name wins its words: 'Prince' inside "Bonny 'Prince' Billy" is not Prince
-        for n in range(min(self.maxn, len(toks)), 0, -1):
+        found, claims = {}, []  # the longest name wins its words: 'Prince' inside "Bonnie 'Prince' Billy" is not Prince
+        for n in range(min(self.maxn, len(toks)), 0, -1):  # (unless the longer one is just this one's band: 'Brad Mehldau Trio')
             for i in range(len(toks) - n + 1):
-                span = range(i, i + n)
-                if claimed.intersection(span):
-                    continue
                 k = ' '.join(toks[i:i + n])
+                if k not in self.artist_idx:
+                    continue
+                over = [c for c in claims if c[0] < i + n and i < c[1]]
+                if over and not all(band_of(k, c[2]) or not self._rivals(k, c[2]) for c in over):
+                    continue
                 hit = False
-                for aid in self.artist_idx.get(k, ()):
+                for aid in self.artist_idx[k]:
                     if ambiguous[k] and not (written and self.names[aid] in text):
                         continue
                     found.setdefault(aid, k)
                     hit = True
                 if hit:
-                    claimed.update(span)
+                    claims.append((i, i + n, k))
         return found
 
     def _pair(self, text_key, aid, name_key):
@@ -248,8 +290,11 @@ class Matcher:
         # a name that sits inside a longer artist's name found in the same piece ('Margaret' in a piece naming 'Gia
         # Margaret') is that longer name's: later 'Margaret's mean her. Only an album, track or link brings it back.
         keep = PAIR_SIGNALS | {'link'}
+
+        def inside(ka, kb):  # ka's words sit in kb's, and kb isn't just ka with a band attached
+            return len(kb) > len(ka) and f' {ka} ' in f' {kb} ' and not band_of(ka, kb)
         for a, ka in key_of.items():
-            if a in sig and any(len(kb) > len(ka) and f' {ka} ' in f' {kb} ' for b, kb in key_of.items() if b != a and b in sig):
+            if a in sig and any(inside(ka, kb) and not self._same_musician(a, b) for b, kb in key_of.items() if b != a and b in sig):
                 for signal in [x for x in sig[a] if x not in keep]:
                     del sig[a][signal]
                 if not sig[a]:

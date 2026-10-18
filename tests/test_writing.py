@@ -502,8 +502,11 @@ def test_a_name_inside_a_longer_artists_name_is_the_longer_ones():
         create table track (track_id integer, name text); create table track_artist (track_id integer, artist_id integer);
         create table mb_artist (artist_id integer, mbid text); create table artist_link (artist_id integer, source text, url text);
         insert into artist values (1, 'Prince', null), (2, 'Bonnie Prince Billy', null), (3, 'Margaret', null),
-                                  (4, 'Gia Margaret', null), (5, 'Margaret Glaspy', null);
-        insert into album values (10, 'Mind Games'); insert into album_artist values (10, 3);""")
+                                  (4, 'Gia Margaret', null), (5, 'Margaret Glaspy', null), (6, 'Brad Mehldau', null),
+                                  (7, 'Brad Mehldau Trio', null), (8, 'Frank Sinatra', null), (9, 'Frank Sinatra Jr', null),
+                                  (11, 'Shabaka', null), (12, 'Shabaka Hutchings', null), (13, 'Nick Cave', null);
+        insert into album values (10, 'Mind Games'); insert into album_artist values (10, 3);
+        insert into mb_artist values (11, 'same-person'), (12, 'same-person'), (13, 'someone-else');""")
     m = Matcher(c, words=set())
     ids = lambda ms: {x['artist_id'] for x in ms}
     assert ids(m.match(title='Bonnie “Prince” Billy shares a new song')) == {2}            # within the one phrase
@@ -512,3 +515,7 @@ def test_a_name_inside_a_longer_artists_name_is_the_longer_ones():
     assert ids(m.match(title='Margaret Glaspy and Gia Margaret on tour')) == {4, 5}
     assert ids(m.match(title='Margaret: a new single')) == {3}
     assert ids(m.match(title='Gia Margaret', body='Margaret Mind Games')) == {3, 4}        # an album of hers brings her back
+    assert ids(m.match(title='Brad Mehldau Trio for London')) == {6, 7}                    # the leader and his trio are both there
+    assert ids(m.match(title='Frank Sinatra Jr. on tour')) == {9}                          # a different person
+    assert ids(m.match(title='Shabaka Hutchings announces a record')) == {11, 12}          # two rows, one musician: neither crowds out the other
+    assert ids(m.match(title='Shabaka', body='Shabaka Hutchings played')) == {11, 12}
