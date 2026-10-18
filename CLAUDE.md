@@ -15,9 +15,8 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 - Weekly, after each show: `python load_playlist.py` (the show, its artists, albums and tracks, a few MusicBrainz
   retries, and links people added through the to-do lists under the 🤓 in the banner). Then
   `python load_djs.py add "LINE" --commit` for the show's DJs.
-- Weekly too, after that: `python refresh_writing.py` (music writing from the feeds in `writing_sources.json`: re-match,
-  check the feeds that are due, one gentle slice of the archive backfill, publish into `birdnest.db`; no Spotify needed).
-  `writing.py` has the same pieces to run by hand, and keeps its crawl state in the local `writing_crawl.db`.
+- Weekly too, after that: `python refresh_writing.py` (the music writing index, below; no Spotify needed). Don't run it at
+  the same time as `load_playlist.py`: both write `birdnest.db`.
 - Every month or two: `python maintenance.py` (the slow Wikidata jobs). Then commit `birdnest.db` and deploy.
 
 ## Tests
@@ -27,10 +26,23 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
   (`tests/fake_spotify.js`: the Web API and Web Playback SDK; `tests/fake_spotify_embed.js`: the Embed iFrame API; both controllable from tests). Browser tests skip without
   Playwright/Chromium. Change the player's playback function? Add or adjust a test there first. No need to test if it's just layout of the player or tracks components.
 
+## Music writing (Reading)
+
+- An index of music writing from the feeds in `writing_sources.json`, matched to artists and albums: `writing.py` (run
+  `python writing.py help`), `writing_match.py` (matching), `writing_backfill.py` (gentle archive reading), `refresh_writing.py`
+  (the weekly script). Crawl state is in `writing_crawl.db`: local, gitignored, never deploy it. What's published goes into
+  `birdnest.db` (tables `writing`, `writing_source`, `writing_match`: titles, dates and links only) and shows at `/reading`,
+  `/reading/<slug>`, Rankings > Publications and "Further reading" on artist and album pages.
+- Be gentle with other people's servers: keep the backfill's defaults (2 s between requests per host, small budgets, stop on
+  429/503, respect robots.txt); a test pins them. No email in the User-Agent.
+- Design, rules and open items: `notes/reading.md`. Tests: `tests/test_writing.py`.
+
 ## Notes
 
-- `notes/genres.md`: open questions and an experiment idea for genre tagging.
-- `notes/plan.md`: the current plan for the design pass and new ways into the home page, with `notes/design-pass.md` and `notes/home-page-options.md` behind it.
+- `notes/plan.md`: the current plan (what's next, what's done, the weekly and monthly routine).
+- `notes/reading.md`: the music writing index: design, matching rules, routine, open items.
+- `notes/genres.md`: open questions and an experiment idea for genre tagging (backburner).
+- `notes/archive/`: finished notes (the design pass, the home page options), kept as history.
 
 ## Front end
 

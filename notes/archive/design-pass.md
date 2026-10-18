@@ -1,3 +1,5 @@
+> Archived 2026-10-18: every item in the checklist below was done (plan steps 1-5 in `notes/plan.md`). Kept as history.
+
 # Design pass: handoff notes (paused 2026-09-26)
 
 From a paused session (its branch has since been deleted; see `notes/plan.md` for the combined plan). No CSS or template changes were made then and no screenshots were taken. It was paused because another session is exploring new ways into the site beyond the reverse-chron tile wall, which overlaps with the home page and banner parts of this pass.

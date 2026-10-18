@@ -1,3 +1,5 @@
+> Archived 2026-10-18: options A and B were built (the home page), C became the /shows browse page, D was never wanted. Kept as history.
+
 # Home page: other ways into the archive (options, not yet built)
 
 Status: proposal only, 2026-09-26. Nothing implemented. See `notes/plan.md` for where this fits.
