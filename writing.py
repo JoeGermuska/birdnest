@@ -14,6 +14,9 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
     python writing.py source off|on NAME            stop (or resume) checking one
     python writing.py review                        matches a person should confirm or reject
 
+Routine use: load_playlist.py runs refresh() each week (after the new show's artists are in, before the caches are
+built) and maintenance.py runs a slice of backfill_sources() each time. The commands above are for doing either by hand.
+
 Each source is checked again after about half the typical gap between its posts (12 hours to 2 weeks), and a source
 that keeps failing backs off. Requests are one a second per host, conditional where the site allows.
 """
@@ -367,17 +370,21 @@ def report(conn, birds, since, shows=8, limit=40, out=print):
     out(f"\n== {sum(r['status'] == 'review' for r in rows)} more matches to review (python writing.py review)")
 
 
-def cmd_run(args):
-    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
+def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB):
+    """Check the sources that are due (or all, or one), match what's new, print the report, publish into birdnest.db.
+    rematch_first: match everything stored against the artists as they are now, for after a new show's artists arrive."""
+    conn, birds = connect(), sqlite3.connect(birds_path)
     sync_sources(conn)
     started = iso(now())
     matcher = Matcher(birds)
+    if rematch_first:
+        rematch(conn, matcher)
     q = 'select * from source where active=1'
     params = []
-    if args.source:
+    if source:
         q += ' and name=?'
-        params.append(args.source)
-    elif not args.all:
+        params.append(source)
+    elif not force:
         q += ' and (next_check is null or next_check <= ?)'
         params.append(started)
     sources = conn.execute(q + ' order by name', params).fetchall()
@@ -390,27 +397,36 @@ def cmd_run(args):
         print(f"  {src['name']}: {n} new")
     print(f'{total} new items')
     report(conn, birds, started)
-    pieces, matches = publish(conn)
-    print(f'\npublished {pieces} pieces / {matches} matches to {BIRDS_DB}')
+    pieces, matches = publish(conn, birds_path)
+    print(f'\npublished {pieces} pieces / {matches} matches to {birds_path}')
+
+
+def cmd_run(args):
+    refresh(args.source, args.all)
+
+
+def backfill_sources(source=None, sitemaps=15, pages=50, feed_requests=5, news=False, birds_path=BIRDS_DB):
+    """One gentle slice of the backfill (see writing_backfill.py), then the report and publish."""
+    import writing_backfill
+    conn, birds = connect(), sqlite3.connect(birds_path)
+    sync_sources(conn)
+    q, params = 'select * from source where active=1', []
+    if source:
+        q += ' and name=?'
+        params.append(source)
+    sources = conn.execute(q + ' order by name', params).fetchall()
+    if not news:  # news sources are matched from their feeds but never listed, so don't spend requests reaching back
+        sources = [s for s in sources if s['kind'] in PUBLISH_KINDS]
+    started = iso(now())
+    n = writing_backfill.backfill(conn, Matcher(birds), sources, sitemaps, pages, feed_requests)
+    print(f'{n} new items')
+    report(conn, birds, started)
+    pieces, matches = publish(conn, birds_path)
+    print(f'\npublished {pieces} pieces / {matches} matches to {birds_path}')
 
 
 def cmd_backfill(args):
-    import writing_backfill
-    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
-    sync_sources(conn)
-    q, params = 'select * from source where active=1', []
-    if args.source:
-        q += ' and name=?'
-        params.append(args.source)
-    sources = conn.execute(q + ' order by name', params).fetchall()
-    if not args.news:  # news sources are matched from their feeds but never listed, so don't spend requests reaching back
-        sources = [s for s in sources if s['kind'] in PUBLISH_KINDS]
-    started = iso(now())
-    n = writing_backfill.backfill(conn, Matcher(birds), sources, args.sitemaps, args.pages, args.feed_requests)
-    print(f'{n} new items')
-    report(conn, birds, started)
-    pieces, matches = publish(conn)
-    print(f'\\npublished {pieces} pieces / {matches} matches to {BIRDS_DB}')
+    backfill_sources(args.source, args.sitemaps, args.pages, args.feed_requests, args.news)
 
 
 def cmd_rematch(args):
