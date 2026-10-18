@@ -13,6 +13,7 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
     python writing.py sources                       sync writing_sources.json into the database and list it
     python writing.py source off|on NAME            stop (or resume) checking one
     python writing.py review [--artist NAME] [--list]   confirm or reject the borderline matches, one at a time
+    python writing.py hide URL | unhide URL | duplicates   keep a piece off the site; see the automatic duplicate handling
 
 Routine use: refresh_writing.py, weekly (refresh() then one slice of backfill_sources()). The commands above are for
 doing the pieces by hand.
@@ -29,13 +30,14 @@ import statistics
 import sys
 import time
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 
-from writing_match import Matcher
+from writing_match import Matcher, norm
 
 BIRDS_DB, CRAWL_DB, SOURCES_FILE = 'birdnest.db', 'writing_crawl.db', 'writing_sources.json'
 USER_AGENT = 'birdsconferring-writing-index/0.1 (+https://birdsconferring.com)'
@@ -53,6 +55,7 @@ create table if not exists item (
     item_id integer primary key, source_id integer references source(source_id), url text unique,
     title text, published text, author text, tags text, excerpt text, body_text text, links text, first_seen text);
 create table if not exists artist_veto (artist_id integer primary key, created_at text);
+create table if not exists item_hidden (url text primary key, reason text, created_at text);
 create table if not exists match (
     item_id integer references item(item_id), artist_id integer, album_id integer, score real, kind text,
     signals text, status text, created_at text, primary key (item_id, artist_id));
@@ -283,6 +286,48 @@ def rematch(conn, matcher):
     conn.commit()
 
 
+# ---- the same piece under two URLs
+
+def duplicates(conn):
+    """-> {item_id kept out: item_id kept in}. A site's CMS sometimes serves one piece at two URLs ('/blog/x' and
+    '/news/x', or '/reviews/x' and '/reviews/x/x'), each calling itself canonical. Same source, same last path segment
+    (a real slug: 8+ letters with a - or _), the same title and dates within a week is one piece; the shortest URL stays.
+    (A review and an interview can share a slug, so the title has to agree too.) Items a person has hidden are out of
+    the running first, so hiding one of a pair brings the other back."""
+    hidden = {r[0] for r in conn.execute('select i.item_id from item i join item_hidden h using (url)')}
+    groups = defaultdict(list)
+    for r in conn.execute('select item_id, source_id, url, title, published from item'):
+        tail = urlparse(r['url']).path.rstrip('/').rsplit('/', 1)[-1].lower()
+        if r['item_id'] not in hidden and len(tail) >= 8 and re.search(r'[-_]', tail):
+            groups[(r['source_id'], tail, norm(r['title']))].append(r)
+    out = {}
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda r: r['published'] or '')
+        clusters = []  # [first date, [rows]]: a piece that shares a slug but not a season is a different piece
+        for r in group:
+            d = datetime.fromisoformat(r['published'].replace('Z', '+00:00')) if r['published'] else None
+            if clusters and (d is None or clusters[-1][0] is None or abs((d - clusters[-1][0]).days) <= 7):
+                clusters[-1][1].append(r)
+                clusters[-1][0] = clusters[-1][0] or d
+            else:
+                clusters.append([d, [r]])
+        for _, rows in clusters:
+            if len(rows) > 1:
+                rows.sort(key=lambda r: (urlparse(r['url']).path.count('/'), len(r['url']), r['item_id']))
+                for r in rows[1:]:
+                    out[r['item_id']] = rows[0]['item_id']
+    return out
+
+
+def suppressed(conn):
+    """(item ids we don't show: hidden by hand or a duplicate, {duplicate: the one that stands for it})"""
+    dups = duplicates(conn)
+    hidden = {r[0] for r in conn.execute('select i.item_id from item i join item_hidden h using (url)')}
+    return hidden | set(dups), dups
+
+
 # ---- publishing
 
 PUBLISH_KINDS = ('criticism', 'essay', 'interview')  # news is kept and matched, but isn't what we're listing
@@ -310,10 +355,22 @@ def publish(conn, birds_path=BIRDS_DB):
     """Copy the accepted matches into birdnest.db (tables writing, writing_match), replacing what was there. Only
     pieces from sources we list (not news) and matches not rejected; just titles, dates and links, never text."""
     marks = ','.join('?' * len(PUBLISH_KINDS))
+    out_ids, stands_for = suppressed(conn)
     rows = conn.execute(
         f"select i.item_id, i.url, i.title, i.published, s.name source, s.kind source_kind, s.members_only, s.home_url, s.note, "
         f"m.artist_id, m.album_id, m.kind, m.score from match m join item i using (item_id) join source s using (source_id) "
         f"where m.status in ('auto','confirmed') and s.active=1 and s.kind in ({marks})", PUBLISH_KINDS).fetchall()
+    rows = [dict(r) for r in rows]
+    for r in rows:
+        if r['item_id'] in stands_for:  # a duplicate's matches go to the copy that's kept (hidden ones just drop)
+            r['item_id'] = stands_for[r['item_id']]
+    rows = [r for r in rows if r['item_id'] not in out_ids]
+    best = {}
+    for r in rows:  # the same artist on both copies counts once, at the better match
+        k = (r['item_id'], r['artist_id'])
+        if k not in best or (r['kind'] == 'about', r['score']) > (best[k]['kind'] == 'about', best[k]['score']):
+            best[k] = r
+    rows = list(best.values())
     birds = sqlite3.connect(birds_path)
     birds.executescript(PUBLISH_SCHEMA)
     seen, sources = set(), set()
@@ -412,6 +469,8 @@ def report(conn, birds, since, shows=8, limit=40, out=print):
         "select m.*, i.title, i.url, i.published, s.name as source, s.members_only, s.kind from match m "
         "join item i using (item_id) join source s using (source_id) where m.created_at >= ? and m.status in ('auto','review') "
         "order by m.score desc, i.published desc", (since,)).fetchall()
+    out_ids, _ = suppressed(conn)
+    rows = [r for r in rows if r['item_id'] not in out_ids]
 
     def show(r):
         lock = ' [members]' if r['members_only'] else ''
@@ -539,11 +598,49 @@ def cmd_toggle(args):
     print('ok' if cur.rowcount else f'no source named {args.name!r}')
 
 
+def cmd_hide(args):
+    """hide URL: keep a piece off the site (a duplicate, junk, not writing). unhide URL undoes it."""
+    conn = connect()
+    url = canonical(args.url)
+    item = conn.execute('select item_id, title from item where url=?', (url,)).fetchone()
+    if args.undo:
+        cur = conn.execute('delete from item_hidden where url=?', (url,))
+        conn.commit()
+        print('shown again; run: python writing.py publish' if cur.rowcount else 'that one was not hidden')
+        return
+    if not item:
+        tail = urlparse(url).path.rstrip('/').rsplit('/', 1)[-1]
+        near = conn.execute('select url from item where url like ? limit 5', (f'%{tail}%',)).fetchall() if tail else []
+        print(f'no stored piece at {url}' + ('; did you mean:\n  ' + '\n  '.join(r[0] for r in near) if near else ''))
+        return
+    conn.execute('insert or replace into item_hidden values (?,?,?)', (url, args.reason, iso(now())))
+    conn.commit()
+    print(f"hidden: {item['title']}\nrun: python writing.py publish")
+
+
+def cmd_duplicates(args):
+    conn = connect()
+    dups = duplicates(conn)
+    keep = {}
+    for loser, winner in dups.items():
+        keep.setdefault(winner, []).append(loser)
+    url = {r[0]: r[1] for r in conn.execute('select item_id, url from item where item_id in (%s)' % ','.join(
+        str(i) for i in list(dups) + list(dups.values()) or [0]))}
+    for winner, losers in sorted(keep.items(), key=lambda kv: url[kv[0]]):
+        print(f'kept  {url[winner]}')
+        for l in losers:
+            print(f'  dup {url[l]}')
+    print(f'\n{len(dups)} duplicates of {len(keep)} pieces left out of what is published. To bring one back or drop the other: '
+          'python writing.py hide URL')
+
+
 def cmd_review(args):
     conn, birds = connect(), sqlite3.connect(BIRDS_DB)
     names = {a: n for a, n in birds.execute('select artist_id, name from artist')}
     rows = conn.execute("select m.*, i.title, i.url, s.name source from match m join item i using(item_id) "
                         "join source s using(source_id) where m.status='review'").fetchall()
+    out_ids, _ = suppressed(conn)
+    rows = [r for r in rows if r['item_id'] not in out_ids]
     if args.artist:
         rows = [r for r in rows if args.artist.lower() in names.get(r['artist_id'], '').lower()]
     # by artist (the biggest piles first, where a veto helps most), best-scored first within each
@@ -584,6 +681,9 @@ Looking:
 Deciding:
   review [--artist NAME] [--list]   go through the borderline matches: y it's about them, n it isn't, x never match this artist
                                     on the name alone, s skip, o open the piece, q quit (--list just prints them)
+  hide URL [--reason WHY]           keep one piece off the site (junk, not writing, a duplicate you'd rather not show)
+  unhide URL                        bring it back
+  duplicates                        pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically
   source off|on NAME                stop or resume checking one source. To add or remove one, edit writing_sources.json
 
 Whatever changes birdnest.db (publish does), commit it and deploy. See the top of writing.py for how it all works."""
@@ -619,6 +719,14 @@ def main(argv=None):
     so.add_argument('state', choices=['on', 'off'])
     so.add_argument('name')
     so.set_defaults(fn=cmd_toggle)
+    hd = sub.add_parser('hide', help='keep one piece off the site')
+    hd.add_argument('url')
+    hd.add_argument('--reason', default='')
+    hd.set_defaults(fn=cmd_hide, undo=False)
+    uh = sub.add_parser('unhide', help='bring a hidden piece back')
+    uh.add_argument('url')
+    uh.set_defaults(fn=cmd_hide, undo=True, reason='')
+    sub.add_parser('duplicates', help='pieces served at two URLs of one site').set_defaults(fn=cmd_duplicates)
     rv = sub.add_parser('review', help='confirm or reject borderline matches')
     rv.add_argument('--limit', type=int, default=0, help='only this many (default: all)')
     rv.add_argument('--artist', help='only matches for artists whose name contains this')

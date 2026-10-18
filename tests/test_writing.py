@@ -270,3 +270,55 @@ def test_writing_help_lists_every_command(capsys):
         assert cmd in out
     writing.main([])  # no command is the same help
     assert 'Weekly' in capsys.readouterr().out
+
+
+def _items(conn, rows):
+    """rows: (url, published, source[, title]); the title defaults to the URL's slug, as a CMS's twin pages share one."""
+    conn.execute("insert or ignore into source (source_id, name, feed_url, kind) values (1, 's', 'u', 'criticism'), (2, 't', 'u', 'criticism')")
+    for i, row in enumerate(rows, 1):
+        url, published, source = row[:3]
+        conn.execute('insert into item (item_id, source_id, url, title, published) values (?,?,?,?,?)',
+                     (i, source, url, row[3] if len(row) > 3 else url.rstrip('/').rsplit('/', 1)[-1].replace('-', ' '), published))
+
+
+def test_one_piece_at_two_urls_is_kept_once(tmp_path):
+    conn = writing.connect(str(tmp_path / 'c.db'))
+    _items(conn, [
+        ('http://www.utr.example/news/fugazi_reflecting_on_the_argument', '2026-10-17T03:55:00Z', 1),   # 1
+        ('http://www.utr.example/blog/fugazi_reflecting_on_the_argument', '2026-10-17T03:55:00Z', 1),   # 2: the twin
+        ('https://lq.example/reviews/yeule-softscars/yeule-softscars', '2022-05-01T00:00:00Z', 1),      # 3: nested copy
+        ('https://lq.example/reviews/yeule-softscars', '2022-05-02T00:00:00Z', 1),                      # 4: the shorter URL stays
+        ('https://x.example/five-albums-weekly/five-albums-weekly', '2026-01-01T00:00:00Z', 1),         # 5
+        ('https://x.example/five-albums-weekly', '2026-03-01T00:00:00Z', 1),                            # 6: same slug, months later: different
+        ('https://y.example/news/fugazi_reflecting_on_the_argument', '2026-10-17T03:55:00Z', 2),        # 7: another site
+        ('https://x.example/about/team', None, 1), ('https://x.example/team/team', None, 1),            # 8, 9: too short to be a slug
+        ('https://p.example/reviews/angel-olsen-big-time', '2022-05-30T00:00:00Z', 1, 'Angel Olsen: Big Time'),        # 10
+        ('https://p.example/features/angel-olsen-big-time', '2022-05-30T00:00:00Z', 1, 'Angel Olsen on Big Time'),     # 11: a review and an interview
+    ])
+    assert writing.duplicates(conn) == {2: 1, 3: 4}
+
+
+def test_hiding_one_of_a_pair_brings_back_the_other(tmp_path):
+    conn = writing.connect(str(tmp_path / 'c.db'))
+    _items(conn, [('https://a.example/news/the_same_piece_here', '2026-10-01T00:00:00Z', 1),
+                  ('https://a.example/blog/the_same_piece_here', '2026-10-01T00:00:00Z', 1)])
+    assert writing.duplicates(conn) == {2: 1}
+    conn.execute("insert into item_hidden values ('https://a.example/news/the_same_piece_here', 'x', 't')")
+    assert writing.duplicates(conn) == {}
+    assert writing.suppressed(conn)[0] == {1}
+
+
+def test_publish_leaves_out_duplicates_and_hidden_pieces(tmp_path):
+    conn = writing.connect(str(tmp_path / 'c.db'))
+    _items(conn, [('https://a.example/news/the_same_piece_here', '2026-10-01T00:00:00Z', 1),
+                  ('https://a.example/blog/the_same_piece_here', '2026-10-01T00:00:00Z', 1),
+                  ('https://a.example/news/something_different_entirely', '2026-10-02T00:00:00Z', 1),
+                  ('https://a.example/news/not_really_writing_at_all', '2026-10-03T00:00:00Z', 1)])
+    conn.execute("insert into item_hidden values ('https://a.example/news/not_really_writing_at_all', '', 't')")
+    for item, artist in [(1, 10), (2, 10), (2, 11), (3, 12), (4, 13)]:  # artist 11 is only matched on the twin
+        conn.execute("insert into match values (?,?,?,?,?,?,?,?)", (item, artist, None, 0.9, 'about', 'title', 'auto', 't'))
+    out = tmp_path / 'b.db'
+    pieces, matches = writing.publish(conn, str(out))
+    b = sqlite3.connect(out)
+    assert sorted(r[0] for r in b.execute('select writing_id from writing')) == [1, 3]
+    assert sorted(b.execute('select writing_id, artist_id from writing_match').fetchall()) == [(1, 10), (1, 11), (3, 12)]
