@@ -468,3 +468,28 @@ def test_same_named_artists_share_a_name_but_not_a_match():
     assert [x['artist_id'] for x in both] == [2]
     assert [x['artist_id'] for x in m.match(title='Sweet: Tiny Record Number Nine')] == [1]   # their own album names them
     assert {x['artist_id'] for x in m.match(title='Sweet: Desolation Boulevard')} == {2}
+
+
+def test_artists_are_described_for_telling_them_apart(tmp_path):
+    b = sqlite3.connect(':memory:')
+    b.executescript("""create table artist (artist_id integer, name text);
+        create table artist_description (artist_id integer, description text);
+        create table mb_artist (artist_id integer, mbid text, type text, country text, begin_date text);
+        create table track_artist (track_id integer, artist_id integer); create table playlist_track (playlist_id integer, track_id integer);
+        insert into artist values (1, 'Sweet'), (2, 'Sweet'), (3, 'Nobody');
+        insert into artist_description values (1, 'British glam rock band');
+        insert into mb_artist values (2, 'x', 'Group', 'US', '2015-03-01');
+        insert into track_artist values (1, 1), (2, 2), (3, 2); insert into playlist_track values (10, 1), (11, 1), (11, 2), (12, 3);""")
+    got = writing.describe_artists(b, [1, 2, 3])
+    assert got == {1: 'British glam rock band · 2 shows', 2: 'Group, US, 2015 · 2 shows', 3: ''}  # 3 has no tracks at all
+    lines = []
+    conn = writing.connect(str(tmp_path / 'c.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 's', 'u', 'criticism')")
+    conn.execute("insert into item (item_id, source_id, url, title) values (1, 1, 'https://ex.com/1', 'a piece')")
+    conn.execute("insert into match values (1, 1, null, 0.4, 'about', 'title', 'review', 't')")
+    row = conn.execute("select m.*, i.title, i.url, 's' source from match m join item i using (item_id)").fetchall()
+    writing.review_loop(conn, row, {1: 'Sweet (id 1)'}, ask=lambda p: 's', out=lines.append, blurbs=got)
+    assert 'Sweet (id 1)' in lines[0] and 'British glam rock band · 2 shows' in lines[0]
+    asked = []
+    assert writing.veto(conn, b, 'sweet', out=asked.append) == (0, False)  # two artists called that: it says which is which
+    assert 'which one? (give the id)' in asked[0] and 'Sweet (id 1): British glam rock band' in asked[0] and 'Sweet (id 2): Group, US, 2015' in asked[0]

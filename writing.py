@@ -502,7 +502,7 @@ def veto_artist(conn, artist_id):
     conn.commit()
 
 
-def review_loop(conn, rows, names, ask=input, out=print, open_url=None):
+def review_loop(conn, rows, names, ask=input, out=print, open_url=None, blurbs=None):
     """Walk through borderline matches. y = it's about them (published), n = it isn't, x = never match this artist on
     the name alone, s = skip, o = open the piece, q = quit. -> (confirmed, rejected, vetoed) counts."""
     done = {'y': 0, 'n': 0, 'x': 0}
@@ -513,8 +513,10 @@ def review_loop(conn, rows, names, ask=input, out=print, open_url=None):
     for i, r in enumerate(rows, 1):
         if r['artist_id'] in vetoed:
             continue
-        out(f"\n[{i}/{len(rows)}] {names.get(r['artist_id'], '?')}  ({pending[r['artist_id']]} pending for this artist)\n"
-            f"  {r['title']}\n  {r['source']} · {r['signals']} · {r['score']:.2f}\n  {r['url']}")
+        who = (blurbs or {}).get(r['artist_id'])
+        out(f"\n[{i}/{len(rows)}] {names.get(r['artist_id'], '?')}  ({pending[r['artist_id']]} pending for this artist)"
+            + (f"\n  {who}" if who else '')
+            + f"\n  {r['title']}\n  {r['source']} · {r['signals']} · {r['score']:.2f}\n  {r['url']}")
         while True:
             try:
                 key = ask('  y it is about them / n no / x never on the name alone / s skip / o open / q quit > ').strip().lower()[:1]
@@ -705,6 +707,30 @@ def cmd_toggle(args):
     print('ok' if cur.rowcount else f'no source named {args.name!r}')
 
 
+def describe_artists(birds, ids):
+    """{artist id: 'British glam rock band · 12 shows'}: Wikidata's short description (else what MusicBrainz knows:
+    type, country, first year), then how many shows they've been at, for telling artists apart."""
+    ids = list(ids)
+    out = {a: [] for a in ids}
+    if not ids:
+        return {}
+    marks = ','.join('?' * len(ids))
+    def rows(sql):
+        try:
+            return birds.execute(sql % marks, ids).fetchall()
+        except sqlite3.OperationalError:  # a database without that table
+            return []
+    for a, d in rows('select artist_id, description from artist_description where description is not null and artist_id in (%s)'):
+        out[a].append(d[:80])
+    for a, t, country, begin in rows('select artist_id, type, country, begin_date from mb_artist where mbid is not null and artist_id in (%s)'):
+        if not out[a]:
+            out[a].append(', '.join(x for x in (t, country, (begin or '')[:4]) if x))
+    for a, n in rows('select ta.artist_id, count(distinct pt.playlist_id) from track_artist ta join playlist_track pt using (track_id) '
+                     'where ta.artist_id in (%s) group by ta.artist_id'):
+        out[a].append(f"{n} show{'s' if n != 1 else ''}")
+    return {a: ' · '.join(x for x in parts if x) for a, parts in out.items()}
+
+
 def pick_artist(birds, name):
     """The artists named NAME: an exact match (any case) if there is one, otherwise the ones whose name contains it.
     A number is an artist id, for telling same-named artists apart."""
@@ -721,7 +747,9 @@ def veto(conn, birds, name, drop_all=False, dry_run=False, force=False, interact
     the rest and veto the artist, q stop). Otherwise it lists them and asks, unless force. -> (matches dropped, changed?)"""
     found = pick_artist(birds, name)
     if len(found) != 1:
-        out('no artist called that' if not found else 'which one?\n  ' + '\n  '.join(f'{n} (id {a})' for a, n in found[:15]))
+        about = describe_artists(birds, [a for a, _ in found[:15]])
+        out('no artist called that' if not found else 'which one? (give the id)\n  ' + '\n  '.join(
+            f"{n} (id {a}): {about.get(a) or 'nothing known'}" for a, n in found[:15]))
         return 0, False
     aid, artist = found[0]
     pieces = conn.execute("select m.item_id, i.title, i.url, s.name source, m.signals, m.status from match m "
@@ -729,7 +757,8 @@ def veto(conn, birds, name, drop_all=False, dry_run=False, force=False, interact
                           "where m.artist_id=? and m.status in ('auto','review','confirmed') order by i.published desc", (aid,)).fetchall()
     held = lambda p: bool(CORROBORATED & set(p['signals'].split(',')))  # an album or a link behind it: a plain veto keeps it
     would_go = [p for p in pieces if drop_all or not held(p)]
-    out(f'{artist}: {len(pieces)} matches; {len(would_go)} would be dropped' +
+    about = describe_artists(birds, [aid]).get(aid)
+    out(f'{artist}' + (f' ({about})' if about else '') + f': {len(pieces)} matches; {len(would_go)} would be dropped' +
         ('' if drop_all or len(would_go) == len(pieces) else f", {len(pieces) - len(would_go)} kept (an album or link behind them; --all drops those too)"))
     if not pieces:
         return 0, False
@@ -787,7 +816,9 @@ def cmd_veto(args):
     if args.undo:
         found = pick_artist(birds, args.name)
         if len(found) != 1:
-            print('no artist called that' if not found else 'which one?\n  ' + '\n  '.join(f'{n} (id {a})' for a, n in found[:15]))
+            about = describe_artists(birds, [a for a, _ in found[:15]])
+            print('no artist called that' if not found else 'which one? (give the id)\n  ' + '\n  '.join(
+                f"{n} (id {a}): {about.get(a) or 'nothing known'}" for a, n in found[:15]))
             return
         conn.execute('delete from artist_veto where artist_id=?', (found[0][0],))
         conn.commit()
@@ -860,7 +891,8 @@ def cmd_review(args):
             print(f"{r['score']:.2f} {names.get(r['artist_id'], '?')}: {r['title'][:80]}  [{r['source']}; {r['signals']}]\n     {r['url']}")
         return
     import webbrowser
-    y, n, x = review_loop(conn, rows, names, open_url=webbrowser.open)
+    y, n, x = review_loop(conn, rows, names, open_url=webbrowser.open,
+                          blurbs=describe_artists(birds, {r['artist_id'] for r in rows}))
     print(f'\nconfirmed {y}, rejected {n}, never-on-the-name {x}')
     if y:
         pieces, matches = publish(conn)
