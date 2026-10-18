@@ -237,3 +237,12 @@ def test_capitalized_multiword_names_with_an_unusual_word_are_not_ambiguous():
     assert best(m.match(title='Real Estate Is Booming'), 2)['status'] == 'review'  # every word is an everyday one
     assert best(m.match(title='A Musical Journey'), 3)['status'] == 'review'      # a single word stays ambiguous
     assert best(m.match(title='Notes', body='We heard Uncle Tupelo again.'), 1) is None  # the body still needs more
+
+
+def test_a_source_gets_only_its_time_budget(monkeypatch):
+    import writing_backfill as wb
+    fetched = []
+    monkeypatch.setattr(wb, 'fetch_page', lambda url, session, name: fetched.append(url) or {})
+    assert wb.fetch_candidates({'name': 's'}, ['https://ex.com/a', 'https://ex.com/b'], lambda *a: None, seconds=0) == {}
+    assert fetched == []
+    assert len(wb.fetch_candidates({'name': 's'}, ['https://ex.com/a', 'https://ex.com/b'], lambda *a: None, seconds=60)) == 2

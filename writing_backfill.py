@@ -20,7 +20,7 @@ import re
 import threading
 import time
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from urllib import robotparser
 from urllib.parse import urljoin, urlparse
@@ -43,6 +43,7 @@ SKIP_PATH = re.compile(r'/(tags?|categor(?:y|ies)|authors?|topics?|labels?|page|
 MUSIC_LINK = re.compile(r'bandcamp\.com|spotify\.com|musicbrainz\.org|discogs\.com', re.I)
 MAX_SITEMAP_BYTES, MAX_PAGE_BYTES = 40_000_000, 2_000_000
 HOST_DELAY, MAX_ERRORS = 2.0, 3  # seconds between requests to one host; failures before leaving a source for the run
+SOURCE_SECONDS = 300  # most time one source gets in each phase of a run, so a site that asks for a long Crawl-delay gets a small slice
 _lock, _robots, _last, _delay = threading.Lock(), {}, {}, {}
 
 
@@ -121,11 +122,20 @@ def read_sitemap(url, session):
     return out
 
 
-def scan_source(src, matcher, done, max_sitemaps, known, log):
+def note_delay(src, url, log, said):
+    d = _delay.get(urlparse(url).netloc)
+    if d and not said:
+        log(f"  {src['name']}: robots.txt asks for {d:.0f}s between requests; it will get fewer pages this run")
+        return True
+    return said
+
+
+def scan_source(src, matcher, done, max_sitemaps, known, log, seconds=SOURCE_SECONDS):
     """Phase A, in a thread: walk the sitemaps not yet read, match slugs, return (sitemaps read, candidates)."""
     session = requests.Session()
+    deadline, said = time.monotonic() + seconds, False
     queue, seen, read, cands, errors = list(sitemap_roots(src, session)), set(), [], {}, 0
-    while queue and len(read) < max_sitemaps and errors < MAX_ERRORS:
+    while queue and len(read) < max_sitemaps and errors < MAX_ERRORS and time.monotonic() < deadline:
         sm = queue.pop(0)
         if sm in done or sm in seen:
             continue
@@ -134,6 +144,7 @@ def scan_source(src, matcher, done, max_sitemaps, known, log):
             if not allowed(sm, session):
                 log(f"  {src['name']}: robots.txt disallows {sm}")
                 continue
+            said = note_delay(src, sm, log, said)
             entries = read_sitemap(sm, session)
         except Throttled as e:
             log(f"  ! {src['name']}: {e}; leaving it for now")
@@ -231,12 +242,15 @@ def slug_title(url):
     return re.sub(r'[-_]+', ' ', urlparse(url).path.rstrip('/').rsplit('/', 1)[-1]).strip()
 
 
-def fetch_candidates(src, urls, log):
-    """Phase B, in a thread: fetch these pages. -> {url: page dict or None}"""
+def fetch_candidates(src, urls, log, seconds=SOURCE_SECONDS):
+    """Phase B, in a thread: fetch these pages, as many as the time budget allows. -> {url: page dict or None}"""
     session = requests.Session()
-    out, errors = {}, 0
+    out, errors, deadline, said = {}, 0, time.monotonic() + seconds, False
     for url in urls:
+        if time.monotonic() > deadline:
+            break
         try:
+            said = note_delay(src, url, log, said)
             out[url] = fetch_page(url, session, src['name'])
         except Throttled as e:
             log(f"  ! {src['name']}: {e}; stopping here for this run")
@@ -328,7 +342,7 @@ def store_item(conn, matcher, source_id, it, stamp):
     return True
 
 
-def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_requests=5, workers=4, log=print):
+def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_requests=5, workers=4, seconds=SOURCE_SECONDS, log=print):
     conn.executescript(SCHEMA)
     started = iso(now())
     by_feed = [s for s in sources if (s['backfill'] or 'sitemap') == 'feed']
@@ -343,8 +357,10 @@ def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_request
         for s in by_feed:
             if s['source_id'] not in futs:
                 log(f"  {s['name']}: archive already read")
-                continue
-            method, next_page, done, items = futs[s['source_id']].result()
+        by_id = {s['source_id']: s for s in by_feed}
+        for fut in as_completed(list(futs.values())):
+            s = by_id[next(i for i, f in futs.items() if f is fut)]
+            method, next_page, done, items = fut.result()
             added = sum(store_item(conn, matcher, s['source_id'], it, started) for it in items)
             conn.execute('insert or replace into backfill_feed values (?,?,?,?,?)', (s['source_id'], method, next_page, int(done), started))
             conn.commit()
@@ -356,9 +372,11 @@ def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_request
     jobs = {s['source_id']: {r[0] for r in conn.execute('select sitemap_url from backfill_sitemap where source_id=?', (s['source_id'],))}
             for s in sources}
     with ThreadPoolExecutor(workers) as ex:
-        futs = {s['source_id']: ex.submit(scan_source, s, matcher, jobs[s['source_id']], max_sitemaps, known, log) for s in sources}
-        for s in sources:
-            read, cands = futs[s['source_id']].result()
+        futs = {s['source_id']: ex.submit(scan_source, s, matcher, jobs[s['source_id']], max_sitemaps, known, log, seconds) for s in sources}
+        by_id = {s['source_id']: s for s in sources}
+        for fut in as_completed(list(futs.values())):
+            s = by_id[next(i for i, f in futs.items() if f is fut)]
+            read, cands = fut.result()
             for sm, n in read:
                 conn.execute('insert or replace into backfill_sitemap values (?,?,?,?)', (s['source_id'], sm, started, n))
             for url, (lastmod, score) in cands.items():
@@ -372,11 +390,11 @@ def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_request
         (s['source_id'], max_pages))] for s in sources}
     stamp = iso(now())
     with ThreadPoolExecutor(workers) as ex:
-        futs = {s['source_id']: ex.submit(fetch_candidates, s, todo[s['source_id']], log) for s in sources if todo[s['source_id']]}
-        for s in sources:
-            if s['source_id'] not in futs:
-                continue
-            pages = futs[s['source_id']].result()
+        futs = {s['source_id']: ex.submit(fetch_candidates, s, todo[s['source_id']], log, seconds) for s in sources if todo[s['source_id']]}
+        by_id = {s['source_id']: s for s in sources}
+        for fut in as_completed(list(futs.values())):
+            s = by_id[next(i for i, f in futs.items() if f is fut)]
+            pages = fut.result()
             lastmods = dict(conn.execute('select url, lastmod from backfill_candidate where source_id=?', (s['source_id'],)).fetchall())
             added = 0
             for url, page in pages.items():

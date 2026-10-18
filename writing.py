@@ -466,7 +466,7 @@ def cmd_run(args):
     refresh(args.source, args.all)
 
 
-def backfill_sources(source=None, sitemaps=15, pages=50, feed_requests=5, news=False, birds_path=BIRDS_DB):
+def backfill_sources(source=None, sitemaps=15, pages=50, feed_requests=5, news=False, minutes=5, birds_path=BIRDS_DB):
     """One gentle slice of the backfill (see writing_backfill.py), then the report and publish."""
     import writing_backfill
     conn, birds = connect(), sqlite3.connect(birds_path)
@@ -479,7 +479,7 @@ def backfill_sources(source=None, sitemaps=15, pages=50, feed_requests=5, news=F
     if not news:  # news sources are matched from their feeds but never listed, so don't spend requests reaching back
         sources = [s for s in sources if s['kind'] in PUBLISH_KINDS]
     started = iso(now())
-    n = writing_backfill.backfill(conn, Matcher(birds), sources, sitemaps, pages, feed_requests)
+    n = writing_backfill.backfill(conn, Matcher(birds), sources, sitemaps, pages, feed_requests, seconds=minutes * 60)
     print(f'{n} new items')
     report(conn, birds, started)
     pieces, matches = publish(conn, birds_path)
@@ -487,7 +487,7 @@ def backfill_sources(source=None, sitemaps=15, pages=50, feed_requests=5, news=F
 
 
 def cmd_backfill(args):
-    backfill_sources(args.source, args.sitemaps, args.pages, args.feed_requests, args.news)
+    backfill_sources(args.source, args.sitemaps, args.pages, args.feed_requests, args.news, args.minutes)
 
 
 def cmd_rematch(args):
@@ -577,6 +577,7 @@ def main(argv=None):
     bf.add_argument('--sitemaps', type=int, default=15, help='most sitemap files to read per source per run')
     bf.add_argument('--pages', type=int, default=50, help='most candidate pages to fetch per source per run')
     bf.add_argument('--feed-requests', type=int, default=5, help='most requests per source per run for sources paged through their feed or API')
+    bf.add_argument('--minutes', type=float, default=5, help='most time each source gets in each phase (a slow Crawl-delay means fewer pages)')
     bf.add_argument('--news', action='store_true', help='include news sources too')
     bf.set_defaults(fn=cmd_backfill)
     sub.add_parser('rematch').set_defaults(fn=cmd_rematch)
