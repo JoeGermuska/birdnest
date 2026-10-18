@@ -266,5 +266,17 @@
   "home_url": "https://chicagoreader.com",
   "feed_url": "https://chicagoreader.com/feed/",
   "kind": "criticism"
+ },
+ {
+  "name": "OffBeat Magazine",
+  "home_url": "https://www.offbeat.com",
+  "feed_url": "https://www.offbeat.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "The Austin Chronicle",
+  "home_url": "https://www.austinchronicle.com",
+  "feed_url": "https://www.austinchronicle.com/feed/",
+  "kind": "criticism"
  }
 ]

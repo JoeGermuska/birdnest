@@ -165,14 +165,21 @@ class Matcher:
         writes it as the artist does ('The Internet', not 'the internet'); a URL slug has no capitals, so those never do."""
         ambiguous = self.ambiguous_strict if strict else self.ambiguous
         toks = norm(text).split()
-        found = {}
+        found, claimed = {}, set()  # the longest name wins its words: 'Prince' inside "Bonny 'Prince' Billy" is not Prince
         for n in range(min(self.maxn, len(toks)), 0, -1):
             for i in range(len(toks) - n + 1):
+                span = range(i, i + n)
+                if claimed.intersection(span):
+                    continue
                 k = ' '.join(toks[i:i + n])
+                hit = False
                 for aid in self.artist_idx.get(k, ()):
                     if ambiguous[k] and not (written and self.names[aid] in text):
                         continue
                     found.setdefault(aid, k)
+                    hit = True
+                if hit:
+                    claimed.update(span)
         return found
 
     def _pair(self, text_key, aid, name_key):
@@ -206,10 +213,12 @@ class Matcher:
         sig = defaultdict(dict)    # artist id -> {signal: score}
         album = {}
         namesakes = defaultdict(set)  # a shared name -> the artists with it that this text matched
+        key_of = {}                   # artist id -> the name it matched under
 
         def add(aid, name_key, signal, pair=None, strict=False):
             if aid != self.primary.get(name_key, aid) and signal not in PAIR_SIGNALS:
                 return  # a namesake: the name alone belongs to the better-known artist
+            key_of[aid] = name_key
             if len(self.artist_idx.get(name_key, ())) > 1:
                 namesakes[name_key].add(aid)
             s = SCORES[(signal, (self.ambiguous_strict if strict else self.ambiguous).get(name_key, False))]
@@ -236,6 +245,15 @@ class Matcher:
                 add(aid, name_key, 'body_pair' if pair else 'body_long' if long_name else 'body', pair, strict=True)
         for aid in self._links(links):
             sig[aid]['link'] = SCORES[('link', False)]
+        # a name that sits inside a longer artist's name found in the same piece ('Margaret' in a piece naming 'Gia
+        # Margaret') is that longer name's: later 'Margaret's mean her. Only an album, track or link brings it back.
+        keep = PAIR_SIGNALS | {'link'}
+        for a, ka in key_of.items():
+            if a in sig and any(len(kb) > len(ka) and f' {ka} ' in f' {kb} ' for b, kb in key_of.items() if b != a and b in sig):
+                for signal in [x for x in sig[a] if x not in keep]:
+                    del sig[a][signal]
+                if not sig[a]:
+                    del sig[a]
         # when one namesake's album or track is named, the text is about that one, not the others
         for aids in namesakes.values():
             named = {a for a in aids if sig[a].keys() & PAIR_SIGNALS}

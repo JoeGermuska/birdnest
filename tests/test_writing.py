@@ -493,3 +493,22 @@ def test_artists_are_described_for_telling_them_apart(tmp_path):
     asked = []
     assert writing.veto(conn, b, 'sweet', out=asked.append) == (0, False)  # two artists called that: it says which is which
     assert 'which one? (give the id)' in asked[0] and 'Sweet (id 1): British glam rock band' in asked[0] and 'Sweet (id 2): Group, US, 2015' in asked[0]
+
+
+def test_a_name_inside_a_longer_artists_name_is_the_longer_ones():
+    c = sqlite3.connect(':memory:')
+    c.executescript("""create table artist (artist_id integer, name text, spotify_id text);
+        create table album (album_id integer, name text); create table album_artist (album_id integer, artist_id integer);
+        create table track (track_id integer, name text); create table track_artist (track_id integer, artist_id integer);
+        create table mb_artist (artist_id integer, mbid text); create table artist_link (artist_id integer, source text, url text);
+        insert into artist values (1, 'Prince', null), (2, 'Bonnie Prince Billy', null), (3, 'Margaret', null),
+                                  (4, 'Gia Margaret', null), (5, 'Margaret Glaspy', null);
+        insert into album values (10, 'Mind Games'); insert into album_artist values (10, 3);""")
+    m = Matcher(c, words=set())
+    ids = lambda ms: {x['artist_id'] for x in ms}
+    assert ids(m.match(title='Bonnie “Prince” Billy shares a new song')) == {2}            # within the one phrase
+    assert ids(m.match(title='Prince remembered')) == {1}
+    assert ids(m.match(title='Gia Margaret announces a tour', body='Margaret recorded it at home.')) == {4}  # later, lone 'Margaret'
+    assert ids(m.match(title='Margaret Glaspy and Gia Margaret on tour')) == {4, 5}
+    assert ids(m.match(title='Margaret: a new single')) == {3}
+    assert ids(m.match(title='Gia Margaret', body='Margaret Mind Games')) == {3, 4}        # an album of hers brings her back
