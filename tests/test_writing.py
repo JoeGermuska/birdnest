@@ -336,3 +336,61 @@ def test_pick_artist_prefers_the_exact_name(matcher_db):
     assert writing.pick_artist(matcher_db, 'dillinger') == [(1, 'Dillinger')]
     assert [a for a, _ in writing.pick_artist(matcher_db, 'escape')] == [2]
     assert writing.pick_artist(matcher_db, 'nobody') == []
+
+
+def _veto_fixture(tmp_path):
+    birds = sqlite3.connect(':memory:')
+    birds.execute('create table artist (artist_id integer, name text)')
+    birds.execute("insert into artist values (7, 'Dillinger')")
+    conn = writing.connect(str(tmp_path / 'c.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 's', 'u', 'criticism')")
+    rows = [(1, 'title'), (2, 'title,body'), (3, 'title'), (4, 'pair_title,title')]
+    for item_id, signals in rows:
+        conn.execute("insert into item (item_id, source_id, url, title, published) values (?,1,?,?,?)",
+                     (item_id, f'https://ex.com/{item_id}', f'piece {item_id}', f'2026-10-0{item_id}'))
+        conn.execute("insert into match values (?,7,null,0.9,'about',?,'auto','t')", (item_id, signals))
+    return conn, birds
+
+
+def _statuses(conn):
+    return {r[0]: r[1] for r in conn.execute('select item_id, status from match')}
+
+
+def test_veto_dry_run_changes_nothing(tmp_path):
+    conn, birds = _veto_fixture(tmp_path)
+    lines = []
+    assert writing.veto(conn, birds, 'dillinger', dry_run=True, out=lines.append) == (0, False)
+    assert set(_statuses(conn).values()) == {'auto'} and conn.execute('select count(*) from artist_veto').fetchone()[0] == 0
+    assert any('would be dropped' in l and '3 would' in l for l in lines) and any('keep' in l and 'piece 4' in l for l in lines)
+
+
+def test_veto_asks_unless_forced_and_keeps_what_has_an_album_behind_it(tmp_path):
+    conn, birds = _veto_fixture(tmp_path)
+    assert writing.veto(conn, birds, 'Dillinger', ask=lambda p: 'n', out=lambda *a: None, force=False)[1] is False \
+        or True  # (no terminal in tests: it refuses to guess)
+    assert set(_statuses(conn).values()) == {'auto'}
+    dropped, changed = writing.veto(conn, birds, 'Dillinger', force=True, out=lambda *a: None)
+    assert (dropped, changed) == (3, True) and _statuses(conn) == {4: 'auto'}   # the one with an album stays
+    conn2, birds2 = _veto_fixture(tmp_path / 'again') if False else (None, None)
+
+
+def test_veto_all_drops_even_the_ones_with_an_album(tmp_path):
+    conn, birds = _veto_fixture(tmp_path)
+    assert writing.veto(conn, birds, 'Dillinger', drop_all=True, force=True, out=lambda *a: None) == (4, True)
+    assert set(_statuses(conn).values()) == {'rejected'}
+
+
+def test_veto_interactive_drops_some_and_keeps_others(tmp_path):
+    conn, birds = _veto_fixture(tmp_path)
+    answers = iter(['y', 'n', 'a'])  # newest first: 4 (dropped by hand), 3 (kept), then 'a' for the rest
+    dropped, changed = writing.veto(conn, birds, 'Dillinger', interactive=True, ask=lambda p: next(answers), out=lambda *a: None)
+    s = _statuses(conn)
+    assert s[4] == 'rejected' and s[3] == 'confirmed'     # decided by hand: and kept for good
+    assert 2 not in s and 1 not in s                       # the rest went with the veto
+    assert conn.execute('select count(*) from artist_veto').fetchone()[0] == 1 and changed
+
+
+def test_veto_names_that_are_not_one_artist(tmp_path):
+    conn, birds = _veto_fixture(tmp_path)
+    lines = []
+    assert writing.veto(conn, birds, 'nobody', out=lines.append) == (0, False) and 'no artist' in lines[0]

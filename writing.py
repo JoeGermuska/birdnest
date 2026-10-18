@@ -604,34 +604,89 @@ def pick_artist(birds, name):
     return exact or birds.execute('select artist_id, name from artist where name like ? order by name', (f'%{name}%',)).fetchall()
 
 
-def cmd_veto(args):
+def veto(conn, birds, name, drop_all=False, dry_run=False, force=False, interactive=False, ask=input, out=print):
     """veto NAME: this artist's name alone never matches (a 'Dillinger' who isn't The Dillinger Escape Plan). Their
-    matches that rest on the name alone are dropped now and never come back; with --all every match of theirs goes."""
-    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
-    found = pick_artist(birds, args.name)
+    matches resting on the name alone are dropped now and never come back (drop_all: every match of theirs).
+    dry_run only lists what would go. interactive goes piece by piece (y drop this one, n keep it for good, a drop this and all
+    the rest and veto the artist, q stop). Otherwise it lists them and asks, unless force. -> (matches dropped, changed?)"""
+    found = pick_artist(birds, name)
     if len(found) != 1:
-        print('no artist called that' if not found else 'which one?\n  ' + '\n  '.join(f'{n} (id {a})' for a, n in found[:15]))
-        return
-    aid, name = found[0]
-    if args.undo:
-        conn.execute('delete from artist_veto where artist_id=?', (aid,))
-        conn.commit()
-        print(f'{name}: matches on the name alone are allowed again (they come back at the next rematch)')
-        return
-    pieces = conn.execute("select i.title, s.name source, m.signals from match m join item i using (item_id) "
-                          "join source s using (source_id) where m.artist_id=? and m.status in ('auto','review','confirmed')",
-                          (aid,)).fetchall()
+        out('no artist called that' if not found else 'which one?\n  ' + '\n  '.join(f'{n} (id {a})' for a, n in found[:15]))
+        return 0, False
+    aid, artist = found[0]
+    pieces = conn.execute("select m.item_id, i.title, i.url, s.name source, m.signals, m.status from match m "
+                          "join item i using (item_id) join source s using (source_id) "
+                          "where m.artist_id=? and m.status in ('auto','review','confirmed') order by i.published desc", (aid,)).fetchall()
+    held = lambda p: bool(CORROBORATED & set(p['signals'].split(',')))  # an album or a link behind it: a plain veto keeps it
+    would_go = [p for p in pieces if drop_all or not held(p)]
+    out(f'{artist}: {len(pieces)} matches; {len(would_go)} would be dropped' +
+        ('' if drop_all or len(would_go) == len(pieces) else f", {len(pieces) - len(would_go)} kept (an album or link behind them; --all drops those too)"))
+    if not pieces:
+        return 0, False
+    if dry_run:
+        for p in pieces:
+            out(f"  {'drop' if p in would_go else 'keep'}  {p['title'][:76]}  [{p['source']}; {p['signals']}]")
+        out('dry run: nothing changed')
+        return 0, False
+    if interactive:
+        dropped = 0
+        for i, p in enumerate(pieces, 1):
+            out(f"\n[{i}/{len(pieces)}] {p['title']}\n  {p['source']} · {p['signals']}\n  {p['url']}")
+            while True:
+                try:
+                    key = ask('  y drop this one / n keep it / a drop this and all the rest, and veto / q stop > ').strip().lower()[:1]
+                except EOFError:
+                    key = 'q'
+                if key in ('y', 'n', 'a', 'q'):
+                    break
+            if key == 'q':
+                break
+            if key == 'y':
+                set_status(conn, p['item_id'], aid, 'rejected')
+                dropped += 1
+            elif key == 'n':
+                set_status(conn, p['item_id'], aid, 'confirmed')  # said keep: a later 'a' or veto won't take it
+            elif key == 'a':
+                before = len(pieces) - i + 1
+                veto_artist(conn, aid)
+                if drop_all:
+                    conn.execute("update match set status='rejected' where artist_id=? and status!='rejected'", (aid,))
+                    conn.commit()
+                return dropped + before, True
+        return dropped, bool(dropped)
+    if not force:
+        if not sys.stdin.isatty():
+            out('not changing anything without a terminal to ask on: add --force, or --dry-run to look')
+            return 0, False
+        for p in would_go[:15]:
+            out(f"  {p['title'][:76]}  [{p['source']}]")
+        if len(would_go) > 15:
+            out(f'  ... and {len(would_go) - 15} more')
+        if ask(f'Drop these {len(would_go)} and never match {artist} on the name alone? [y/N] ').strip().lower()[:1] != 'y':
+            out('left alone')
+            return 0, False
     veto_artist(conn, aid)
-    if args.all:
+    if drop_all:
         conn.execute("update match set status='rejected' where artist_id=?", (aid,))
         conn.commit()
-    left = conn.execute("select count(*) from match where artist_id=? and status in ('auto','review','confirmed')", (aid,)).fetchone()[0]
-    print(f'{name}: {len(pieces)} matches, {len(pieces) - left} dropped, {left} left' + ('' if args.all or not left else
-          " (they have an album or link behind them; use --all to drop those too)"))
-    for p in pieces[:12]:
-        print(f"  {p['title'][:78]}  [{p['source']}]")
-    pieces_n, matches_n = publish(conn)
-    print(f'published {pieces_n} pieces / {matches_n} matches to {BIRDS_DB}')
+    return len(would_go), True
+
+
+def cmd_veto(args):
+    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
+    if args.undo:
+        found = pick_artist(birds, args.name)
+        if len(found) != 1:
+            print('no artist called that' if not found else 'which one?\n  ' + '\n  '.join(f'{n} (id {a})' for a, n in found[:15]))
+            return
+        conn.execute('delete from artist_veto where artist_id=?', (found[0][0],))
+        conn.commit()
+        print(f'{found[0][1]}: matches on the name alone are allowed again (they come back at the next rematch)')
+        return
+    dropped, changed = veto(conn, birds, args.name, args.all, args.dry_run, args.force, args.interactive)
+    if changed:
+        pieces_n, matches_n = publish(conn)
+        print(f'dropped {dropped}; published {pieces_n} pieces / {matches_n} matches to {BIRDS_DB}')
 
 
 def cmd_hide(args):
@@ -717,8 +772,10 @@ Looking:
 Deciding:
   review [--artist NAME] [--list]   go through the borderline matches: y it's about them, n it isn't, x never match this artist
                                     on the name alone, s skip, o open the piece, q quit (--list just prints them)
-  veto ARTIST [--all]               an artist's name alone never matches (a 'Dillinger' who isn't The Dillinger Escape Plan): drops
-                                    their matches that rest on the name, for good; --all drops every match. unveto ARTIST undoes it
+  veto ARTIST [-n|-f|-i] [--all]    an artist's name alone never matches (a 'Dillinger' who isn't The Dillinger Escape Plan): drops
+                                    their matches that rest on the name, for good, after asking. -n (--dry-run) only lists them,
+                                    -f (--force) doesn't ask, -i (--interactive) goes piece by piece for when only some are wrong;
+                                    --all also drops matches with an album or link behind them. unveto ARTIST undoes it
   hide URL [--reason WHY]           keep one piece off the site (junk, not writing, a duplicate you'd rather not show)
   unhide URL                        bring it back
   duplicates                        pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically
@@ -767,6 +824,9 @@ def main(argv=None):
     vt = sub.add_parser('veto', help="never match an artist on their name alone")
     vt.add_argument('name')
     vt.add_argument('--all', action='store_true', help='drop every match of theirs, not only the ones resting on the name')
+    vt.add_argument('-n', '--dry-run', action='store_true', help='list what would be dropped; change nothing')
+    vt.add_argument('-f', '--force', action='store_true', help="don't ask first")
+    vt.add_argument('-i', '--interactive', action='store_true', help='go piece by piece: drop some, keep others')
     vt.set_defaults(fn=cmd_veto, undo=False)
     uv = sub.add_parser('unveto', help='allow an artist\'s name to match again')
     uv.add_argument('name')
