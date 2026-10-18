@@ -6,6 +6,7 @@ writing_match.py. It keeps titles, tags, links and short excerpts locally, publi
 Member-only sites are handled by their public feeds: we never log in or fetch past a paywall.
 
     python writing.py run [--all] [--source NAME]   check the sources that are due, match new items, print the report
+    python writing.py backfill [--source NAME]      reach back through a site's sitemaps (see writing_backfill.py)
     python writing.py rematch                       match every stored item again (after new artists arrive)
     python writing.py publish                       copy the accepted matches into birdnest.db (run does this too)
     python writing.py report [--days N]             what matched lately, again
@@ -391,6 +392,25 @@ def cmd_run(args):
     print(f'\npublished {pieces} pieces / {matches} matches to {BIRDS_DB}')
 
 
+def cmd_backfill(args):
+    import writing_backfill
+    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
+    sync_sources(conn)
+    q, params = 'select * from source where active=1', []
+    if args.source:
+        q += ' and name=?'
+        params.append(args.source)
+    sources = conn.execute(q + ' order by name', params).fetchall()
+    if not args.news:  # news sources are matched from their feeds but never listed, so don't spend requests reaching back
+        sources = [s for s in sources if s['kind'] in PUBLISH_KINDS]
+    started = iso(now())
+    n = writing_backfill.backfill(conn, Matcher(birds), sources, args.sitemaps, args.pages)
+    print(f'{n} new items')
+    report(conn, birds, started)
+    pieces, matches = publish(conn)
+    print(f'\\npublished {pieces} pieces / {matches} matches to {BIRDS_DB}')
+
+
 def cmd_rematch(args):
     conn, birds = connect(), sqlite3.connect(BIRDS_DB)
     rematch(conn, Matcher(birds))
@@ -455,6 +475,12 @@ def main(argv=None):
     r.add_argument('--all', action='store_true', help='check every source, due or not')
     r.add_argument('--source', help='check just this one')
     r.set_defaults(fn=cmd_run)
+    bf = sub.add_parser('backfill')
+    bf.add_argument('--source', help='just this one')
+    bf.add_argument('--sitemaps', type=int, default=60, help='most sitemap files to read per source per run')
+    bf.add_argument('--pages', type=int, default=300, help='most candidate pages to fetch per source per run')
+    bf.add_argument('--news', action='store_true', help='include news sources too')
+    bf.set_defaults(fn=cmd_backfill)
     sub.add_parser('rematch').set_defaults(fn=cmd_rematch)
     rp = sub.add_parser('report')
     rp.add_argument('--days', type=int, default=7)
