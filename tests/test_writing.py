@@ -176,3 +176,18 @@ def test_reading_pages(app_module):
 def test_slugs():
     assert writing.slugify('Nate Chinen: The Gig') == 'nate-chinen-the-gig'
     assert writing.slugify('Something Else! Reviews') == 'something-else-reviews'
+
+
+def test_a_site_that_says_slow_down_is_left_alone(monkeypatch):
+    import writing_backfill as wb
+
+    class Resp:
+        status_code, headers = 429, {'Retry-After': '120'}
+
+    class Session:
+        def get(self, *a, **k):
+            return Resp()
+    monkeypatch.setattr(wb.time, 'sleep', lambda s: None)
+    with pytest.raises(wb.Throttled, match='429'):
+        wb.polite('https://slow.example/x', Session())
+    assert wb.HOST_DELAY >= 2 and wb.MAX_ERRORS <= 3  # gentle defaults: don't loosen these casually

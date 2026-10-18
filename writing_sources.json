@@ -47,13 +47,15 @@
   "name": "The Wire",
   "home_url": "https://www.thewire.co.uk",
   "feed_url": "https://www.thewire.co.uk/rss",
-  "kind": "criticism"
+  "kind": "criticism",
+  "backfill": "feed"
  },
  {
   "name": "PopMatters",
   "home_url": "https://www.popmatters.com",
   "feed_url": "https://www.popmatters.com/feed",
-  "kind": "criticism"
+  "kind": "criticism",
+  "backfill": "feed"
  },
  {
   "name": "Pitchfork",
@@ -72,7 +74,8 @@
   "home_url": "https://daily.bandcamp.com",
   "feed_url": "https://daily.bandcamp.com/feed/",
   "kind": "criticism",
-  "roundup": true
+  "roundup": true,
+  "backfill": "feed"
  },
  {
   "name": "Spectrum Culture",
@@ -84,7 +87,8 @@
   "name": "Brainwashed",
   "home_url": "https://brainwashed.com",
   "feed_url": "https://brainwashed.com/index.php?option=com_content&view=category&layout=blog&id=167&Itemid=855&format=feed&type=rss",
-  "kind": "criticism"
+  "kind": "criticism",
+  "backfill": "feed"
  },
  {
   "name": "FACT",
@@ -103,7 +107,8 @@
   "home_url": "https://tinymixtapes.com",
   "feed_url": "https://www.tinymixtapes.com/feeds/news.xml",
   "kind": "criticism",
-  "note": "archive; last post 2019"
+  "note": "archive; last post 2019",
+  "backfill": "feed"
  },
  {
   "name": "Disquiet",
@@ -140,7 +145,8 @@
   "name": "JazzTimes",
   "home_url": "https://jazztimes.com",
   "feed_url": "https://www.jazztimes.com/feed/",
-  "kind": "criticism"
+  "kind": "criticism",
+  "backfill": "feed"
  },
  {
   "name": "Jazz Journal",
@@ -178,7 +184,8 @@
   "name": "Musique Machine",
   "home_url": "https://musiquemachine.com",
   "feed_url": "https://www.musiquemachine.com/feed.xml",
-  "kind": "criticism"
+  "kind": "criticism",
+  "backfill": "feed"
  },
  {
   "name": "No Depression",
@@ -190,7 +197,8 @@
   "name": "Beats Per Minute",
   "home_url": "https://beatsperminute.com",
   "feed_url": "https://beatsperminute.com/feed/",
-  "kind": "criticism"
+  "kind": "criticism",
+  "backfill": "feed"
  },
  {
   "name": "The Line of Best Fit",
@@ -214,7 +222,8 @@
   "name": "Under the Radar",
   "home_url": "https://undertheradarmag.com",
   "feed_url": "http://www.undertheradarmag.com/site/rss",
-  "kind": "criticism"
+  "kind": "criticism",
+  "backfill": "feed"
  },
  {
   "name": "Paste",

@@ -44,7 +44,7 @@ SCHEMA = """
 create table if not exists source (
     source_id integer primary key, name text unique, home_url text, feed_url text, kind text,
     members_only integer default 0, roundup integer default 0, note text, active integer default 1,
-    added_at text, last_checked text, next_check text, interval_hours real, etag text, last_modified text,
+    backfill text, added_at text, last_checked text, next_check text, interval_hours real, etag text, last_modified text,
     fail_count integer default 0, last_error text, last_new_at text);
 create table if not exists item (
     item_id integer primary key, source_id integer references source(source_id), url text unique,
@@ -67,6 +67,8 @@ def connect(path=CRAWL_DB):
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    if 'backfill' not in {r[1] for r in conn.execute('pragma table_info(source)')}:
+        conn.execute('alter table source add column backfill text')
     return conn
 
 
@@ -79,13 +81,13 @@ def sync_sources(conn, path=SOURCES_FILE):
     for s in wanted:
         names.add(s['name'])
         row = (s['name'], s.get('home_url'), s['feed_url'], s.get('kind', 'criticism'), int(s.get('members_only', False)),
-               int(s.get('roundup', False)), s.get('note'))
+               int(s.get('roundup', False)), s.get('note'), s.get('backfill', 'sitemap'))
         if conn.execute('select 1 from source where name=?', (s['name'],)).fetchone():
-            conn.execute('update source set home_url=?, feed_url=?, kind=?, members_only=?, roundup=?, note=? where name=?',
+            conn.execute('update source set home_url=?, feed_url=?, kind=?, members_only=?, roundup=?, note=?, backfill=? where name=?',
                          row[1:] + (s['name'],))
         else:
-            conn.execute('insert into source (name, home_url, feed_url, kind, members_only, roundup, note, added_at) '
-                         'values (?,?,?,?,?,?,?,?)', row + (iso(now()),))
+            conn.execute('insert into source (name, home_url, feed_url, kind, members_only, roundup, note, backfill, added_at) '
+                         'values (?,?,?,?,?,?,?,?,?)', row + (iso(now()),))
     for (name,) in conn.execute('select name from source').fetchall():
         if name not in names:
             conn.execute('update source set active=0 where name=?', (name,))
@@ -404,7 +406,7 @@ def cmd_backfill(args):
     if not args.news:  # news sources are matched from their feeds but never listed, so don't spend requests reaching back
         sources = [s for s in sources if s['kind'] in PUBLISH_KINDS]
     started = iso(now())
-    n = writing_backfill.backfill(conn, Matcher(birds), sources, args.sitemaps, args.pages)
+    n = writing_backfill.backfill(conn, Matcher(birds), sources, args.sitemaps, args.pages, args.feed_requests)
     print(f'{n} new items')
     report(conn, birds, started)
     pieces, matches = publish(conn)
@@ -477,8 +479,9 @@ def main(argv=None):
     r.set_defaults(fn=cmd_run)
     bf = sub.add_parser('backfill')
     bf.add_argument('--source', help='just this one')
-    bf.add_argument('--sitemaps', type=int, default=60, help='most sitemap files to read per source per run')
-    bf.add_argument('--pages', type=int, default=300, help='most candidate pages to fetch per source per run')
+    bf.add_argument('--sitemaps', type=int, default=15, help='most sitemap files to read per source per run')
+    bf.add_argument('--pages', type=int, default=50, help='most candidate pages to fetch per source per run')
+    bf.add_argument('--feed-requests', type=int, default=5, help='most requests per source per run for sources paged through their feed or API')
     bf.add_argument('--news', action='store_true', help='include news sources too')
     bf.set_defaults(fn=cmd_backfill)
     sub.add_parser('rematch').set_defaults(fn=cmd_rematch)

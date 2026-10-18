@@ -3,9 +3,15 @@
 A sitemap lists every page on a site, and most article URLs carry the artist and album in their slug
 ('takaat-is-noise-vol-3'), so we match the slugs first, locally, and fetch only the pages that look like they are
 about an artist we've played. Progress is kept in writing_crawl.db (which sitemaps are read, which candidate pages
-are fetched) so a run can stop and carry on. robots.txt is respected, one request a second per host.
+are fetched) so a run can stop and carry on.
 
-    python writing.py backfill [--source NAME] [--sitemaps N] [--pages N]
+Gentle by design: robots.txt is respected (and its Crawl-delay if longer), no more than one request every
+HOST_DELAY seconds to a host, small default budgets per source per run so the archive fills in over weeks, and a
+source is left alone for the rest of a run after a 429 or 503, or MAX_ERRORS failures. A site with no usable sitemap
+("backfill": "feed" in writing_sources.json) is paged through its WordPress API (100 posts a request) or its feed
+(?paged=N) instead.
+
+    python writing.py backfill [--source NAME] [--sitemaps N] [--pages N] [--feed-requests N]
 """
 import gzip
 import html
@@ -27,6 +33,8 @@ from writing import USER_AGENT, canonical, iso, now, parse_date
 SCHEMA = """
 create table if not exists backfill_sitemap (
     source_id integer, sitemap_url text, fetched_at text, n_urls integer, primary key (source_id, sitemap_url));
+create table if not exists backfill_feed (
+    source_id integer primary key, method text, next_page integer, done integer default 0, updated_at text);
 create table if not exists backfill_candidate (
     source_id integer, url text, lastmod text, score real, fetched integer default 0, primary key (source_id, url));
 """
@@ -34,17 +42,26 @@ SKIP_PATH = re.compile(r'/(tags?|categor(?:y|ies)|authors?|topics?|labels?|page|
                        r'wp-content|wp-json|attachment)/', re.I)
 MUSIC_LINK = re.compile(r'bandcamp\.com|spotify\.com|musicbrainz\.org|discogs\.com', re.I)
 MAX_SITEMAP_BYTES, MAX_PAGE_BYTES = 40_000_000, 2_000_000
-_lock, _robots, _last = threading.Lock(), {}, {}
+HOST_DELAY, MAX_ERRORS = 2.0, 3  # seconds between requests to one host; failures before leaving a source for the run
+_lock, _robots, _last, _delay = threading.Lock(), {}, {}, {}
+
+
+class Throttled(Exception):
+    """The site asked us to slow down (429, 503): leave it alone for the rest of this run."""
 
 
 def polite(url, session, stream=False, accept=None):
     host = urlparse(url).netloc
     with _lock:
-        wait = _last.get(host, 0) + 1.0 - time.monotonic()
-        _last[host] = max(time.monotonic(), _last.get(host, 0) + 1.0)
+        gap = _delay.get(host, HOST_DELAY)
+        wait = _last.get(host, 0) + gap - time.monotonic()
+        _last[host] = max(time.monotonic(), _last.get(host, 0) + gap)
     if wait > 0:
         time.sleep(wait)
-    return session.get(url, headers={'User-Agent': USER_AGENT, **({'Accept': accept} if accept else {})}, timeout=30, stream=stream)
+    r = session.get(url, headers={'User-Agent': USER_AGENT, **({'Accept': accept} if accept else {})}, timeout=30, stream=stream)
+    if r.status_code in (429, 503):
+        raise Throttled(f'{r.status_code} from {host}' + (f" (Retry-After {r.headers['Retry-After']})" if r.headers.get('Retry-After') else ''))
+    return r
 
 
 def allowed(url, session):
@@ -61,6 +78,9 @@ def allowed(url, session):
             rp.parse([])
         with _lock:
             _robots[root] = rp
+            wanted = rp.crawl_delay(USER_AGENT) or rp.crawl_delay('*')
+            if wanted and wanted > HOST_DELAY:
+                _delay[u.netloc] = float(wanted)
     return rp.can_fetch(USER_AGENT, url)
 
 
@@ -104,8 +124,8 @@ def read_sitemap(url, session):
 def scan_source(src, matcher, done, max_sitemaps, known, log):
     """Phase A, in a thread: walk the sitemaps not yet read, match slugs, return (sitemaps read, candidates)."""
     session = requests.Session()
-    queue, seen, read, cands = list(sitemap_roots(src, session)), set(), [], {}
-    while queue and len(read) < max_sitemaps:
+    queue, seen, read, cands, errors = list(sitemap_roots(src, session)), set(), [], {}, 0
+    while queue and len(read) < max_sitemaps and errors < MAX_ERRORS:
         sm = queue.pop(0)
         if sm in done or sm in seen:
             continue
@@ -115,7 +135,11 @@ def scan_source(src, matcher, done, max_sitemaps, known, log):
                 log(f"  {src['name']}: robots.txt disallows {sm}")
                 continue
             entries = read_sitemap(sm, session)
+        except Throttled as e:
+            log(f"  ! {src['name']}: {e}; leaving it for now")
+            break
         except Exception as e:
+            errors += 1
             log(f"  ! {src['name']}: {sm}: {type(e).__name__}: {str(e)[:80]}")
             continue
         n = 0
@@ -210,19 +234,123 @@ def slug_title(url):
 def fetch_candidates(src, urls, log):
     """Phase B, in a thread: fetch these pages. -> {url: page dict or None}"""
     session = requests.Session()
-    out = {}
+    out, errors = {}, 0
     for url in urls:
         try:
             out[url] = fetch_page(url, session, src['name'])
+        except Throttled as e:
+            log(f"  ! {src['name']}: {e}; stopping here for this run")
+            break
         except Exception as e:
+            errors += 1
             log(f"  ! {src['name']}: {url}: {type(e).__name__}: {str(e)[:80]}")
             out[url] = None
+            if errors >= MAX_ERRORS:
+                log(f"  ! {src['name']}: {MAX_ERRORS} failures; stopping here for this run")
+                break
     return out
 
 
-def backfill(conn, matcher, sources, max_sitemaps=60, max_pages=300, workers=6, log=print):
+def _wp_posts(root, page, session):
+    """One page (100 posts) of a WordPress site's own API -> list of items, or None when there is no such page."""
+    url = (f'{root}/wp-json/wp/v2/posts?per_page=100&page={page}&orderby=date&order=desc'
+           '&_fields=link,title,date_gmt,excerpt')
+    if not allowed(url, session):
+        raise RuntimeError('robots.txt disallows the API')
+    r = polite(url, session)
+    if r.status_code == 400:  # past the last page
+        return None
+    r.raise_for_status()
+    out = []
+    for p in r.json():
+        out.append({'url': canonical(p['link']), 'title': plain_html(p['title']['rendered']),
+                    'published': parse_date((p.get('date_gmt') or '') + 'Z' if p.get('date_gmt') else None),
+                    'tags': [], 'excerpt': plain_html(p['excerpt']['rendered'])[:writing.EXCERPT_CHARS],
+                    'body_text': plain_html(p['excerpt']['rendered'])[:writing.MAX_BODY_CHARS], 'links': []})
+    return out
+
+
+def plain_html(s):
+    return writing.plain(s)
+
+
+def page_feed(src, method, next_page, max_requests, log):
+    """Phase C, in a thread: walk back through a site's archive a few requests at a time.
+    -> (method, next_page, done, items). Methods: 'wp-json' (100 posts a request), 'paged' (the feed's ?paged=N)."""
+    session = requests.Session()
+    root = '{0.scheme}://{0.netloc}'.format(urlparse(src['home_url'] or src['feed_url']))
+    items, failed = [], False
+    methods = [method] if method else ['wp-json', 'paged']
+    for m in methods:
+        page, first_urls, got = next_page or 1, None, 0
+        try:
+            for _ in range(max_requests):
+                if m == 'wp-json':
+                    batch = _wp_posts(root, page, session)
+                else:
+                    sep = '&' if '?' in src['feed_url'] else '?'
+                    url = f"{src['feed_url']}{sep}paged={page}"
+                    if not allowed(url, session):
+                        raise RuntimeError('robots.txt disallows the feed')
+                    r = polite(url, session, accept='application/rss+xml, application/atom+xml, application/xml')
+                    batch = None if r.status_code in (400, 404) else writing.parse_feed(r.content, url) if r.ok else r.raise_for_status()
+                    if batch and page > 1 and first_urls and batch[0]['url'] == first_urls:
+                        batch = None  # the site ignores ?paged: page 2 is page 1 again
+                    if batch and page == 1:
+                        first_urls = batch[0]['url']
+                if not batch:
+                    return m, page, True, items
+                items += batch
+                got += len(batch)
+                page += 1
+            return m, page, False, items
+        except Throttled as e:
+            log(f"  ! {src['name']}: {e}; leaving it for now")
+            return m, next_page or 1, False, items
+        except Exception as e:
+            log(f"  ! {src['name']}: {m}: {type(e).__name__}: {str(e)[:80]}")
+            if got or method:  # worked before, or the method is settled: try again next time
+                return m, page, False, items
+            if not (isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code in (401, 403, 404)):
+                failed = True  # not a plain 'no such thing': maybe a bad moment, so don't write the site off
+    return ('none', 1, False, items) if failed else ('none', 1, True, items)
+
+
+def store_item(conn, matcher, source_id, it, stamp):
+    """Insert an item (unless we have it) and match it. -> True if it was new."""
+    cur = conn.execute('insert or ignore into item (source_id, url, title, published, author, tags, excerpt, body_text, '
+                       'links, first_seen) values (?,?,?,?,?,?,?,?,?,?)',
+                       (source_id, it['url'], it['title'], it['published'], None, json.dumps(it['tags']), it['excerpt'],
+                        it['body_text'], json.dumps(it['links']), stamp))
+    if not cur.rowcount:
+        return False
+    writing.match_item(conn, matcher, cur.lastrowid, it['title'], it['tags'], it['url'], it['body_text'] or it['excerpt'], it['links'], stamp)
+    return True
+
+
+def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_requests=5, workers=4, log=print):
     conn.executescript(SCHEMA)
     started = iso(now())
+    by_feed = [s for s in sources if (s['backfill'] or 'sitemap') == 'feed']
+    by_map = [s for s in sources if s not in by_feed]
+    new = 0
+    # phase C: sources without sitemaps, a few requests each
+    state = {r['source_id']: r for r in conn.execute('select * from backfill_feed')}
+    with ThreadPoolExecutor(workers) as ex:
+        futs = {s['source_id']: ex.submit(page_feed, s, (state.get(s['source_id']) or {'method': None})['method'],
+                                          (state.get(s['source_id']) or {'next_page': 1})['next_page'], feed_requests, log)
+                for s in by_feed if not (state.get(s['source_id']) and state[s['source_id']]['done'])}
+        for s in by_feed:
+            if s['source_id'] not in futs:
+                log(f"  {s['name']}: archive already read")
+                continue
+            method, next_page, done, items = futs[s['source_id']].result()
+            added = sum(store_item(conn, matcher, s['source_id'], it, started) for it in items)
+            conn.execute('insert or replace into backfill_feed values (?,?,?,?,?)', (s['source_id'], method, next_page, int(done), started))
+            conn.commit()
+            new += added
+            log(f"  {s['name']}: {method}, {len(items)} posts seen, {added} new" + (', archive complete' if done else f', next page {next_page}'))
+    sources = by_map
     # phase A: sitemaps
     known = {r[0] for r in conn.execute('select url from item')}
     jobs = {s['source_id']: {r[0] for r in conn.execute('select sitemap_url from backfill_sitemap where source_id=?', (s['source_id'],))}
@@ -237,12 +365,12 @@ def backfill(conn, matcher, sources, max_sitemaps=60, max_pages=300, workers=6, 
                 conn.execute('insert or ignore into backfill_candidate (source_id, url, lastmod, score) values (?,?,?,?)',
                              (s['source_id'], url, lastmod, score))
             conn.commit()
-            log(f"  {s['name']}: read {len(read)} sitemaps ({sum(n for _, n in read)} urls), {len(cands)} candidate pages")
+            log(f"  {s['name']}: read {len(read)} sitemaps ({sum(n for _, n in read)} urls), {len(cands)} new candidate pages")
     # phase B: the candidate pages, best first, up to max_pages per source
     todo = {s['source_id']: [r[0] for r in conn.execute(
         'select url from backfill_candidate where source_id=? and not fetched order by score desc, lastmod desc limit ?',
         (s['source_id'], max_pages))] for s in sources}
-    stamp, new = iso(now()), 0
+    stamp = iso(now())
     with ThreadPoolExecutor(workers) as ex:
         futs = {s['source_id']: ex.submit(fetch_candidates, s, todo[s['source_id']], log) for s in sources if todo[s['source_id']]}
         for s in sources:
@@ -252,18 +380,12 @@ def backfill(conn, matcher, sources, max_sitemaps=60, max_pages=300, workers=6, 
             lastmods = dict(conn.execute('select url, lastmod from backfill_candidate where source_id=?', (s['source_id'],)).fetchall())
             added = 0
             for url, page in pages.items():
-                title = (page or {}).get('title') or slug_title(url)
-                published = (page or {}).get('published') or lastmods.get(url)
-                tags, links = (page or {}).get('tags', []), (page or {}).get('links', [])
-                body = (page or {}).get('body_text') or (page or {}).get('excerpt') or ''
-                cur = conn.execute('insert or ignore into item (source_id, url, title, published, author, tags, excerpt, body_text, '
-                                   'links, first_seen) values (?,?,?,?,?,?,?,?,?,?)',
-                                   (s['source_id'], url, title, published, None, json.dumps(tags), (page or {}).get('excerpt', ''),
-                                    body, json.dumps(links), stamp))
+                page = page or {}
+                it = {'url': url, 'title': page.get('title') or slug_title(url), 'published': page.get('published') or lastmods.get(url),
+                      'tags': page.get('tags', []), 'excerpt': page.get('excerpt', ''),
+                      'body_text': page.get('body_text') or page.get('excerpt') or '', 'links': page.get('links', [])}
+                added += store_item(conn, matcher, s['source_id'], it, stamp)
                 conn.execute('update backfill_candidate set fetched=1 where source_id=? and url=?', (s['source_id'], url))
-                if cur.rowcount:
-                    writing.match_item(conn, matcher, cur.lastrowid, title, tags, url, body, links, stamp)
-                    added += 1
             conn.commit()
             new += added
             left = conn.execute('select count(*) from backfill_candidate where source_id=? and not fetched', (s['source_id'],)).fetchone()[0]
