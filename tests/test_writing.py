@@ -449,3 +449,22 @@ def test_add_and_remove_a_source(tmp_path):
     # a site with no sitemap gets paged through its feed or API instead
     bare = _Site({'/': HOME, '/feed/': RSS})
     assert writing.add_source('blog.example', name='Bare', sources_file=str(f), session=bare, log=lambda *a: None)['backfill'] == 'feed'
+
+
+def test_same_named_artists_share_a_name_but_not_a_match():
+    c = sqlite3.connect(':memory:')
+    c.executescript("""create table artist (artist_id integer, name text, spotify_id text, followers integer);
+        create table album (album_id integer, name text); create table album_artist (album_id integer, artist_id integer);
+        create table track (track_id integer, name text); create table track_artist (track_id integer, artist_id integer);
+        create table playlist_track (playlist_id integer, track_id integer);
+        create table mb_artist (artist_id integer, mbid text); create table artist_link (artist_id integer, source text, url text);
+        insert into artist values (1, 'Sweet', null, 1000), (2, 'Sweet', null, 500000), (3, 'Fugazi', null, 1);
+        insert into album values (10, 'Desolation Boulevard'), (11, 'Tiny Record Number Nine');
+        insert into album_artist values (10, 2), (11, 1);
+        insert into track values (1, 'Ballroom Blitz'), (2, 'Some Song'); insert into track_artist values (1, 2), (2, 1);
+        insert into playlist_track values (1, 1), (2, 1), (2, 2);""")
+    m = Matcher(c, words={'sweet'})
+    both = m.match(title='Sweet (the band) come back')                       # a name alone: the better-known one only
+    assert [x['artist_id'] for x in both] == [2]
+    assert [x['artist_id'] for x in m.match(title='Sweet: Tiny Record Number Nine')] == [1]   # their own album names them
+    assert {x['artist_id'] for x in m.match(title='Sweet: Desolation Boulevard')} == {2}

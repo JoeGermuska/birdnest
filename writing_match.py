@@ -26,6 +26,7 @@ SCORES = {  # (signal, ambiguous name?) -> score
     ('body', False): 0.45, ('body', True): 0.15,
     ('body_pair', False): 0.8, ('body_pair', True): 0.5,
 }
+PAIR_SIGNALS = {'pair_title', 'pair_slug', 'body_pair'}
 ABOUT_SIGNALS = {'pair_title', 'pair_slug', 'tag', 'title', 'slug'}  # the rest only say the piece mentions them
 
 
@@ -125,6 +126,15 @@ class Matcher:
             if len(k) >= 5:
                 for aid in track_artists.get(tid, ()):
                     self.work[aid].setdefault(k, None)
+        # two artists can share a name ('Sweet', twice): a name alone points at the one we know best, so the other
+        # only matches on something that is specifically theirs (an album, a link)
+        try:
+            pop = {a: (shows or 0, followers or 0) for a, followers, shows in conn.execute(
+                """select a.artist_id, a.followers, count(distinct pt.playlist_id) from artist a
+                   left join track_artist ta using (artist_id) left join playlist_track pt using (track_id) group by a.artist_id""")}
+        except Exception:  # a database without those tables (a test): the lowest id stands in
+            pop = {}
+        self.primary = {k: max(ids, key=lambda a: (pop.get(a, (0, 0)), -a)) for k, ids in self.artist_idx.items() if len(ids) > 1}
         # exact pages
         self.sp_artist = {s: a for s, a in conn.execute("select spotify_id, artist_id from artist where spotify_id is not null")}
         self.mb_artist = {m: a for m, a in conn.execute("select mbid, artist_id from mb_artist where mbid is not null")}
@@ -195,8 +205,13 @@ class Matcher:
         """-> [{'artist_id', 'album_id', 'score', 'kind' ('about'|'mentions'), 'signals', 'status' ('auto'|'review')}]"""
         sig = defaultdict(dict)    # artist id -> {signal: score}
         album = {}
+        namesakes = defaultdict(set)  # a shared name -> the artists with it that this text matched
 
         def add(aid, name_key, signal, pair=None, strict=False):
+            if aid != self.primary.get(name_key, aid) and signal not in PAIR_SIGNALS:
+                return  # a namesake: the name alone belongs to the better-known artist
+            if len(self.artist_idx.get(name_key, ())) > 1:
+                namesakes[name_key].add(aid)
             s = SCORES[(signal, (self.ambiguous_strict if strict else self.ambiguous).get(name_key, False))]
             if s > sig[aid].get(signal, 0):
                 sig[aid][signal] = s
@@ -221,6 +236,14 @@ class Matcher:
                 add(aid, name_key, 'body_pair' if pair else 'body_long' if long_name else 'body', pair, strict=True)
         for aid in self._links(links):
             sig[aid]['link'] = SCORES[('link', False)]
+        # when one namesake's album or track is named, the text is about that one, not the others
+        for aids in namesakes.values():
+            named = {a for a in aids if sig[a].keys() & PAIR_SIGNALS}
+            for a in aids - named if named else ():
+                for signal in [x for x in sig[a] if x not in PAIR_SIGNALS | {'link'}]:
+                    del sig[a][signal]
+                if not sig[a]:
+                    del sig[a]
 
         out = []
         for aid, signals in sig.items():

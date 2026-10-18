@@ -706,7 +706,10 @@ def cmd_toggle(args):
 
 
 def pick_artist(birds, name):
-    """The artists named NAME: an exact match (any case) if there is one, otherwise the ones whose name contains it."""
+    """The artists named NAME: an exact match (any case) if there is one, otherwise the ones whose name contains it.
+    A number is an artist id, for telling same-named artists apart."""
+    if name.isdigit():
+        return birds.execute('select artist_id, name from artist where artist_id=?', (int(name),)).fetchall()
     exact = birds.execute('select artist_id, name from artist where lower(name)=lower(?)', (name,)).fetchall()
     return exact or birds.execute('select artist_id, name from artist where name like ? order by name', (f'%{name}%',)).fetchall()
 
@@ -835,6 +838,10 @@ def cmd_duplicates(args):
 def cmd_review(args):
     conn, birds = connect(), sqlite3.connect(BIRDS_DB)
     names = {a: n for a, n in birds.execute('select artist_id, name from artist')}
+    same = {}
+    for a, n in names.items():
+        same.setdefault(n.lower(), []).append(a)
+    names = {a: (f'{n} (id {a})' if len(same[n.lower()]) > 1 else n) for a, n in names.items()}  # told apart when they share a name
     rows = conn.execute("select m.*, i.title, i.url, s.name source from match m join item i using(item_id) "
                         "join source s using(source_id) where m.status='review'").fetchall()
     out_ids, _ = suppressed(conn)
