@@ -191,3 +191,49 @@ def test_a_site_that_says_slow_down_is_left_alone(monkeypatch):
     with pytest.raises(wb.Throttled, match='429'):
         wb.polite('https://slow.example/x', Session())
     assert wb.HOST_DELAY >= 2 and wb.MAX_ERRORS <= 3  # gentle defaults: don't loosen these casually
+
+
+def _db(matcher, tmp_path, title, tags=(), url='https://ex.com/a'):
+    conn = writing.connect(str(tmp_path / 'c.db'))
+    conn.execute("insert or ignore into source (source_id, name, feed_url, kind) values (1, 's', 'u', 'criticism')")
+    conn.execute("insert into item (item_id, source_id, url, title) values (1, 1, ?, ?)", (url, title))
+    writing.match_item(conn, matcher, 1, title, list(tags), url, '', [], 't')
+    return conn
+
+
+def test_review_loop_confirms_rejects_and_vetoes(matcher, tmp_path):
+    conn = _db(matcher, tmp_path, 'A Real Estate agent on the rise')
+    conn.execute("insert into item (item_id, source_id, url, title) values (2, 1, 'https://ex.com/b', 'Real Estate prices Real Estate')")
+    writing.match_item(conn, matcher, 2, 'Real Estate prices Real Estate', [], 'https://ex.com/b', '', [], 't')
+    rows = conn.execute("select m.*, i.title, i.url, 's' source from match m join item i using (item_id) where status='review' order by item_id").fetchall()
+    assert len(rows) == 2
+    answers = iter(['o', 'y', 'x'])
+    opened = []
+    y, n, x = writing.review_loop(conn, rows, {2: 'Real Estate'}, ask=lambda prompt: next(answers), out=lambda *a: None,
+                                  open_url=opened.append)
+    assert (y, n, x) == (1, 0, 1) and opened == ['https://ex.com/a']
+    assert [r['status'] for r in conn.execute('select status from match order by item_id')] == ['confirmed']  # the vetoed row is gone
+    assert conn.execute('select artist_id from artist_veto').fetchall()[0][0] == 2
+
+
+def test_a_veto_keeps_the_name_alone_out_but_not_a_pair_or_link(matcher, tmp_path):
+    conn = _db(matcher, tmp_path, 'A Real Estate agent on the rise')
+    writing.veto_artist(conn, 2)
+    writing.match_item(conn, matcher, 1, 'A Real Estate agent on the rise', [], 'https://ex.com/a', '', [], 't2')
+    assert conn.execute('select count(*) from match').fetchone()[0] == 0
+    writing.match_item(conn, matcher, 1, 'Real Estate: Days', [], 'https://ex.com/a', '', [], 't3')  # with their album
+    assert conn.execute("select count(*) from match where artist_id=2 and status='auto'").fetchone()[0] == 1
+
+
+def test_capitalized_multiword_names_with_an_unusual_word_are_not_ambiguous():
+    c = sqlite3.connect(':memory:')
+    c.executescript("""create table artist (artist_id integer, name text, spotify_id text);
+        create table album (album_id integer, name text); create table album_artist (album_id integer, artist_id integer);
+        create table track (track_id integer, name text); create table track_artist (track_id integer, artist_id integer);
+        create table mb_artist (artist_id integer, mbid text); create table artist_link (artist_id integer, source text, url text);
+        insert into artist values (1, 'Uncle Tupelo', null), (2, 'Real Estate', null), (3, 'Journey', null);""")
+    m = Matcher(c, words={'uncle', 'tupelo', 'real', 'estate', 'journey'})
+    assert best(m.match(title='Vinyl Update: Uncle Tupelo and more'), 1)['status'] == 'auto'
+    assert best(m.match(title='Real Estate Is Booming'), 2)['status'] == 'review'  # every word is an everyday one
+    assert best(m.match(title='A Musical Journey'), 3)['status'] == 'review'      # a single word stays ambiguous
+    assert best(m.match(title='Notes', body='We heard Uncle Tupelo again.'), 1) is None  # the body still needs more

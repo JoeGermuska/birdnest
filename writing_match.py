@@ -71,6 +71,23 @@ def is_ambiguous(key, words):
 # Bandcamp's own subdomains: a data row pointing an artist at one (it happens) would match every piece that links there
 NOT_ARTIST_HOSTS = {'daily.bandcamp.com', 'get.bandcamp.com', 'blog.bandcamp.com', 'help.bandcamp.com', 'forum.bandcamp.com',
                     'bandcamp.com', 'music.bandcamp.com'}
+# Everyday words that make a name ambiguous when they are all it is made of ('Real Estate', 'Good Habits'). A
+# capitalized name of two or more words with any word outside this set ('Uncle Tupelo', 'Joni Mitchell') is not ambiguous.
+COMMON_NAME_WORDS = {
+    'a', 'an', 'the', 'and', 'of', 'in', 'on', 'at', 'to', 'for', 'is', 'it', 'be', 'we', 'you', 'me', 'my', 'our', 'your',
+    'all', 'new', 'old', 'big', 'little', 'small', 'great', 'good', 'bad', 'best', 'high', 'low', 'long', 'short', 'young',
+    'black', 'white', 'red', 'blue', 'green', 'yellow', 'gold', 'golden', 'silver', 'dark', 'light', 'bright', 'wild',
+    'dead', 'death', 'life', 'love', 'time', 'day', 'days', 'night', 'nights', 'sun', 'moon', 'star', 'stars', 'sky',
+    'fire', 'water', 'earth', 'wind', 'rain', 'snow', 'ice', 'rock', 'stone', 'river', 'sea', 'ocean', 'mountain',
+    'house', 'home', 'street', 'road', 'city', 'town', 'world', 'land', 'real', 'estate', 'status', 'quo', 'here', 'there',
+    'now', 'then', 'once', 'again', 'first', 'last', 'one', 'two', 'three', 'four', 'five', 'zero', 'half', 'back', 'up',
+    'down', 'out', 'over', 'under', 'free', 'fast', 'slow', 'hard', 'soft', 'sweet', 'sad', 'happy', 'crazy', 'lost',
+    'found', 'cold', 'hot', 'heart', 'hearts', 'soul', 'souls', 'mind', 'minds', 'body', 'bodies', 'hand', 'hands',
+    'eyes', 'face', 'girl', 'girls', 'boy', 'boys', 'man', 'men', 'woman', 'women', 'king', 'queen', 'prince', 'lady',
+    'band', 'group', 'music', 'sound', 'sounds', 'song', 'songs', 'dance', 'party', 'club', 'orchestra', 'ensemble',
+    'quartet', 'trio', 'project', 'collective', 'society', 'machine', 'machines', 'system', 'habits', 'drama', 'electronic',
+    'original', 'soundtrack', 'cast', 'various', 'artists', 'internet', 'weather', 'news', 'digital', 'online',
+}
 TOO_COMMON = {'and', 'the', 'of', 'a', 'an', 'in', 'on', 'to', 'for', 'with', 'by', 'at', 'various', 'artists'}
 
 
@@ -85,7 +102,10 @@ class Matcher:
             if len(k) >= 2 and k not in TOO_COMMON:
                 self.artist_idx[k].add(aid)
                 self.names[aid] = name
-        self.ambiguous = {k: is_ambiguous(k, words) for k in self.artist_idx}
+        # 'strict': common words only (used for the body, where a name is a weak signal); the title, slug and tags also
+        # accept a capitalized multi-word name with an unusual word in it
+        self.ambiguous_strict = {k: is_ambiguous(k, words) for k in self.artist_idx}
+        self.ambiguous = {k: amb and not self._distinctive(k) for k, amb in self.ambiguous_strict.items()}
         self.maxn = max((len(k.split()) for k in self.artist_idx), default=1)
         # what each artist made, to confirm a name by its work: aid -> {normalized title: album id (or None for a track)}
         self.work = defaultdict(dict)
@@ -119,16 +139,28 @@ class Matcher:
                 if h and h not in NOT_ARTIST_HOSTS:
                     self.bandcamp[h] = aid
 
-    def _find(self, text, written=True):
+    def _distinctive(self, key):
+        """A name of two or more words, written with capitals, that has a word outside the everyday ones."""
+        for aid in self.artist_idx[key]:
+            words = re.findall(r"[^\W_]+", re.sub(r"[’']", '', self.names[aid]))
+            if words and words[0].lower() == 'the':
+                words = words[1:]
+            if len(words) >= 2 and all(w[0].isupper() or w[0].isdigit() for w in words) \
+                    and any(w.lower() not in COMMON_NAME_WORDS for w in words):
+                return True
+        return False
+
+    def _find(self, text, written=True, strict=False):
         """{artist id: normalized name} for every artist named in text. A name of common words only counts if the text
         writes it as the artist does ('The Internet', not 'the internet'); a URL slug has no capitals, so those never do."""
+        ambiguous = self.ambiguous_strict if strict else self.ambiguous
         toks = norm(text).split()
         found = {}
         for n in range(min(self.maxn, len(toks)), 0, -1):
             for i in range(len(toks) - n + 1):
                 k = ' '.join(toks[i:i + n])
                 for aid in self.artist_idx.get(k, ()):
-                    if self.ambiguous[k] and not (written and self.names[aid] in text):
+                    if ambiguous[k] and not (written and self.names[aid] in text):
                         continue
                     found.setdefault(aid, k)
         return found
@@ -164,8 +196,8 @@ class Matcher:
         sig = defaultdict(dict)    # artist id -> {signal: score}
         album = {}
 
-        def add(aid, name_key, signal, pair=None):
-            s = SCORES[(signal, self.ambiguous.get(name_key, False))]
+        def add(aid, name_key, signal, pair=None, strict=False):
+            s = SCORES[(signal, (self.ambiguous_strict if strict else self.ambiguous).get(name_key, False))]
             if s > sig[aid].get(signal, 0):
                 sig[aid][signal] = s
             if pair and pair[1]:
@@ -183,10 +215,10 @@ class Matcher:
                 add(aid, k, 'tag')
         if body:
             body_key = norm(body)
-            for aid, name_key in self._find(body, written=True).items():
+            for aid, name_key in self._find(body, written=True, strict=True).items():
                 pair = self._pair(body_key, aid, name_key)
                 long_name = len(name_key.split()) >= 2 and len(name_key) >= 10
-                add(aid, name_key, 'body_pair' if pair else 'body_long' if long_name else 'body', pair)
+                add(aid, name_key, 'body_pair' if pair else 'body_long' if long_name else 'body', pair, strict=True)
         for aid in self._links(links):
             sig[aid]['link'] = SCORES[('link', False)]
 

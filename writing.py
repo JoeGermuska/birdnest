@@ -12,7 +12,7 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
     python writing.py report [--days N]             what matched lately, again
     python writing.py sources                       sync writing_sources.json into the database and list it
     python writing.py source off|on NAME            stop (or resume) checking one
-    python writing.py review                        matches a person should confirm or reject
+    python writing.py review [--artist NAME] [--list]   confirm or reject the borderline matches, one at a time
 
 Routine use: refresh_writing.py, weekly (refresh() then one slice of backfill_sources()). The commands above are for
 doing the pieces by hand.
@@ -52,6 +52,7 @@ create table if not exists source (
 create table if not exists item (
     item_id integer primary key, source_id integer references source(source_id), url text unique,
     title text, published text, author text, tags text, excerpt text, body_text text, links text, first_seen text);
+create table if not exists artist_veto (artist_id integer primary key, created_at text);
 create table if not exists match (
     item_id integer references item(item_id), artist_id integer, album_id integer, score real, kind text,
     signals text, status text, created_at text, primary key (item_id, artist_id));
@@ -258,9 +259,10 @@ def match_item(conn, matcher, item_id, title, tags, url, body, links, stamp):
     """Store the matches for one item. A match a person has confirmed or rejected is left as they set it."""
     keep = {r[0] for r in conn.execute("select artist_id from match where item_id=? and status in ('confirmed','rejected')", (item_id,))}
     conn.execute("delete from match where item_id=? and status in ('auto','review')", (item_id,))
+    vetoed = {r[0] for r in conn.execute('select artist_id from artist_veto')}
     n = 0
     for m in matcher.match(title=title, tags=tags, url=url, body=body, links=links):
-        if m['artist_id'] in keep:
+        if m['artist_id'] in keep or (m['artist_id'] in vetoed and not CORROBORATED & set(m['signals'].split(','))):
             continue
         conn.execute('insert into match values (?,?,?,?,?,?,?,?)',
                      (item_id, m['artist_id'], m['album_id'], m['score'], m['kind'], m['signals'], m['status'], stamp))
@@ -331,6 +333,65 @@ def publish(conn, birds_path=BIRDS_DB):
     birds.commit()
     birds.close()
     return len(seen), len(rows)
+
+
+# ---- review: a person's verdicts on the borderline matches
+
+CORROBORATED = {'pair_title', 'pair_slug', 'body_pair', 'link'}  # signals that survive a veto: more than the name
+
+
+def set_status(conn, item_id, artist_id, status):
+    conn.execute('update match set status=? where item_id=? and artist_id=?', (status, item_id, artist_id))
+    conn.commit()
+
+
+def veto_artist(conn, artist_id):
+    """Never match this artist on their name alone (a 'Charlie' or a 'Journey'); a link or one of their albums still counts.
+    Their matches already stored without such support are dropped."""
+    conn.execute('insert or ignore into artist_veto values (?,?)', (artist_id, iso(now())))
+    for item_id, signals in conn.execute("select item_id, signals from match where artist_id=? and status in ('auto','review')",
+                                         (artist_id,)).fetchall():
+        if not CORROBORATED & set(signals.split(',')):
+            conn.execute('delete from match where item_id=? and artist_id=?', (item_id, artist_id))
+    conn.commit()
+
+
+def review_loop(conn, rows, names, ask=input, out=print, open_url=None):
+    """Walk through borderline matches. y = it's about them (published), n = it isn't, x = never match this artist on
+    the name alone, s = skip, o = open the piece, q = quit. -> (confirmed, rejected, vetoed) counts."""
+    done = {'y': 0, 'n': 0, 'x': 0}
+    vetoed = set()
+    pending = {}
+    for r in rows:
+        pending[r['artist_id']] = pending.get(r['artist_id'], 0) + 1
+    for i, r in enumerate(rows, 1):
+        if r['artist_id'] in vetoed:
+            continue
+        out(f"\n[{i}/{len(rows)}] {names.get(r['artist_id'], '?')}  ({pending[r['artist_id']]} pending for this artist)\n"
+            f"  {r['title']}\n  {r['source']} · {r['signals']} · {r['score']:.2f}\n  {r['url']}")
+        while True:
+            try:
+                key = ask('  y it is about them / n no / x never on the name alone / s skip / o open / q quit > ').strip().lower()[:1]
+            except EOFError:
+                key = 'q'
+            if key == 'o' and open_url:
+                open_url(r['url'])
+                continue
+            if key in ('y', 'n', 'x', 's', 'q'):
+                break
+        if key == 'q':
+            break
+        if key == 'y':
+            set_status(conn, r['item_id'], r['artist_id'], 'confirmed')
+        elif key == 'n':
+            set_status(conn, r['item_id'], r['artist_id'], 'rejected')
+        elif key == 'x':
+            veto_artist(conn, r['artist_id'])
+            vetoed.add(r['artist_id'])
+        if key in done:
+            done[key] += 1
+        pending[r['artist_id']] -= 1
+    return done['y'], done['n'], done['x']
 
 
 # ---- the report
@@ -481,9 +542,27 @@ def cmd_toggle(args):
 def cmd_review(args):
     conn, birds = connect(), sqlite3.connect(BIRDS_DB)
     names = {a: n for a, n in birds.execute('select artist_id, name from artist')}
-    for r in conn.execute("select m.*, i.title, i.url, s.name source from match m join item i using (item_id) "
-                          "join source s using (source_id) where m.status='review' order by m.score desc limit ?", (args.limit,)):
-        print(f"{r['score']:.2f} {names.get(r['artist_id'], '?')}: {r['title'][:80]}  [{r['source']}; {r['signals']}]\n     {r['url']}")
+    rows = conn.execute("select m.*, i.title, i.url, s.name source from match m join item i using(item_id) "
+                        "join source s using(source_id) where m.status='review'").fetchall()
+    if args.artist:
+        rows = [r for r in rows if args.artist.lower() in names.get(r['artist_id'], '').lower()]
+    # by artist (the biggest piles first, where a veto helps most), best-scored first within each
+    by_artist = {}
+    for r in rows:
+        by_artist[r['artist_id']] = by_artist.get(r['artist_id'], 0) + 1
+    rows.sort(key=lambda r: (-by_artist[r['artist_id']], names.get(r['artist_id'], ''), -r['score']))
+    if args.limit:
+        rows = rows[:args.limit]
+    if args.list or not sys.stdin.isatty():
+        for r in rows:
+            print(f"{r['score']:.2f} {names.get(r['artist_id'], '?')}: {r['title'][:80]}  [{r['source']}; {r['signals']}]\n     {r['url']}")
+        return
+    import webbrowser
+    y, n, x = review_loop(conn, rows, names, open_url=webbrowser.open)
+    print(f'\nconfirmed {y}, rejected {n}, never-on-the-name {x}')
+    if y:
+        pieces, matches = publish(conn)
+        print(f'published {pieces} pieces / {matches} matches to {BIRDS_DB}')
 
 
 def main(argv=None):
@@ -511,7 +590,9 @@ def main(argv=None):
     so.add_argument('name')
     so.set_defaults(fn=cmd_toggle)
     rv = sub.add_parser('review')
-    rv.add_argument('--limit', type=int, default=60)
+    rv.add_argument('--limit', type=int, default=0, help='only this many (default: all)')
+    rv.add_argument('--artist', help='only matches for artists whose name contains this')
+    rv.add_argument('--list', action='store_true', help='just list them, no questions')
     rv.set_defaults(fn=cmd_review)
     args = p.parse_args(argv)
     args.fn(args)
