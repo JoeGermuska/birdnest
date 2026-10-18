@@ -13,7 +13,7 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
     python writing.py sources                       sync writing_sources.json into the database and list it
     python writing.py source off|on NAME            stop (or resume) checking one
     python writing.py review [--artist NAME] [--list]   confirm or reject the borderline matches, one at a time
-    python writing.py hide URL | unhide URL | duplicates   keep a piece off the site; see the automatic duplicate handling
+    python writing.py veto ARTIST | hide URL | unhide URL | duplicates   keep wrong matches and duplicates off the site
 
 Routine use: refresh_writing.py, weekly (refresh() then one slice of backfill_sources()). The commands above are for
 doing the pieces by hand.
@@ -598,6 +598,42 @@ def cmd_toggle(args):
     print('ok' if cur.rowcount else f'no source named {args.name!r}')
 
 
+def pick_artist(birds, name):
+    """The artists named NAME: an exact match (any case) if there is one, otherwise the ones whose name contains it."""
+    exact = birds.execute('select artist_id, name from artist where lower(name)=lower(?)', (name,)).fetchall()
+    return exact or birds.execute('select artist_id, name from artist where name like ? order by name', (f'%{name}%',)).fetchall()
+
+
+def cmd_veto(args):
+    """veto NAME: this artist's name alone never matches (a 'Dillinger' who isn't The Dillinger Escape Plan). Their
+    matches that rest on the name alone are dropped now and never come back; with --all every match of theirs goes."""
+    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
+    found = pick_artist(birds, args.name)
+    if len(found) != 1:
+        print('no artist called that' if not found else 'which one?\n  ' + '\n  '.join(f'{n} (id {a})' for a, n in found[:15]))
+        return
+    aid, name = found[0]
+    if args.undo:
+        conn.execute('delete from artist_veto where artist_id=?', (aid,))
+        conn.commit()
+        print(f'{name}: matches on the name alone are allowed again (they come back at the next rematch)')
+        return
+    pieces = conn.execute("select i.title, s.name source, m.signals from match m join item i using (item_id) "
+                          "join source s using (source_id) where m.artist_id=? and m.status in ('auto','review','confirmed')",
+                          (aid,)).fetchall()
+    veto_artist(conn, aid)
+    if args.all:
+        conn.execute("update match set status='rejected' where artist_id=?", (aid,))
+        conn.commit()
+    left = conn.execute("select count(*) from match where artist_id=? and status in ('auto','review','confirmed')", (aid,)).fetchone()[0]
+    print(f'{name}: {len(pieces)} matches, {len(pieces) - left} dropped, {left} left' + ('' if args.all or not left else
+          " (they have an album or link behind them; use --all to drop those too)"))
+    for p in pieces[:12]:
+        print(f"  {p['title'][:78]}  [{p['source']}]")
+    pieces_n, matches_n = publish(conn)
+    print(f'published {pieces_n} pieces / {matches_n} matches to {BIRDS_DB}')
+
+
 def cmd_hide(args):
     """hide URL: keep a piece off the site (a duplicate, junk, not writing). unhide URL undoes it."""
     conn = connect()
@@ -681,6 +717,8 @@ Looking:
 Deciding:
   review [--artist NAME] [--list]   go through the borderline matches: y it's about them, n it isn't, x never match this artist
                                     on the name alone, s skip, o open the piece, q quit (--list just prints them)
+  veto ARTIST [--all]               an artist's name alone never matches (a 'Dillinger' who isn't The Dillinger Escape Plan): drops
+                                    their matches that rest on the name, for good; --all drops every match. unveto ARTIST undoes it
   hide URL [--reason WHY]           keep one piece off the site (junk, not writing, a duplicate you'd rather not show)
   unhide URL                        bring it back
   duplicates                        pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically
@@ -726,6 +764,13 @@ def main(argv=None):
     uh = sub.add_parser('unhide', help='bring a hidden piece back')
     uh.add_argument('url')
     uh.set_defaults(fn=cmd_hide, undo=True, reason='')
+    vt = sub.add_parser('veto', help="never match an artist on their name alone")
+    vt.add_argument('name')
+    vt.add_argument('--all', action='store_true', help='drop every match of theirs, not only the ones resting on the name')
+    vt.set_defaults(fn=cmd_veto, undo=False)
+    uv = sub.add_parser('unveto', help='allow an artist\'s name to match again')
+    uv.add_argument('name')
+    uv.set_defaults(fn=cmd_veto, undo=True, all=False)
     sub.add_parser('duplicates', help='pieces served at two URLs of one site').set_defaults(fn=cmd_duplicates)
     rv = sub.add_parser('review', help='confirm or reject borderline matches')
     rv.add_argument('--limit', type=int, default=0, help='only this many (default: all)')

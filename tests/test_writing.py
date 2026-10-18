@@ -30,6 +30,14 @@ def matcher():
     return Matcher(c, words=WORDS)
 
 
+@pytest.fixture
+def matcher_db():
+    c = sqlite3.connect(':memory:')
+    c.execute('create table artist (artist_id integer, name text)')
+    c.executemany('insert into artist values (?,?)', [(1, 'Dillinger'), (2, 'The Dillinger Escape Plan Tribute: Escape')])
+    return c
+
+
 def best(ms, aid):
     return next((m for m in ms if m['artist_id'] == aid), None)
 
@@ -322,3 +330,9 @@ def test_publish_leaves_out_duplicates_and_hidden_pieces(tmp_path):
     b = sqlite3.connect(out)
     assert sorted(r[0] for r in b.execute('select writing_id from writing')) == [1, 3]
     assert sorted(b.execute('select writing_id, artist_id from writing_match').fetchall()) == [(1, 10), (1, 11), (3, 12)]
+
+
+def test_pick_artist_prefers_the_exact_name(matcher_db):
+    assert writing.pick_artist(matcher_db, 'dillinger') == [(1, 'Dillinger')]
+    assert [a for a, _ in writing.pick_artist(matcher_db, 'escape')] == [2]
+    assert writing.pick_artist(matcher_db, 'nobody') == []
