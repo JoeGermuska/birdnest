@@ -507,6 +507,9 @@ def test_a_name_inside_a_longer_artists_name_is_the_longer_ones():
                                   (11, 'Shabaka', null), (12, 'Shabaka Hutchings', null), (13, 'Nick Cave', null);
         insert into album values (10, 'Mind Games'); insert into album_artist values (10, 3);
         insert into mb_artist values (11, 'same-person'), (12, 'same-person'), (13, 'someone-else');""")
+    c.executescript("""alter table mb_artist add column type text;
+        insert into artist values (14, 'Santana', null), (15, 'Carlos Santana', null), (16, 'Marta', null), (17, 'Marta Del Grandi', null);
+        insert into mb_artist values (14, 'santana-band', 'Group'), (15, 'carlos', 'Person'), (16, 'marta', 'Person'), (17, 'martadg', 'Person');""")
     m = Matcher(c, words=set())
     ids = lambda ms: {x['artist_id'] for x in ms}
     assert ids(m.match(title='Bonnie “Prince” Billy shares a new song')) == {2}            # within the one phrase
@@ -519,3 +522,5 @@ def test_a_name_inside_a_longer_artists_name_is_the_longer_ones():
     assert ids(m.match(title='Frank Sinatra Jr. on tour')) == {9}                          # a different person
     assert ids(m.match(title='Shabaka Hutchings announces a record')) == {11, 12}          # two rows, one musician: neither crowds out the other
     assert ids(m.match(title='Shabaka', body='Shabaka Hutchings played')) == {11, 12}
+    assert ids(m.match(title='Carlos Santana on tour')) == {14, 15}                        # a group named for a person: one for most purposes
+    assert ids(m.match(title='Marta Del Grandi – Dream Life')) == {17}                     # but a first name that's another artist's is not

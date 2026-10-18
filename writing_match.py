@@ -159,15 +159,15 @@ class Matcher:
                 parent[x] = parent[parent[x]]
                 x = parent[x]
             return x
-        try:
-            ids = conn.execute('select artist_id, mbid, wikidata from mb_artist where mbid is not null').fetchall()
-        except Exception:  # no wikidata column (a test database)
-            ids = [(a, m, None) for a, m in conn.execute('select artist_id, mbid from mb_artist where mbid is not null')]
-        for aid, mbid, wd in ids:
+        cols = {r[1] for r in conn.execute('pragma table_info(mb_artist)')}
+        ids = conn.execute('select artist_id, mbid, %s, %s from mb_artist where mbid is not null' % (
+            'wikidata' if 'wikidata' in cols else 'null', 'type' if 'type' in cols else 'null')).fetchall()
+        self.mb_type = {aid: t for aid, _, _, t in ids}
+        for aid, mbid, wd, _ in ids:
             parent[find(aid)] = find(('mb', mbid))
             if wd:
                 parent[find(aid)] = find(('wd', wd))
-        self.entity = {aid: find(aid) for aid, _, _ in ids}
+        self.entity = {aid: find(aid) for aid, _, _, _ in ids}
         # exact pages
         self.sp_artist = {s: a for s, a in conn.execute("select spotify_id, artist_id from artist where spotify_id is not null")}
         self.mb_artist = {m: a for m, a in conn.execute("select mbid, artist_id from mb_artist where mbid is not null")}
@@ -185,9 +185,14 @@ class Matcher:
     def _same_musician(self, a, b):
         return self.entity.get(a, ('a', a)) == self.entity.get(b, ('b', b))
 
+    def _related(self, a, b, short_key=None):
+        """One musician as far as a reader is concerned: two rows for the same person, or a group named for a person
+        ('Santana' and 'Carlos Santana'), so a piece about either is about both."""
+        return self._same_musician(a, b) or (self.mb_type.get(a) == 'Group' and self.mb_type.get(b) == 'Person')
+
     def _rivals(self, short_key, long_key):
         """Could the artists named `long_key` crowd out those named `short_key`? Not when they're one musician."""
-        return not any(self._same_musician(a, b) for a in self.artist_idx[short_key] for b in self.artist_idx[long_key])
+        return not any(self._related(a, b) for a in self.artist_idx[short_key] for b in self.artist_idx[long_key])
 
     def _distinctive(self, key):
         """A name of two or more words, written with capitals, that has a word outside the everyday ones."""
@@ -294,7 +299,7 @@ class Matcher:
         def inside(ka, kb):  # ka's words sit in kb's, and kb isn't just ka with a band attached
             return len(kb) > len(ka) and f' {ka} ' in f' {kb} ' and not band_of(ka, kb)
         for a, ka in key_of.items():
-            if a in sig and any(inside(ka, kb) and not self._same_musician(a, b) for b, kb in key_of.items() if b != a and b in sig):
+            if a in sig and any(inside(ka, kb) and not self._related(a, b) for b, kb in key_of.items() if b != a and b in sig):
                 for signal in [x for x in sig[a] if x not in keep]:
                     del sig[a][signal]
                 if not sig[a]:
