@@ -13,10 +13,12 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 ## Data upkeep
 
 - Weekly, after each show: `python load_playlist.py` (the show, its artists, albums and tracks, a few MusicBrainz
-  retries, links people added through the to-do lists under the 🤓 in the banner, and music writing from the feeds in
-  `writing_sources.json`: `writing.py` keeps a local `writing_crawl.db` and publishes matches into `birdnest.db`).
-  Then `python load_djs.py add "LINE" --commit` for the show's DJs.
-- Every month or two: `python maintenance.py` (the slow Wikidata jobs, and one gentle slice of the music writing archives). Then commit `birdnest.db` and deploy.
+  retries, and links people added through the to-do lists under the 🤓 in the banner). Then
+  `python load_djs.py add "LINE" --commit` for the show's DJs.
+- Weekly too, after that: `python refresh_writing.py` (music writing from the feeds in `writing_sources.json`: re-match,
+  check the feeds that are due, one gentle slice of the archive backfill, publish into `birdnest.db`; no Spotify needed).
+  `writing.py` has the same pieces to run by hand, and keeps its crawl state in the local `writing_crawl.db`.
+- Every month or two: `python maintenance.py` (the slow Wikidata jobs). Then commit `birdnest.db` and deploy.
 
 ## Tests
 

@@ -14,8 +14,8 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
     python writing.py source off|on NAME            stop (or resume) checking one
     python writing.py review                        matches a person should confirm or reject
 
-Routine use: load_playlist.py runs refresh() each week (after the new show's artists are in, before the caches are
-built) and maintenance.py runs a slice of backfill_sources() each time. The commands above are for doing either by hand.
+Routine use: refresh_writing.py, weekly (refresh() then one slice of backfill_sources()). The commands above are for
+doing the pieces by hand.
 
 Each source is checked again after about half the typical gap between its posts (12 hours to 2 weeks), and a source
 that keeps failing backs off. Requests are one a second per host, conditional where the site allows.

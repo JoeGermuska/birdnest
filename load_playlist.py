@@ -66,10 +66,5 @@ wikidata_album_todo.main()  # albums whose Wikidata item lacks our Spotify ID (/
 # small tile copies of any new show images (also made at image build)
 make_tiles.main()
 
-# music writing: the feeds that are due, everything stored matched against the artists as they are now, and the
-# matches published into birdnest.db for the Further reading pages (before the cache, which includes them)
-import writing
-writing.refresh(rematch_first=True)
-
 # pre-build the web app's analysis cache for the updated database
 factoids.build_cache()
