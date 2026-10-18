@@ -1132,6 +1132,28 @@ class History:
         return {'title': 'Most played artists', 'unit': 'shows', 'rows': rows,
                 'blurb': 'Artists by the number of shows they appeared in; each tick is a show.'}
 
+    def _rank_publications(self):
+        by_source = defaultdict(list)
+        for p in self.reading_pieces.values():
+            if p['source_slug'] in self.reading_sources:
+                by_source[p['source_slug']].append(p)
+        items = sorted(by_source.items(), key=lambda kv: (-len(kv[1]), self.reading_sources[kv[0]]['name'].lower()))
+        ranks = _competition_ranks([len(ps) for _, ps in items])
+        rows = []
+        for r, (slug, ps) in zip(ranks, items):
+            dated = sorted((p for p in ps if p['published']), key=lambda p: p['published'])
+            pieces = [{'date': min(max(date.fromisoformat(p['published']), self.first_date), self.last_date),
+                       'url': p['url'], 'title': p['title']} for p in dated]
+            artists = len({a for p in ps for a, _ in p['artists']})
+            span = f", {dated[0]['published']} to {dated[-1]['published']}" if dated else ''
+            rows.append({'anchor': slug, 'rank': r, 'label': [{'reading': slug, 'text': self.reading_sources[slug]['name']}],
+                         'value': len(ps), 'pieces': pieces,
+                         'tip': f"{self.reading_sources[slug]['name']}: {len(ps)} pieces about {artists} artists{span}"})
+        return {'title': 'Publications', 'unit': 'pieces', 'rows': rows,
+                'blurb': 'Where the writing about the music we play comes from: publications and writers by the number of pieces '
+                         'matched to artists and albums from the shows; each tick is a piece, on the day it was published (it '
+                         'links out). Writing only reaches back as far as each archive has been read.'}
+
     def _rank_djs(self):
         items = sorted(((i, sorted(self.show_dates[p] for p in pids)) for i, pids in self.dj_shows.items()),
                        key=lambda kv: (-len(kv[1]), self.djs[kv[0]]['name']))
@@ -1504,7 +1526,7 @@ LABEL_LINK_LABELS = [('wikipedia', 'Wikipedia'), ('musicbrainz', 'MusicBrainz'),
                      ('bandcamp', 'Bandcamp'), ('official site', 'Website'), ('wikidata', 'Wikidata')]
 SHOW_LEAN = (0.10, 1.5)  # a show's mix: a family stands out at 10 points of runtime and 1.5x (or half) its usual
 AGE_BIN = 5  # song age: years per bar in each show year's histogram
-RANKINGS = ['artists', 'albums', 'tracks', 'returns', 'labels', 'djs']  # novelty has its own chart page
+RANKINGS = ['artists', 'albums', 'tracks', 'returns', 'labels', 'djs', 'publications']  # novelty has its own chart page
 
 
 def _code_hash():

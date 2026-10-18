@@ -246,3 +246,27 @@ def test_a_source_gets_only_its_time_budget(monkeypatch):
     assert wb.fetch_candidates({'name': 's'}, ['https://ex.com/a', 'https://ex.com/b'], lambda *a: None, seconds=0) == {}
     assert fetched == []
     assert len(wb.fetch_candidates({'name': 's'}, ['https://ex.com/a', 'https://ex.com/b'], lambda *a: None, seconds=60)) == 2
+
+
+def test_publications_are_a_ranking(app_module):
+    import factoids
+    history = factoids.get_history()
+    if not history.reading_sources:
+        pytest.skip('no published writing in this database')
+    assert 'publications' in factoids.RANKINGS
+    table = history.ranking('publications', limit=100)
+    top = table['rows'][0]
+    assert top['rank'] == 1 and top['value'] == len(top['pieces']) + sum(1 for p in history.reading_pieces.values()
+                                                                        if p['source_slug'] == top['anchor'] and not p['published'])
+    html = app_module.app.test_client().get('/rankings/publications').get_data(as_text=True)
+    assert f"/reading/{top['anchor']}" in html and top['pieces'][0]['url'] in html
+    assert 'href="/rankings/publications"' in html  # the tab
+
+
+def test_writing_help_lists_every_command(capsys):
+    writing.main(['help'])
+    out = capsys.readouterr().out
+    for cmd in ('run', 'rematch', 'backfill', 'publish', 'sources', 'report', 'review', 'source off|on', 'refresh_writing.py'):
+        assert cmd in out
+    writing.main([])  # no command is the same help
+    assert 'Weekly' in capsys.readouterr().out

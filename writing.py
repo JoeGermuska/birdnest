@@ -565,14 +565,43 @@ def cmd_review(args):
         print(f'published {pieces} pieces / {matches} matches to {BIRDS_DB}')
 
 
+HELP = """writing.py: the index of music writing
+
+Weekly (after load_playlist.py): python refresh_writing.py
+  does the whole routine in one go: re-match, check the feeds that are due, a gentle slice of the backfill, publish.
+
+The pieces, for doing by hand:
+  run [--all] [--source NAME]       check the feeds that are due (every one with --all, or just NAME), match what's new, publish
+  rematch                           match every stored item again; needed after new artists arrive (refresh_writing.py does it)
+  backfill [--source NAME]          reach back through a site's sitemaps (or its WordPress API / paged feed): a gentle slice,
+            [--minutes M]           polite and resumable. M is the time each source gets in each phase (default 5)
+  publish                           copy the accepted matches into birdnest.db (run, backfill and review already do this)
+
+Looking:
+  sources                           every source: pieces stored, matched, about artists we've played, latest post, any trouble
+  report [--days N]                 what matched lately
+
+Deciding:
+  review [--artist NAME] [--list]   go through the borderline matches: y it's about them, n it isn't, x never match this artist
+                                    on the name alone, s skip, o open the piece, q quit (--list just prints them)
+  source off|on NAME                stop or resume checking one source. To add or remove one, edit writing_sources.json
+
+Whatever changes birdnest.db (publish does), commit it and deploy. See the top of writing.py for how it all works."""
+
+
+def cmd_help(args):
+    print(HELP)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    sub = p.add_subparsers(dest='cmd', required=True)
-    r = sub.add_parser('run')
+    sub = p.add_subparsers(dest='cmd')
+    sub.add_parser('help', help='what each command does').set_defaults(fn=cmd_help)
+    r = sub.add_parser('run', help='check the feeds that are due')
     r.add_argument('--all', action='store_true', help='check every source, due or not')
     r.add_argument('--source', help='check just this one')
     r.set_defaults(fn=cmd_run)
-    bf = sub.add_parser('backfill')
+    bf = sub.add_parser('backfill', help='reach back through archives, gently')
     bf.add_argument('--source', help='just this one')
     bf.add_argument('--sitemaps', type=int, default=15, help='most sitemap files to read per source per run')
     bf.add_argument('--pages', type=int, default=50, help='most candidate pages to fetch per source per run')
@@ -580,23 +609,23 @@ def main(argv=None):
     bf.add_argument('--minutes', type=float, default=5, help='most time each source gets in each phase (a slow Crawl-delay means fewer pages)')
     bf.add_argument('--news', action='store_true', help='include news sources too')
     bf.set_defaults(fn=cmd_backfill)
-    sub.add_parser('rematch').set_defaults(fn=cmd_rematch)
-    rp = sub.add_parser('report')
+    sub.add_parser('rematch', help='match everything stored again').set_defaults(fn=cmd_rematch)
+    rp = sub.add_parser('report', help='what matched lately')
     rp.add_argument('--days', type=int, default=7)
     rp.set_defaults(fn=cmd_report)
-    sub.add_parser('publish').set_defaults(fn=cmd_publish)
-    sub.add_parser('sources').set_defaults(fn=cmd_sources)
-    so = sub.add_parser('source')
+    sub.add_parser('publish', help='copy accepted matches into birdnest.db').set_defaults(fn=cmd_publish)
+    sub.add_parser('sources', help='every source and what it yields').set_defaults(fn=cmd_sources)
+    so = sub.add_parser('source', help='turn a source on or off')
     so.add_argument('state', choices=['on', 'off'])
     so.add_argument('name')
     so.set_defaults(fn=cmd_toggle)
-    rv = sub.add_parser('review')
+    rv = sub.add_parser('review', help='confirm or reject borderline matches')
     rv.add_argument('--limit', type=int, default=0, help='only this many (default: all)')
     rv.add_argument('--artist', help='only matches for artists whose name contains this')
     rv.add_argument('--list', action='store_true', help='just list them, no questions')
     rv.set_defaults(fn=cmd_review)
     args = p.parse_args(argv)
-    args.fn(args)
+    (getattr(args, 'fn', None) or cmd_help)(args)  # no command: the help
 
 
 if __name__ == '__main__':

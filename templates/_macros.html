@@ -6,6 +6,7 @@
 {%- elif p.album -%}<a href="{{ url_for('album', spotify_id=p.album) }}">{{ p.text }}</a>
 {%- elif p.genre -%}<a href="{{ url_for('genre', genre_name=p.genre) }}">{{ p.text }}</a>
 {%- elif p.dj -%}<a href="{{ url_for('dj', slug=p.dj) }}">{{ p.text }}</a>
+{%- elif p.reading -%}<a href="{{ url_for('reading_source', slug=p.reading) }}">{{ p.text }}</a>
 {%- elif p.show -%}<a href="{{ url_for('show_playlist', date_str=p.show) }}">{{ p.text }}</a>
 {%- else -%}{{ p.text }}{%- endif -%}
 {%- endfor -%}
@@ -32,6 +33,9 @@
         {% for y in range(history.first_date.year + 1, history.last_date.year + 1) %}{% set x = 4 + history.year_x(y, 800) %}<line class="year-rule" x1="{{ x }}" x2="{{ x }}" y1="0" y2="18" />{% endfor %}
         {% if r.span %}{% set x1 = 4 + history.timeline_x(r.span[0], 800) %}{% set x2 = 4 + history.timeline_x(r.span[1], 800) %}
         <rect class="gap" x="{{ x1 }}" y="6" width="{{ x2 - x1 }}" height="6" rx="2" />{% endif %}
+        {% for pc in r.pieces %}{% set x = 4 + history.timeline_x(pc.date, 800) %}
+        <a href="{{ pc.url }}" target="_blank" rel="noopener"><title>{{ pc.title }} ({{ pc.date }})</title><rect class="hit" x="{{ x - 3 }}" y="0" width="6" height="18" /><line class="mark" x1="{{ x }}" x2="{{ x }}" y1="3" y2="15" /></a>
+        {% endfor %}
         {% for d in r.marks %}{% set x = 4 + history.timeline_x(d, 800) %}
         <a href="{{ url_for('show_playlist', date_str=d) }}"><title>{{ d }}</title><rect class="hit" x="{{ x - 3 }}" y="0" width="6" height="18" /><line class="mark" x1="{{ x }}" x2="{{ x }}" y1="3" y2="15" /></a>
         {% endfor %}
