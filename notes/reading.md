@@ -46,6 +46,11 @@ writing_sources.json  ->  writing.py  ->  writing_crawl.db  ->  (publish)  ->  b
 - **`writing_crawl.db`** (local, gitignored): every item ever seen (url, title, date, tags, a short excerpt, body text,
   links), per-source crawl state (etag, next check, failures), the backfill's progress, your review verdicts, vetoes
   and hidden pieces. It is large and private-ish, and it's what lets a newly played artist be matched to old pieces.
+- **Teasers.** Some feeds (PopMatters, Loud and Quiet, Chicago Reader, Stereogum, Bandcamp Daily...) carry only a sentence, so
+  a name that appears only inside the article was never seen (an interview tagged "João Donato" that also named Jobim
+  matched only Donato). `writing.py deepen` (40 pages a source in each weekly `run`, newest first) fetches the full page
+  of any item holding under 1,000 characters, once (`item.deepened`: 1 read, 2 no text), and matches it again. Raise
+  `--pages` to drain a backlog. `writing.py why URL [ARTIST]` shows what we hold for a piece and why it did or didn't match.
 - **`birdnest.db`** gets only what's published: `writing` (url, title, date, source, members flag), `writing_source`
   (slug, name, kind, home url) and `writing_match` (which piece is about or mentions which artist and album). Titles,
   dates and links only; no excerpt or text is published.
@@ -62,7 +67,7 @@ writing_sources.json  ->  writing.py  ->  writing_crawl.db  ->  (publish)  ->  b
   Don't run it at the same time as `load_playlist.py`: both write `birdnest.db`. No Spotify credentials needed.
 - **By hand:** `python writing.py help` lists everything. The ones you'll use: `sources` (the whole set and what each
   yields), `review` (the borderline matches), `veto ARTIST`, `hide URL`, `duplicates`, `report`, `run`, `rematch`,
-  `backfill`, `publish`, `source add|remove|on|off`.
+  `backfill`, `deepen`, `why`, `publish`, `source add|remove|on|off`.
 - **Pacing:** each feed is checked again after about half the typical gap between its posts (12 hours to 2 weeks).
   Failures back off.
 - **Gentleness** (see `writing_backfill.py`): `robots.txt` is respected, with `Crawl-delay` if longer; at most one

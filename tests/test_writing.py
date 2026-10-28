@@ -524,3 +524,20 @@ def test_a_name_inside_a_longer_artists_name_is_the_longer_ones():
     assert ids(m.match(title='Shabaka', body='Shabaka Hutchings played')) == {11, 12}
     assert ids(m.match(title='Carlos Santana on tour')) == {14, 15}                        # a group named for a person: one for most purposes
     assert ids(m.match(title='Marta Del Grandi – Dream Life')) == {17}                     # but a first name that's another artist's is not
+
+
+def test_a_teaser_only_item_is_read_in_full_and_matched_on_the_article(matcher, tmp_path, monkeypatch):
+    import writing_backfill as wb
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 's', 'u', 'criticism')")
+    for i, url in ((1, 'https://ex.com/a'), (2, 'https://ex.com/b')):
+        conn.execute("insert into item (item_id, source_id, url, title, published, tags, body_text, links) values (?,1,?,'t','2026-10-0'||?,'[]','a teaser','[]')",
+                     (i, url, i))
+    conn.commit()
+    pages = {'https://ex.com/a': {'body_text': 'He plays Sleater-Kinney songs with Dolly Parton fans.', 'links': []}, 'https://ex.com/b': None}
+    monkeypatch.setattr(wb, 'fetch_page', lambda url, session, name: pages[url])
+    src = conn.execute('select * from source').fetchall()
+    assert wb.deepen(conn, matcher, src, pages=5, log=lambda *a: None) == 1
+    assert {r['item_id']: r['deepened'] for r in conn.execute('select item_id, deepened from item')} == {1: 1, 2: 2}
+    assert {r['artist_id'] for r in conn.execute('select artist_id from match where item_id=1')} == {3, 4}
+    assert wb.deepen(conn, matcher, src, pages=5, log=lambda *a: None) == 0  # each is tried once

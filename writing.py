@@ -7,6 +7,8 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
 
     python writing.py run [--all] [--source NAME]   check the sources that are due, match new items, print the report
     python writing.py backfill [--source NAME]      reach back through a site's sitemaps (see writing_backfill.py)
+    python writing.py deepen [--pages N]            read the full text of pieces the feed gave only a teaser for
+    python writing.py why URL [ARTIST]              why a piece did (or didn't) match
     python writing.py rematch                       match every stored item again (after new artists arrive)
     python writing.py publish                       copy the accepted matches into birdnest.db (run does this too)
     python writing.py report [--days N]             what matched lately, again
@@ -43,6 +45,7 @@ BIRDS_DB, CRAWL_DB, SOURCES_FILE = 'birdnest.db', 'writing_crawl.db', 'writing_s
 USER_AGENT = 'birdsconferring-writing-index/0.1 (+https://birdsconferring.com)'
 MIN_HOURS, MAX_HOURS, DEFAULT_HOURS = 12, 24 * 14, 24 * 7
 MAX_BODY_CHARS, EXCERPT_CHARS, MAX_FEED_BYTES = 4000, 300, 8_000_000
+THIN_CHARS = 1000  # an item with less text than this has only a teaser from its feed
 ATOM, CONTENT, DC = '{http://www.w3.org/2005/Atom}', '{http://purl.org/rss/1.0/modules/content/}', '{http://purl.org/dc/elements/1.1/}'
 
 SCHEMA = """
@@ -76,6 +79,8 @@ def connect(path=CRAWL_DB):
     conn.executescript(SCHEMA)
     if 'backfill' not in {r[1] for r in conn.execute('pragma table_info(source)')}:
         conn.execute('alter table source add column backfill text')
+    if 'deepened' not in {r[1] for r in conn.execute('pragma table_info(item)')}:
+        conn.execute('alter table item add column deepened integer')  # null: not tried; 1: full text read; 2: page wouldn't give it
     return conn
 
 
@@ -581,7 +586,7 @@ def report(conn, birds, since, shows=8, limit=40, out=print):
     out(f"\n== {sum(r['status'] == 'review' for r in rows)} more matches to review (python writing.py review)")
 
 
-def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB):
+def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB, deepen_pages=40):
     """Check the sources that are due (or all, or one), match what's new, print the report, publish into birdnest.db.
     rematch_first: match everything stored against the artists as they are now, for after a new show's artists arrive."""
     conn, birds = connect(), sqlite3.connect(birds_path)
@@ -607,9 +612,63 @@ def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB):
         total += n
         print(f"  {src['name']}: {n} new")
     print(f'{total} new items')
+    if deepen_pages:
+        deepen_sources(conn, matcher, deepen_pages)
     report(conn, birds, started)
     pieces, matches = publish(conn, birds_path)
     print(f'\npublished {pieces} pieces / {matches} matches to {birds_path}')
+
+
+def deepen_sources(conn, matcher, pages=40, source=None, minutes=5):
+    """Read the full text of items whose feed gave only a teaser, newest first, so a name in the article (not just its
+    title and tags) can match. See writing_backfill.deepen."""
+    import writing_backfill
+    q, params = 'select * from source where active=1', []
+    if source:
+        q += ' and name=?'
+        params.append(source)
+    sources = [s for s in conn.execute(q + ' order by name', params) if s['kind'] in PUBLISH_KINDS]
+    n = writing_backfill.deepen(conn, matcher, sources, pages, seconds=minutes * 60)
+    print(f'{n} thin items read in full')
+    return n
+
+
+def cmd_deepen(args):
+    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
+    started = iso(now())
+    deepen_sources(conn, Matcher(birds), args.pages, args.source, args.minutes)
+    report(conn, birds, started)
+    pieces, matches = publish(conn, BIRDS_DB)
+    print(f'\npublished {pieces} pieces / {matches} matches to {BIRDS_DB}')
+
+
+def cmd_why(args):
+    """why URL [ARTIST]: what we stored for a piece, what it matched, and what the matcher says now."""
+    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
+    url = canonical(args.url)
+    it = conn.execute('select i.*, s.name as source from item i join source s using(source_id) where url=?', (url,)).fetchone()
+    if not it:
+        print(f'no stored piece at {url}; it may not be in a feed or sitemap we read yet')
+        return
+    names = dict(birds.execute('select artist_id, name from artist'))
+    body = it['body_text'] or ''
+    state = {None: 'not tried', 1: 'full text read', 2: "tried; the page wouldn't give it"}.get(it['deepened'], '?')
+    print(f"{it['title']}  ({it['source']}, {(it['published'] or '')[:10]})\n  tags: {', '.join(json.loads(it['tags'] or '[]')) or '-'}")
+    print(f"  text stored: {len(body)} chars ({'a teaser only' if len(body) < THIN_CHARS else 'full'}; {state})")
+    print('  hidden' if conn.execute('select 1 from item_hidden where url=?', (url,)).fetchone() else '  not hidden')
+    print('stored matches:')
+    for m in conn.execute('select * from match where item_id=? order by score desc', (it['item_id'],)):
+        print(f"  {names.get(m['artist_id'], m['artist_id'])}: {m['score']} {m['kind']} {m['status']} [{m['signals']}]")
+    live = Matcher(birds).match(title=it['title'], tags=json.loads(it['tags'] or '[]'), url=url, body=body or it['excerpt'] or '',
+                                links=json.loads(it['links'] or '[]'))
+    print('matcher now:')
+    for m in live:
+        print(f"  {names.get(m['artist_id'])}: {m['score']} {m['kind']} {m['status']} [{m['signals']}]")
+    if args.artist:
+        key = norm(args.artist)
+        hits = [(a, n) for a, n in names.items() if key in norm(n)]
+        print(f'{args.artist!r} in our artists: ' + ('; '.join(f'{n} ({a})' for a, n in hits[:8]) or 'none'))
+        print(f'  appears in the stored text: {key in norm(body + " " + (it["excerpt"] or "") + " " + it["title"])}')
 
 
 def cmd_run(args):
@@ -909,11 +968,15 @@ The pieces, for doing by hand:
   rematch                           match every stored item again; needed after new artists arrive (refresh_writing.py does it)
   backfill [--source NAME]          reach back through a site's sitemaps (or its WordPress API / paged feed): a gentle slice,
             [--minutes M]           polite and resumable. M is the time each source gets in each phase (default 5)
+  deepen [--source NAME]            some feeds give only a teaser, so a name inside the article is never seen: read those pieces
+         [--pages N] [--minutes M]  in full, newest first, and match again (run does 40 a source; raise N to drain a backlog)
   publish                           copy the accepted matches into birdnest.db (run, backfill and review already do this)
 
 Looking:
   sources                           every source: pieces stored, matched, about artists we've played, latest post, any trouble
   report [--days N]                 what matched lately
+  why URL [ARTIST]                  one piece: the text we hold, what it matched, what the matcher says now, and whether an
+                                    artist you expected to see is in our data and in that text
 
 Deciding:
   review [--artist NAME] [--list]   go through the borderline matches: y it's about them, n it isn't, x never match this artist
@@ -954,6 +1017,15 @@ def main(argv=None):
     bf.add_argument('--minutes', type=float, default=5, help='most time each source gets in each phase (a slow Crawl-delay means fewer pages)')
     bf.add_argument('--news', action='store_true', help='include news sources too')
     bf.set_defaults(fn=cmd_backfill)
+    dp = sub.add_parser('deepen', help='read the full text of items whose feed gave only a teaser')
+    dp.add_argument('--source', help='just this one')
+    dp.add_argument('--pages', type=int, default=40, help='most pages to fetch per source per run')
+    dp.add_argument('--minutes', type=float, default=5, help='most time each source gets')
+    dp.set_defaults(fn=cmd_deepen)
+    wy = sub.add_parser('why', help='what we stored and matched for one piece')
+    wy.add_argument('url')
+    wy.add_argument('artist', nargs='?', help='an artist you expected it to match')
+    wy.set_defaults(fn=cmd_why)
     sub.add_parser('rematch', help='match everything stored again').set_defaults(fn=cmd_rematch)
     rp = sub.add_parser('report', help='what matched lately')
     rp.add_argument('--days', type=int, default=7)

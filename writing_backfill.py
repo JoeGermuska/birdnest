@@ -342,6 +342,45 @@ def store_item(conn, matcher, source_id, it, stamp):
     return True
 
 
+def deepen(conn, matcher, sources, pages=40, workers=4, seconds=SOURCE_SECONDS, log=print):
+    """Some feeds (PopMatters, Loud and Quiet, Chicago Reader...) carry only a one-sentence teaser, so a name that is
+    only inside the article never matches. Read the full page of items holding less than THIN_CHARS of text, newest
+    first, at most `pages` per source, then match them again. Each is tried once (item.deepened: 1 read, 2 no text).
+    -> number of items read."""
+    todo = {s['source_id']: conn.execute(
+        'select item_id, url from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ? '
+        'and url not in (select url from item_hidden) order by published desc limit ?',
+        (s['source_id'], writing.THIN_CHARS, pages)).fetchall() for s in sources}
+    by_id = {s['source_id']: s for s in sources}
+    stamp, read = iso(now()), 0
+    with ThreadPoolExecutor(workers) as ex:
+        futs = {ex.submit(fetch_candidates, by_id[i], [r['url'] for r in rows], log, seconds): i for i, rows in todo.items() if rows}
+        for fut in as_completed(futs):
+            i = futs[fut]
+            pages_read, n = fut.result(), 0
+            for r in todo[i]:
+                if r['url'] not in pages_read:
+                    continue  # not reached this run (time ran out or the site said slow down): try again next time
+                page = pages_read[r['url']]
+                item = conn.execute('select * from item where item_id=?', (r['item_id'],)).fetchone()
+                if page and len(page['body_text']) > len(item['body_text'] or ''):
+                    links = sorted(set(json.loads(item['links'] or '[]')) | set(page['links']))[:60]
+                    conn.execute('update item set body_text=?, links=?, deepened=1 where item_id=?',
+                                 (page['body_text'], json.dumps(links), r['item_id']))
+                    writing.match_item(conn, matcher, r['item_id'], item['title'], json.loads(item['tags'] or '[]'), item['url'],
+                                       page['body_text'], links, stamp)
+                    n += 1
+                else:
+                    conn.execute('update item set deepened=2 where item_id=?', (r['item_id'],))
+            conn.commit()
+            read += n
+            left = conn.execute('select count(*) from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ?',
+                                (i, writing.THIN_CHARS)).fetchone()[0]
+            if todo[i]:
+                log(f"  {by_id[i]['name']}: read {n} of {len(todo[i])} teasers in full" + (f", {left} left" if left else ''))
+    return read
+
+
 def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_requests=5, workers=4, seconds=SOURCE_SECONDS, log=print):
     conn.executescript(SCHEMA)
     started = iso(now())
