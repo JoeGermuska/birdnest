@@ -24,11 +24,18 @@ After the fixes below, `/shows` takes about 3 ms and a refused bot about 0.6 ms;
 - `origin_lock` (app.py): Fly's IPs are public, and the log (`cf=-` lines) showed most of the `/shows` crawl, plus
   Meta's crawler, connecting to them directly and skipping Cloudflare. With the Fly secret `ORIGIN_SECRET` set, only
   requests carrying it as `X-Origin-Secret` get through (not `/robots.txt`). Unset (locally, in tests) it does nothing.
-  Setting it up, in this order, or the site 403s for everyone:
-  1. Cloudflare > Rules > Transform Rules > Modify Request Header: set `X-Origin-Secret` to a long random value, for all
-     requests.
+  **Live since 2026-10-28.** Don't unset the secret or delete the Cloudflare rule on its own: with the secret set and
+  no header being added, the whole site 403s; with the header added and no secret, the lock is just off.
+  Setting it up (or rotating it), in this order, or the site 403s for everyone:
+  1. Cloudflare: a request header Transform Rule setting `X-Origin-Secret` to a long random value, for all requests
+     (rule ref `origin_secret`). The dashboard didn't offer it, so it was made with the API
+     (https://developers.cloudflare.com/rules/transform/request-header-modification/create-api/): a `PUT` to
+     `/zones/$ZONE_ID/rulesets/phases/http_request_late_transform/entrypoint` with an API token that has Zone >
+     Transform Rules > Edit. That `PUT` replaces every rule in the phase, so read it first.
   2. `fly secrets set ORIGIN_SECRET=<the same value>` (restarts the app).
   To turn it off: `fly secrets unset ORIGIN_SECRET`.
+  To check: `curl --resolve birdsconferring.com:443:<Fly's IPv4, from fly ips list> https://birdsconferring.com/` is a
+  403, and the site through Cloudflare is a 200.
 - The crawl itself: many hosting-provider addresses (several look like Contabo and Scaleway), each sending a request or
   two, so a per-IP rate limit never trips. Meta's `meta-externalagent` is genuine (`2a03:2880::`), a separate thing.
   About 10 pages/s of ~20 KB is roughly 500 GB a month of egress.
