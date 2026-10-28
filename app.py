@@ -14,6 +14,7 @@ import os
 import random
 import secrets
 import hashlib
+import hmac
 import json
 from urllib.parse import urlparse 
 
@@ -57,6 +58,16 @@ def block_bots():
     agent = request.headers.get('User-Agent', '').lower()
     if any(b in agent for b in BLOCKED_BOTS):
         return 'Not for crawlers; see /robots.txt\n', 403, {'Content-Type': 'text/plain'}
+
+# Fly's own addresses are public, so crawlers can skip Cloudflare (and its rules) by connecting to them directly. When
+# ORIGIN_SECRET is set (a Fly secret), only requests carrying it, added by a Cloudflare Transform Rule as the
+# X-Origin-Secret header, get through. Unset, as locally and in tests, this does nothing.
+@app.before_request
+def origin_lock():
+    secret = os.environ.get('ORIGIN_SECRET')
+    if secret and request.path != '/robots.txt' \
+            and not hmac.compare_digest(request.headers.get('X-Origin-Secret', ''), secret):
+        return 'Use https://birdsconferring.com/\n', 403, {'Content-Type': 'text/plain'}
 
 _static_hashes = {}
 

@@ -21,11 +21,25 @@ After the fixes below, `/shows` takes about 3 ms and a refused bot about 0.6 ms;
   Shuffle without a seed is never cached.
 - `gunicorn.conf.py`: the access log ends with the request time in seconds. `fly logs` shows what a page costs.
 
+- `origin_lock` (app.py): Fly's IPs are public, and the log (`cf=-` lines) showed most of the `/shows` crawl, plus
+  Meta's crawler, connecting to them directly and skipping Cloudflare. With the Fly secret `ORIGIN_SECRET` set, only
+  requests carrying it as `X-Origin-Secret` get through (not `/robots.txt`). Unset (locally, in tests) it does nothing.
+  Setting it up, in this order, or the site 403s for everyone:
+  1. Cloudflare > Rules > Transform Rules > Modify Request Header: set `X-Origin-Secret` to a long random value, for all
+     requests.
+  2. `fly secrets set ORIGIN_SECRET=<the same value>` (restarts the app).
+  To turn it off: `fly secrets unset ORIGIN_SECRET`.
+- The crawl itself: many hosting-provider addresses (several look like Contabo and Scaleway), each sending a request or
+  two, so a per-IP rate limit never trips. Meta's `meta-externalagent` is genuine (`2a03:2880::`), a separate thing.
+  About 10 pages/s of ~20 KB is roughly 500 GB a month of egress.
+
 ## At Cloudflare (the domain is proxied; SSL mode is Automatic)
 
 - Custom rule: Block the same user agents as `BLOCKED_BOTS` (`lower(http.user_agent) contains "..."`).
 - Rate limiting rule (free plan: path only, count by IP): `http.request.uri.path in {"/shows" "/radio" "/search"}`,
   20 requests per 10 s, Block. `http.user_agent` isn't allowed in rate limiting rules on the free plan.
+- Once the origin is locked: a custom rule, Block on `ip.src.asnum in {…}`, for the hosting networks Security > Events
+  shows behind the crawl (check the ASNs there first).
 - Not used: a Managed Challenge on `/shows?dj=` (Turbo loads pages with fetch, so a challenge page would land inside
   the layout), and an app-side per-IP throttle (Cloudflare does this better).
 

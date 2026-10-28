@@ -128,3 +128,13 @@ def test_crawlers_that_ignore_robots_are_refused(app_module):
     bot = {'User-Agent': 'Mozilla/5.0 (compatible; meta-externalagent/1.1)'}
     assert client.get('/shows', headers=bot).status_code == 403
     assert client.get('/robots.txt', headers=bot).status_code == 200
+
+
+def test_origin_lock(app_module, monkeypatch):
+    client = app_module.app.test_client()
+    assert client.get('/shows').status_code == 200  # no secret set: no lock
+    monkeypatch.setenv('ORIGIN_SECRET', 'swordfish')
+    assert client.get('/shows').status_code == 403
+    assert client.get('/shows', headers={'X-Origin-Secret': 'wrong'}).status_code == 403
+    assert client.get('/shows', headers={'X-Origin-Secret': 'swordfish'}).status_code == 200
+    assert client.get('/robots.txt').status_code == 200
