@@ -41,6 +41,7 @@ Flask site for Conference of the Birds (deployed at birdsconferring.fly.dev).
 
 - `notes/plan.md`: the current plan (what's next, what's done, the weekly and monthly routine).
 - `notes/reading.md`: the music writing index: design, matching rules, routine, open items.
+- `notes/performance.md`: slow pages, crawlers, the bot block, the `/shows` cache, the Cloudflare rules, what to check.
 - `notes/genres.md`: open questions and an experiment idea for genre tagging (backburner).
 - `notes/archive/`: finished notes (the design pass, the home page options), kept as history.
 
