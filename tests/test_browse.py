@@ -15,7 +15,7 @@ def dates(html):
 
 
 def get(app_module, query=''):
-    resp = app_module.app.test_client().get('/shows' + query)
+    resp = app_module.app.test_client().get('/shows' + query, follow_redirects=True)
     assert resp.status_code == 200
     return resp.get_data(as_text=True)
 
@@ -113,3 +113,18 @@ def test_shuffle_links_carry_no_seed_and_crawlers_are_told_off(app_module):
     for bot in ('Amazonbot', 'GPTBot'):
         assert f'User-agent: {bot}\nDisallow: /\n' in robots
     assert 'Disallow: /*seed=' in robots and 'Disallow: /*sort=shuffle' in robots
+
+
+def test_one_url_per_view(app_module):
+    client = app_module.app.test_client()
+    junk = client.get('/shows?sort=sideways&dj=nobody&family=Polka&x=1')
+    assert (junk.status_code, junk.headers['Location']) == (301, '/shows')
+    assert client.get('/shows?dj=rob&dj=joe').headers['Location'] == '/shows?dj=joe&dj=rob'
+    assert client.get('/shows?dj=joe&dj=rob').status_code == 200
+
+
+def test_crawlers_that_ignore_robots_are_refused(app_module):
+    client = app_module.app.test_client()
+    bot = {'User-Agent': 'Mozilla/5.0 (compatible; meta-externalagent/1.1)'}
+    assert client.get('/shows', headers=bot).status_code == 403
+    assert client.get('/robots.txt', headers=bot).status_code == 200

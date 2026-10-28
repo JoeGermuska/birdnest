@@ -46,6 +46,18 @@ def canonical_host():
     if request.host in HOST_ALIASES:
         return redirect(request.url.replace(f'//{request.host}', f'//{CANONICAL_HOST}', 1), code=301)
 
+# crawlers that ignore robots.txt (Disallow: /radio, /spotify/) and, on a one-CPU machine, queue everyone else behind them
+BLOCKED_BOTS = ('meta-externalagent', 'meta-webindexer', 'facebookexternalhit', 'amzn-searchbot', 'amazonbot', 'gptbot',
+                'bytespider', 'petalbot', 'claudebot')
+
+@app.before_request
+def block_bots():
+    if request.path == '/robots.txt':
+        return
+    agent = request.headers.get('User-Agent', '').lower()
+    if any(b in agent for b in BLOCKED_BOTS):
+        return 'Not for crawlers; see /robots.txt\n', 403, {'Content-Type': 'text/plain'}
+
 _static_hashes = {}
 
 @app.url_defaults
@@ -88,7 +100,7 @@ def robots():
     # Birds radio has a URL for every seed, and search for every query: endless, and each one costs real work.
     # (Pages already carry noindex; this keeps polite crawlers from fetching what they'd never index.)
     # A bot with its own group ignores the * group, so the blocked ones need nothing else.
-    body = "".join(f"User-agent: {bot}\nDisallow: /\n\n" for bot in ('Amazonbot', 'GPTBot'))
+    body = "".join(f"User-agent: {bot}\nDisallow: /\n\n" for bot in ('Amazonbot', 'GPTBot', 'meta-externalagent', 'Bytespider'))
     body += ("User-agent: *\nDisallow: /radio\nDisallow: /search\nDisallow: /autocomplete\nDisallow: /spotify/\n"
              "Disallow: /todo/\nDisallow: /*seed=\nDisallow: /*sort=shuffle\nCrawl-delay: 5\n")
     response = make_response(body)
@@ -137,22 +149,47 @@ BROWSE_BY = {
 }
 
 
+_browse_cache = {}
+BROWSE_CACHE_MAX = 500
+
+
 @app.route('/shows')
 def browse():
     """Every show as tiles, sorted and filtered by the query: sort, dj (slugs, repeatable: shows they were all in),
-    family (a genre family the show is heavy on)."""
+    family (a genre family the show is heavy on). Each distinct view is one URL (junk dropped, DJs sorted: crawlers
+    otherwise walk every spelling of every combination), and its page is kept until the next restart, when the data
+    can change."""
     history = factoids.get_history()
-    shows = history.browse()
     sorts = {**BROWSE_SORTS, **BROWSE_BY}
     sort = request.args.get('sort') if request.args.get('sort') in sorts else 'newest'
-    djs_in = [d for d in dict.fromkeys(request.args.getlist('dj')) if d in history.dj_by_slug]
+    djs_in = sorted(d for d in set(request.args.getlist('dj')) if d in history.dj_by_slug)
+    family = request.args.get('family') if request.args.get('family') in genre_families.FAMILY_NAMES else None
+    seed = request.args.get('seed', type=int) if sort == 'shuffle' else None
+    canonical = {k: v for k, v in (('sort', sort if sort != 'newest' else None), ('dj', djs_in), ('family', family),
+                                   ('seed', seed)) if v or v == 0 and k == 'seed'}
+    if request.args.to_dict(flat=False) != {k: v if isinstance(v, list) else [str(v)] for k, v in canonical.items()}:
+        return redirect(url_for('browse', **canonical), code=301)
+    # a shuffle without a seed is different every time; the player bar differs for a listener logged in with Spotify
+    cache_key = (request.full_path, 'token_info' in session)
+    if not (sort == 'shuffle' and seed is None) and cache_key in _browse_cache:
+        return _browse_cache[cache_key]
+    page = _browse_page(history, sorts, sort, djs_in, family, seed)
+    if not (sort == 'shuffle' and seed is None):
+        if len(_browse_cache) >= BROWSE_CACHE_MAX:
+            _browse_cache.pop(next(iter(_browse_cache)))
+        _browse_cache[cache_key] = page
+    return page
+
+
+def _browse_page(history, sorts, sort, djs_in, family, seed):
+    shows = history.browse()
     families = [f for f in genre_families.FAMILY_NAMES if sum(f in s['heavy'] for s in shows) >= 3]
-    family = request.args.get('family') if request.args.get('family') in families else None
+    if family not in families:
+        family = None
     for d in djs_in:
         shows = [s for s in shows if history.dj_by_slug[d] in s['djs']]
     if family:
         shows = [s for s in shows if family in s['heavy']]
-    seed = request.args.get('seed', type=int)
     name, key, biggest_first, says = sorts[sort]
     if sort == 'shuffle':
         seed = seed if seed is not None else random.randrange(10 ** 6)
@@ -176,7 +213,7 @@ def browse():
         q = {k: v for k, v in {**current, **change}.items() if v and not (k == 'sort' and v == 'newest')}
         return url_for('browse', **q)
     def toggle(slug):  # the DJ list with this one added or taken out
-        return [d for d in djs_in if d != slug] if slug in djs_in else djs_in + [slug]
+        return [d for d in djs_in if d != slug] if slug in djs_in else sorted(djs_in + [slug])
     # each DJ with how many of the shows shown now they were in; once some are chosen, only the ones who share any
     pids = {s['pid'] for s in shows}
     djs = sorted(((history.djs[i]['slug'], history.djs[i]['name'], len(p & pids))
