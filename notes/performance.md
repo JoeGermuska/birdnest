@@ -45,8 +45,16 @@ After the fixes below, `/shows` takes about 3 ms and a refused bot about 0.6 ms;
 - Custom rule: Block the same user agents as `BLOCKED_BOTS` (`lower(http.user_agent) contains "..."`).
 - Rate limiting rule (free plan: path only, count by IP): `http.request.uri.path in {"/shows" "/radio" "/search"}`,
   20 requests per 10 s, Block. `http.user_agent` isn't allowed in rate limiting rules on the free plan.
-- Once the origin is locked: a custom rule, Block on `ip.src.asnum in {…}`, for the hosting networks Security > Events
-  shows behind the crawl (check the ASNs there first).
+- Block by network (found 2026-10-28; check Security > Events for whether it's been added): a custom rule, Block (or
+  Managed Challenge to be careful) on `ip.src.asnum eq 51167`. That's Contabo, a cheap server host and the source of
+  every disguised `/shows` request that got a 200 through Cloudflare (40 of 40 sampled, from 15 addresses; found by
+  looking up the `cf=` addresses from `fly logs` with Team Cymru's DNS service). Security > Events only lists blocked
+  requests, so it can't show these; Security > Analytics or the log can.
+- What the "declared crawlers" rule caught in its first day (109 events): Amzn-SearchBot from 60 different Amazon
+  addresses (why a per-address rate limit can't catch it), PetalBot (Huawei's search crawler) from Huawei Cloud,
+  Singapore, and ClaudeBot (Anthropic) from Amazon. A `wp-config.php` scanner was stopped by Cloudflare's managed
+  WordPress rule. ClaudeBot is in the block list by choice, not need: remove it from `BLOCKED_BOTS` and the Cloudflare
+  rule to allow it. `PetalBot` and `Bytespider` are blocked the same way.
 - Not used: a Managed Challenge on `/shows?dj=` (Turbo loads pages with fetch, so a challenge page would land inside
   the layout), and an app-side per-IP throttle (Cloudflare does this better).
 
