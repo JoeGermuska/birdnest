@@ -48,7 +48,8 @@ def canonical_host():
         return redirect(request.url.replace(f'//{request.host}', f'//{CANONICAL_HOST}', 1), code=301)
 
 # crawlers that ignore robots.txt (Disallow: /radio, /spotify/) and, on a one-CPU machine, queue everyone else behind them
-BLOCKED_BOTS = ('meta-externalagent', 'meta-webindexer', 'facebookexternalhit', 'amzn-searchbot', 'amazonbot', 'gptbot',
+# (not facebookexternalhit: it fetches the preview card when someone shares a link)
+BLOCKED_BOTS = ('meta-externalagent', 'meta-webindexer', 'amzn-searchbot', 'amazonbot', 'gptbot',
                 'bytespider', 'petalbot', 'claudebot')
 
 @app.before_request

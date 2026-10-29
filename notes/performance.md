@@ -15,7 +15,9 @@ After the fixes below, `/shows` takes about 3 ms and a refused bot about 0.6 ms;
 
 ## In the app
 
-- `block_bots` (app.py): 403 for `BLOCKED_BOTS` user agents (not `/robots.txt`, so they can still read it).
+- `block_bots` (app.py): 403 for `BLOCKED_BOTS` user agents (not `/robots.txt`, so they can still read it). Not
+  `facebookexternalhit`: that's Facebook's link-preview fetcher, and blocking it breaks the preview card when someone
+  shares a link (it was blocked by mistake for a day; a test pins it open).
 - `/shows` has one URL per view: junk parameters dropped, DJs sorted, anything else 301s to the canonical form. Rendered
   pages are cached in memory (`_browse_cache`, 500 entries, per "listener logged in" state), emptied by a restart.
   Shuffle without a seed is never cached.
@@ -45,8 +47,8 @@ After the fixes below, `/shows` takes about 3 ms and a refused bot about 0.6 ms;
 - Custom rule: Block the same user agents as `BLOCKED_BOTS` (`lower(http.user_agent) contains "..."`).
 - Rate limiting rule (free plan: path only, count by IP): `http.request.uri.path in {"/shows" "/radio" "/search"}`,
   20 requests per 10 s, Block. `http.user_agent` isn't allowed in rate limiting rules on the free plan.
-- Block by network (found 2026-10-28; check Security > Events for whether it's been added): a custom rule, Block (or
-  Managed Challenge to be careful) on `ip.src.asnum eq 51167`. That's Contabo, a cheap server host and the source of
+- Block by network (live since 2026-10-29): a custom rule, Block on `ip.src.asnum eq 51167`. After it went in, no
+  `/shows` request from Contabo got a 200 and the log went from ~10 requests a second to a few a minute. That's Contabo, a cheap server host and the source of
   every disguised `/shows` request that got a 200 through Cloudflare (40 of 40 sampled, from 15 addresses; found by
   looking up the `cf=` addresses from `fly logs` with Team Cymru's DNS service). Security > Events only lists blocked
   requests, so it can't show these; Security > Analytics or the log can.

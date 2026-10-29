@@ -138,3 +138,8 @@ def test_origin_lock(app_module, monkeypatch):
     assert client.get('/shows', headers={'X-Origin-Secret': 'wrong'}).status_code == 403
     assert client.get('/shows', headers={'X-Origin-Secret': 'swordfish'}).status_code == 200
     assert client.get('/robots.txt').status_code == 200
+
+
+def test_link_preview_fetcher_is_not_blocked(app_module):
+    preview = {'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'}
+    assert app_module.app.test_client().get('/', headers=preview).status_code == 200
