@@ -342,15 +342,30 @@ def store_item(conn, matcher, source_id, it, stamp):
     return True
 
 
+DEEPEN_PROBE = 20      # pages read before judging whether a source's articles hold more than its feed does
+DEEPEN_MIN_GAIN = 0.1  # ...and the share of them that must have, or the source is left alone
+
+
 def deepen(conn, matcher, sources, pages=40, workers=4, seconds=SOURCE_SECONDS, log=print):
     """Some feeds (PopMatters, Loud and Quiet, Chicago Reader...) carry only a one-sentence teaser, so a name that is
     only inside the article never matches. Read the full page of items holding less than THIN_CHARS of text, newest
-    first, at most `pages` per source, then match them again. Each is tried once (item.deepened: 1 read, 2 no text).
+    first, at most `pages` per source, then match them again. Each is tried once (item.deepened: 1 read, 2 no text). A source
+    whose first DEEPEN_PROBE pages gave more text in under DEEPEN_MIN_GAIN of cases is not tried again (podcasts' show notes
+    are usually already the whole text).
     -> number of items read."""
-    todo = {s['source_id']: conn.execute(
-        'select item_id, url from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ? '
-        'and url not in (select url from item_hidden) order by published desc limit ?',
-        (s['source_id'], writing.THIN_CHARS, pages)).fetchall() for s in sources}
+    todo, sources = {}, list(sources)
+    for s in list(sources):
+        tried, gained = conn.execute('select count(*), coalesce(sum(deepened=1), 0) from item where source_id=? and deepened in (1, 2)',
+                                     (s['source_id'],)).fetchone()
+        if tried >= DEEPEN_PROBE and gained < tried * DEEPEN_MIN_GAIN:
+            log(f"  {s['name']}: not reading teasers in full (only {gained} of {tried} pages so far had more text than the feed)")
+            sources.remove(s)
+            continue
+        # until a source has had its probe, try only enough pages to decide whether it is worth it
+        todo[s['source_id']] = conn.execute(
+            'select item_id, url from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ? '
+            'and url not in (select url from item_hidden) order by published desc limit ?',
+            (s['source_id'], writing.THIN_CHARS, min(pages, max(DEEPEN_PROBE - tried, 1)))).fetchall()
     by_id = {s['source_id']: s for s in sources}
     stamp, read = iso(now()), 0
     with ThreadPoolExecutor(workers) as ex:

@@ -578,3 +578,29 @@ def test_a_teaser_only_item_is_read_in_full_and_matched_on_the_article(matcher, 
     assert {r['item_id']: r['deepened'] for r in conn.execute('select item_id, deepened from item')} == {1: 1, 2: 2}
     assert {r['artist_id'] for r in conn.execute('select artist_id from match where item_id=1')} == {3, 4}
     assert wb.deepen(conn, matcher, src, pages=5, log=lambda *a: None) == 0  # each is tried once
+
+
+def test_deepen_gives_up_on_a_source_whose_pages_hold_nothing_more(matcher, tmp_path, monkeypatch):
+    import writing_backfill as wb
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 'quiet', 'u', 'podcast'), (2, 'rich', 'v', 'criticism')")
+    for i in range(1, 61):
+        conn.execute("insert into item (item_id, source_id, url, title, published, tags, body_text, links) values (?,?,?,'t','2026-10-01','[]','a teaser','[]')",
+                     (i, 1 if i <= 30 else 2, f'https://ex.com/{i}'))
+    conn.commit()
+    fetched = []
+
+    def page(url, session, name):
+        fetched.append(url)
+        return None if int(url.rsplit('/', 1)[1]) <= 30 else {'body_text': 'a much longer article ' * 10, 'links': []}
+
+    monkeypatch.setattr(wb, 'fetch_page', page)
+    src = conn.execute('select * from source order by source_id').fetchall()
+    wb.deepen(conn, matcher, src, pages=40, log=lambda *a: None)
+    assert len([u for u in fetched if int(u.rsplit('/', 1)[1]) <= 30]) == wb.DEEPEN_PROBE  # only enough to judge
+    fetched.clear()
+    said = []
+    wb.deepen(conn, matcher, src, pages=40, log=said.append)
+    assert not [u for u in fetched if int(u.rsplit('/', 1)[1]) <= 30]                        # then left alone
+    assert any('quiet' in m and 'not reading' in m for m in said)
+    assert fetched                                                                            # the rich source goes on
