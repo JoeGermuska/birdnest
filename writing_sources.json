@@ -650,5 +650,13 @@
   "feed_url": "https://rss.buzzsprout.com/1114601.rss",
   "kind": "podcast",
   "backfill": "feed"
+ },
+ {
+  "name": "Perfect Substack Forever",
+  "home_url": "https://perfectsoundforever.substack.com",
+  "feed_url": "https://perfectsoundforever.substack.com/feed",
+  "note": "Substack mirror of PSF which doesn't really offer a feed",
+  "kind": "criticism",
+  "backfill": "feed"
  }
 ]
