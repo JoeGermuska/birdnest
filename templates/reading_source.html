@@ -2,11 +2,11 @@
 {% block title %}{{ source.name }}{% endblock title %}
 {% block content %}
 <section class="detail reading-page">
-    <hgroup class="title-unit"><h1>{{ source.name }}</h1><p class="subtitle">{{ source.pieces|length }} piece{{ 's' if source.pieces|length != 1 }} about {{ source.artists }} artist{{ 's' if source.artists != 1 }} we've played</p></hgroup>
+    <hgroup class="title-unit"><h1>{{ source.name }}</h1><p class="subtitle">{{ source.pieces|length }} {{ 'episode' if source.kind == 'podcast' else 'piece' }}{{ 's' if source.pieces|length != 1 }} about {{ source.artists }} artist{{ 's' if source.artists != 1 }} we've played</p></hgroup>
     <p class="detail-meta">
         {% if source.home_url %}<a href="{{ source.home_url }}" target="_blank" rel="noopener">{{ source.home_url|replace('https://', '')|replace('http://', '')|trim('/') }}</a> ·{% endif %}
         {% if source.members_only %}mostly for members; we list titles and links only · {% endif %}
-        <a href="{{ url_for('reading') }}">all reading</a>
+        {% if source.kind == 'podcast' %}<a href="{{ url_for('podcasts') }}">all podcasts</a>{% else %}<a href="{{ url_for('reading') }}">all reading</a>{% endif %}
     </p>
     <ul class="reading">
         {% for w in source.pieces %}

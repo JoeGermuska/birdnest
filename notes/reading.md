@@ -40,7 +40,7 @@ writing_sources.json  ->  writing.py  ->  writing_crawl.db  ->  (publish)  ->  b
 ```
 
 - **`writing_sources.json`** (committed): one entry per source: name, home_url, feed_url, kind
-  (`criticism`, `essay`, `interview`, `news`), optional `members_only`, `roundup`, and `backfill: "feed"` for sites with
+  (`criticism`, `essay`, `interview`, `news`, `podcast`), optional `members_only`, `roundup`, and `backfill: "feed"` for sites with
   no usable sitemap. Edit it or use `writing.py source add URL` / `source remove NAME`. A source dropped from the file is
   switched off, not deleted.
 - **`writing_crawl.db`** (local, gitignored): every item ever seen (url, title, date, tags, a short excerpt, body text,
@@ -150,3 +150,12 @@ Rules that came out of reading real results:
 fetching), `refresh_writing.py` (the weekly script), `writing_sources.json`, `tests/test_writing.py`;
 `factoids.py` (`reading_for`, `reading_index`, `reading_source`, `_rank_publications`), `templates/reading.html`,
 `reading_source.html`, `_reading.html`; routes `/reading`, `/reading/<slug>`, `/rankings/publications` in `app.py`.
+
+## Podcasts
+
+- A podcast is a source of kind `podcast`: the same feed, matching and publishing, with the show notes as the text. They are
+  listed apart from the writing: `/podcasts` and `/podcasts/<slug>`, a "Podcast episodes" section after "Further reading" on artist
+  and album pages, and left out of Rankings > Publications. Episodes link to the episode's page; no audio is fetched or stored.
+- Many hosts give every episode the show's page as its link (or none): `parse_feed` then makes the URL unique with `#guid`.
+- Talk shows that name many artists in passing are `roundup`. Added from an Overcast OPML export; to add one:
+  `python writing.py source add FEEDURL --kind podcast`.

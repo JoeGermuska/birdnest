@@ -769,25 +769,29 @@ class History:
             out[kind] = [self.artists[a] for a in sorted(ids, key=lambda a: (-len(self.artist_shows.get(a, ())), a))]
         return out
 
-    def reading_index(self):
-        """The Reading page: the publications by kind, the latest pieces that are about artists we've played, and
-        the artists most written about."""
+    def _is_podcast(self, slug):
+        return self.reading_sources.get(slug, {}).get('kind') == 'podcast'
+
+    def reading_index(self, podcasts=False):
+        """The Reading page (or, with podcasts=True, the Podcasts page): the publications by kind, the latest pieces
+        that are about artists we've played, and the artists most written about."""
+        pieces = {i: p for i, p in self.reading_pieces.items() if self._is_podcast(p['source_slug']) == podcasts}
         stats = defaultdict(lambda: {'pieces': 0, 'artists': set(), 'latest': ''})
-        for p in self.reading_pieces.values():
+        for p in pieces.values():
             s = stats[p['source_slug']]
             s['pieces'] += 1
             s['artists'] |= {a for a, _ in p['artists']}
             s['latest'] = max(s['latest'], p['published'] or '')
         groups = []
-        for kind, label in self.READING_KINDS:
+        for kind, label in ([('podcast', 'Shows')] if podcasts else self.READING_KINDS):
             pubs = [{**src, 'pieces': stats[slug]['pieces'], 'artists': len(stats[slug]['artists']), 'latest': stats[slug]['latest']}
                     for slug, src in self.reading_sources.items() if src['kind'] == kind and slug in stats]
             if pubs:
                 groups.append((label, sorted(pubs, key=lambda s: (-s['pieces'], s['name']))))
-        latest = sorted((p for p in self.reading_pieces.values() if any(k == 'about' for _, k in p['artists'])),
+        latest = sorted((p for p in pieces.values() if any(k == 'about' for _, k in p['artists'])),
                         key=lambda p: (p['published'] or '', p['writing_id']), reverse=True)
         counts = defaultdict(int)
-        for p in self.reading_pieces.values():
+        for p in pieces.values():
             for a, k in p['artists']:
                 if k == 'about' and a in self.artists:
                     counts[a] += 1
@@ -795,7 +799,7 @@ class History:
         return {'groups': groups, 'latest': [self._reading_piece(p) for p in latest[:15]],
                 'most': [(self.artists[a], n) for a, n in most], 'n_pieces': len(self.reading_pieces),
                 'n_publications': sum(len(pubs) for _, pubs in groups),
-                'n_artists': len({a for p in self.reading_pieces.values() for a, _ in p['artists'] if a in self.artists})}
+                'n_artists': len({a for p in pieces.values() for a, _ in p['artists'] if a in self.artists})}
 
     def reading_source(self, slug):
         """One publication and every piece of its we matched, newest first, or None."""
@@ -807,9 +811,10 @@ class History:
         return {**src, 'pieces': [self._reading_piece(p) for p in pieces],
                 'artists': len({a for p in pieces for a, _ in p['artists']})}
 
-    def reading_for(self, artist_id=None, album_id=None):
+    def reading_for(self, artist_id=None, album_id=None, podcasts=False):
         """Music writing about an artist, or about an album (all its editions, see album_group):
-        {'about': pieces that are about them, 'mentions': pieces that mention them}, newest first."""
+        {'about': pieces that are about them, 'mentions': pieces that mention them}, newest first.
+        Podcast episodes are kept apart: podcasts=True for them, the default for everything else."""
         if album_id is not None:
             pieces = [p for a in self.album_members.get(album_id, [album_id]) for p in self.reading_by_album.get(a, ())]
             pieces.sort(key=lambda p: (p['published'] or '', p['writing_id']), reverse=True)
@@ -817,7 +822,7 @@ class History:
             pieces = self.reading_by_artist.get(artist_id, [])
         seen, out = set(), {'about': [], 'mentions': []}
         for p in pieces:
-            if p['writing_id'] not in seen:
+            if p['writing_id'] not in seen and self._is_podcast(p['source_slug']) == podcasts:
                 seen.add(p['writing_id'])
                 out[p['kind']].append(p)
         return out
@@ -1135,7 +1140,7 @@ class History:
     def _rank_publications(self):
         by_source = defaultdict(list)
         for p in self.reading_pieces.values():
-            if p['source_slug'] in self.reading_sources:
+            if p['source_slug'] in self.reading_sources and not self._is_podcast(p['source_slug']):
                 by_source[p['source_slug']].append(p)
         items = sorted(by_source.items(), key=lambda kv: (-len(kv[1]), self.reading_sources[kv[0]]['name'].lower()))
         ranks = _competition_ranks([len(ps) for _, ps in items])

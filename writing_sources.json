@@ -278,5 +278,377 @@
   "home_url": "https://www.austinchronicle.com",
   "feed_url": "https://www.austinchronicle.com/feed/",
   "kind": "criticism"
+ },
+ {
+  "name": "Hearing Things",
+  "home_url": "https://www.hearingthings.co",
+  "feed_url": "https://www.hearingthings.co/latest/rss/",
+  "kind": "criticism"
+ },
+ {
+  "name": "The Free Jazz Collective",
+  "home_url": "https://www.freejazzblog.org",
+  "feed_url": "https://www.freejazzblog.org/feeds/posts/default",
+  "kind": "criticism"
+ },
+ {
+  "name": "Musicworks",
+  "home_url": "https://musicworks.ca",
+  "feed_url": "https://musicworks.ca/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "POW MAG",
+  "home_url": "https://www.powmag.net",
+  "feed_url": "https://www.powmag.net/feed",
+  "kind": "criticism"
+ },
+ {
+  "name": "Ransom Note",
+  "home_url": "https://www.theransomnote.com",
+  "feed_url": "https://www.theransomnote.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "thebluemoment.com",
+  "home_url": "https://thebluemoment.com",
+  "feed_url": "https://thebluemoment.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "JazzWax",
+  "home_url": "https://www.jazzwax.com",
+  "feed_url": "https://www.jazzwax.com/feed",
+  "kind": "criticism"
+ },
+ {
+  "name": "VAN Magazine",
+  "home_url": "https://van-magazine.com",
+  "feed_url": "https://van-magazine.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "I CARE IF YOU LISTEN",
+  "home_url": "https://icareifyoulisten.com",
+  "feed_url": "https://icareifyoulisten.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "5:4",
+  "home_url": "https://5against4.com",
+  "feed_url": "https://5against4.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "PAM",
+  "home_url": "https://pan-african-music.com",
+  "feed_url": "https://pan-african-music.com/feed/",
+  "kind": "criticism",
+  "backfill": "feed"
+ },
+ {
+  "name": "Living Blues Magazine",
+  "home_url": "https://livingblues.com",
+  "feed_url": "https://livingblues.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Nashville Scene",
+  "home_url": "https://www.nashvillescene.com",
+  "feed_url": "http://www.nashvillescene.com/search/?f=rss&t=article&c=music&l=50&s=start_time&sd=desc",
+  "kind": "criticism"
+ },
+ {
+  "name": "The INDY",
+  "home_url": "https://indyweek.com",
+  "feed_url": "https://indyweek.com/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Tone Glow",
+  "home_url": "https://toneglow.substack.com",
+  "feed_url": "https://toneglow.substack.com/feed",
+  "kind": "essay"
+ },
+ {
+  "name": "First Floor",
+  "home_url": "https://firstfloor.substack.com",
+  "feed_url": "https://firstfloor.substack.com/feed",
+  "kind": "essay"
+ },
+ {
+  "name": "Arts Fuse",
+  "home_url": "https://artsfuse.org",
+  "feed_url": "https://artsfuse.org/feed/",
+  "kind": "criticism"
+ },
+ {
+  "name": "Transmissions",
+  "home_url": "http://www.aquariumdrunkard.com/",
+  "feed_url": "https://feeds.megaphone.fm/aquariumdrunkard",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Afropop Worldwide",
+  "home_url": "http://afropop.org/",
+  "feed_url": "http://feeds.feedburner.com/afropop/podcast",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Popcast",
+  "home_url": "https://play.acast.com/s/popcast",
+  "feed_url": "https://feeds.acast.com/public/shows/45af8fd4-cba8-4416-ad85-168552f927d8",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Now Is Podcast",
+  "home_url": "http://cast.now-is.org/",
+  "feed_url": "https://cast.now-is.org/now-is-podcast.xml",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Switched on Pop",
+  "home_url": "http://www.switchedonpop.com/",
+  "feed_url": "https://feeds.megaphone.fm/switchedonpop",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "The John Peel Lecture",
+  "home_url": "http://www.bbc.co.uk/programmes/b0175jw5",
+  "feed_url": "https://podcasts.files.bbci.co.uk/b0175jw5.rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "World Service Music Documentaries",
+  "home_url": "http://www.bbc.co.uk/programmes/p02nrwqn",
+  "feed_url": "https://podcasts.files.bbci.co.uk/p02nrwqn.rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Crucial Listening",
+  "home_url": "http://www.attnmagazine.co.uk/",
+  "feed_url": "https://feeds.transistor.fm/crucial-listening",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Southern Songs and Stories",
+  "home_url": "https://www.southernsongsandstories.com/",
+  "feed_url": "https://joe-kendrick-ido3.squarespace.com/blog?format=rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Heat Rocks",
+  "home_url": "http://maximumfun.org/shows/heat-rocks",
+  "feed_url": "https://feeds.simplecast.com/sUxwITUa",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Sounds to Grow On",
+  "home_url": "http://www.folkways.si.edu/learn_discover/sounds_to_grow_on.aspx",
+  "feed_url": "https://folkways.si.edu/content/rss/sounds_to_grow_on.xml",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Broken Record",
+  "home_url": "https://brokenrecordpodcast.com/",
+  "feed_url": "https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/ff0ba2f2-f33c-4193-aba2-ae32006cd633/11c188a1-cb86-4869-9c57-ae32006cd63c/podcast.rss",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Been All Around This World",
+  "home_url": "https://www.culturalequity.org/",
+  "feed_url": "https://feeds.blubrry.com/feeds/been_all_around_this_world.xml",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Water & Music",
+  "home_url": "https://patreon.com/cheriehu",
+  "feed_url": "https://feeds.transistor.fm/water-music",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Life of the Record",
+  "home_url": "https://lifeoftherecord.com/",
+  "feed_url": "https://feeds.megaphone.fm/life-of-the-record",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Talkhouse Podcast",
+  "home_url": "https://www.talkhouse.com/",
+  "feed_url": "https://feeds.megaphone.fm/THI1720663445",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Object Of Sound",
+  "home_url": "https://object-of-sound.simplecast.com/",
+  "feed_url": "https://feeds.simplecast.com/RsbopKI8",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Your Favorite Band Sucks",
+  "home_url": "https://www.yfbspod.com/",
+  "feed_url": "https://anchor.fm/s/3f64b790/podcast/rss",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Love is the Message: Dance, Music and Counterculture",
+  "home_url": "https://loveisthemessagepod.co.uk/",
+  "feed_url": "https://anchor.fm/s/4f5a79dc/podcast/rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Cocaine & Rhinestones: The History of Country Music",
+  "home_url": "https://cocaineandrhinestones.com/",
+  "feed_url": "https://anchor.fm/s/52444bf0/podcast/rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "International Anthem Podcast",
+  "home_url": "https://www.intlanthem.com/",
+  "feed_url": "https://anchor.fm/s/5ea55ad8/podcast/rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Caropop",
+  "home_url": "https://rss.com/podcasts/thecaropopcast",
+  "feed_url": "https://media.rss.com/thecaropopcast/feed.xml",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Club de Jazz",
+  "home_url": "https://www.patreon.com/clubdejazzradio",
+  "feed_url": "https://feeds.acast.com/public/shows/61bb1a9874b61900126c73cf",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "The Questlove Show",
+  "home_url": "https://www.iheart.com/podcast/1119-questlove-supreme-53194211/",
+  "feed_url": "https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/86918ee4-4aa4-497b-995a-ae32006cd4b7/ee132490-ba24-4965-b558-ae32006cd4c0/podcast.rss",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Goldmine",
+  "home_url": "https://www.goldminemag.com/",
+  "feed_url": "https://feeds.megaphone.fm/goldmine",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "The MOJO Record Club",
+  "home_url": "https://pscrb.fm/rss/p/hellorayo.co.uk/podcasts/the-mojo-record-club",
+  "feed_url": "https://rss.podplaystudio.com/1343.xml",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Song Exploder",
+  "home_url": "http://www.songexploder.net/",
+  "feed_url": "https://feed.songexploder.net/SongExploder",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Drowned in Sound",
+  "home_url": "https://drownedinsound.podbean.com/",
+  "feed_url": "https://feed.podbean.com/drownedinsound/feed.xml",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Rock's Backpages",
+  "home_url": "https://www.rocksbackpages.com/podcast",
+  "feed_url": "https://feeds.megaphone.fm/rocksbackpages",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Sound Opinions",
+  "home_url": "https://art19.com/shows/sound-opinions",
+  "feed_url": "https://rss.art19.com/sound-opinions",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Big Ears: Conversations About Music",
+  "home_url": "https://bigearsfestival.org/",
+  "feed_url": "https://anchor.fm/s/100f792ec/podcast/rss",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Critical Listening",
+  "home_url": "https://patreon.com/criticallistening",
+  "feed_url": "https://feed.podbean.com/criticallistening/feed.xml",
+  "kind": "podcast",
+  "backfill": "feed",
+  "roundup": true
+ },
+ {
+  "name": "Phantom Power",
+  "home_url": "https://phantompod.org/",
+  "feed_url": "https://feeds.megaphone.fm/PHTE1597380279",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Sound Is Magic Podcast",
+  "home_url": "https://brianharnetty.substack.com/podcast",
+  "feed_url": "https://api.substack.com/feed/podcast/1286845.rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Fela Kuti: Fear No Man",
+  "home_url": "https://art19.com/shows/fela-kuti-fear-no-man",
+  "feed_url": "https://rss.art19.com/fela-kuti-fear-no-man",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "The Honest Broker Podcast",
+  "home_url": "https://www.honest-broker.com/podcast",
+  "feed_url": "https://api.substack.com/feed/podcast/296132.rss",
+  "kind": "podcast",
+  "backfill": "feed"
+ },
+ {
+  "name": "Sound Expertise",
+  "home_url": "http://soundexpertise.org/",
+  "feed_url": "https://rss.buzzsprout.com/1114601.rss",
+  "kind": "podcast",
+  "backfill": "feed"
  }
 ]

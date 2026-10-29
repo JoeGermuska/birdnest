@@ -123,6 +123,17 @@ def test_parse_rss():
     assert it['links'] == ['https://takaat.bandcamp.com/album/x'] and it['body_text'].startswith('Long text here')
 
 
+def test_parse_feed_tells_podcast_episodes_apart():
+    # a podcast host that gives every episode the show's page as its link, and one with no link at all
+    feed = b'''<rss version="2.0"><channel><title>Show</title><link>https://show.example</link>
+     <item><title>One</title><link>https://show.example</link><guid isPermaLink="false">g-1</guid></item>
+     <item><title>Two</title><link>https://show.example</link><guid isPermaLink="false">g-2</guid></item>
+     <item><title>Three</title><guid isPermaLink="false">g-3</guid></item></channel></rss>'''
+    urls = [i['url'] for i in writing.parse_feed(feed)]
+    assert len(set(urls)) == 3 and all(u.startswith('https://show.example') for u in urls)
+    assert urls[0].endswith('#g-1')
+
+
 def test_parse_atom():
     [it] = writing.parse_feed(ATOM, 'https://blog.example/feed')
     assert it['url'] == 'https://blog.example/p/an-entry' and it['tags'] == ['Jazz'] and it['published'] == '2026-10-01T08:00:00Z'
@@ -153,11 +164,12 @@ def test_a_person_s_verdict_survives_a_rematch(matcher, tmp_path):
 def test_artist_pages_list_the_writing(app_module):
     import factoids
     history = factoids.get_history()
-    ids = [a for a, ps in history.reading_by_artist.items() if any(p['kind'] == 'about' for p in ps) and history.artists[a]['spotify_id']]
+    ids = [a for a, ps in history.reading_by_artist.items() if any(p['kind'] == 'about' and not history._is_podcast(p['source_slug']) for p in ps)
+           and history.artists[a]['spotify_id']]
     if not ids:
         pytest.skip('no published writing in this database')
     aid = ids[0]
-    piece = next(p for p in history.reading_by_artist[aid] if p['kind'] == 'about')
+    piece = next(p for p in history.reading_by_artist[aid] if p['kind'] == 'about' and not history._is_podcast(p['source_slug']))
     html = app_module.app.test_client().get(f"/artist/{history.artists[aid]['spotify_id']}").get_data(as_text=True)
     assert 'Further reading' in html and piece['url'] in html and 'reading-excerpt' not in html
 
@@ -169,17 +181,42 @@ def test_reading_pages(app_module):
         pytest.skip('no published writing in this database')
     client = app_module.app.test_client()
     index = client.get('/reading').get_data(as_text=True)
-    slug, src = next(iter(history.reading_sources.items()))
+    slug, src = next((k, v) for k, v in history.reading_sources.items() if v['kind'] != 'podcast')
     assert 'Reading' in index and f'/reading/{slug}' in index
     page = client.get(f'/reading/{slug}')
     assert page.status_code == 200 and src['name'] in page.get_data(as_text=True)
     assert client.get('/reading/no-such-publication').status_code == 404
     # a piece's source links back to that publication's page
-    aid = next(a for a, ps in history.reading_by_artist.items() if ps and history.artists[a]['spotify_id'])
-    p = history.reading_by_artist[aid][0]
+    aid, p = next((a, p) for a, ps in history.reading_by_artist.items() for p in ps
+                  if not history._is_podcast(p['source_slug']) and history.artists[a]['spotify_id'])
     html = client.get(f"/artist/{history.artists[aid]['spotify_id']}").get_data(as_text=True)
     assert f"/reading/{p['source_slug']}" in html
     assert 'href="/reading"' in client.get('/').get_data(as_text=True)
+
+
+def test_podcasts_are_kept_apart(app_module):
+    import factoids
+    history = factoids.get_history()
+    shows = [k for k, v in history.reading_sources.items() if v['kind'] == 'podcast']
+    if not shows:
+        pytest.skip('no published podcast episodes in this database')
+    client = app_module.app.test_client()
+    index = client.get('/podcasts').get_data(as_text=True)
+    assert 'Podcasts' in index and f'/podcasts/{shows[0]}' in index
+    assert client.get(f'/podcasts/{shows[0]}').status_code == 200
+    assert client.get(f'/reading/{shows[0]}').status_code == 404  # not a publication
+    plain = next(k for k, v in history.reading_sources.items() if v['kind'] != 'podcast')
+    assert client.get(f'/podcasts/{plain}').status_code == 404
+    assert f'/podcasts/{shows[0]}' not in client.get('/reading').get_data(as_text=True)
+    assert all(not history._is_podcast(p['source_slug']) for ps in history.reading_for(artist_id=next(iter(history.reading_by_artist))).values() for p in ps)
+    # an artist with episodes gets a 'Podcast episodes' section, and those stay out of 'Further reading'
+    aid = next((a for a, ps in history.reading_by_artist.items() if history.artists[a]['spotify_id']
+                and any(history._is_podcast(p['source_slug']) for p in ps)), None)
+    assert aid is not None
+    html = client.get(f"/artist/{history.artists[aid]['spotify_id']}").get_data(as_text=True)
+    assert 'Podcast episodes' in html
+    assert 'href="/podcasts"' in client.get('/').get_data(as_text=True)
+    assert shows[0] not in {r['anchor'] for r in history.ranking('publications', limit=500)['rows']}
 
 
 def test_slugs():

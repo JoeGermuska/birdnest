@@ -1,7 +1,7 @@
 {% from "_macros.html" import icon %}
 <nav id="topbar">
     <h1><a href="/">Conference of the Birds</a></h1>
-    <div class="nav-links"><a href="{{ url_for('browse') }}">Shows</a><a href="{{ url_for('ranking', kind='artists') }}">Rankings</a><a href="{{ url_for('genre_map') }}">Genre map</a><a href="{{ url_for('djs') }}">DJs</a><a href="{{ url_for('reading') }}">Reading</a><a href="{{ url_for('radio_page') }}">Radio</a></div>
+    <div class="nav-links"><a href="{{ url_for('browse') }}">Shows</a><a href="{{ url_for('ranking', kind='artists') }}">Rankings</a><a href="{{ url_for('genre_map') }}">Genre map</a><a href="{{ url_for('djs') }}">DJs</a><a href="{{ url_for('reading') }}">Reading</a><a href="{{ url_for('podcasts') }}">Podcasts</a><a href="{{ url_for('radio_page') }}">Radio</a></div>
     <form id="search" role="search" action="{{ url_for('search')}}" method="GET">
         <div class="autocomplete-container">
             <button type="button" class="search-toggle" aria-label="Search" title="Search (press / to jump here)">{{ icon('search') }}</button>

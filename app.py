@@ -244,7 +244,20 @@ def reading():
 @app.route('/reading/<slug>')
 def reading_source(slug):
     src = factoids.get_history().reading_source(slug)
-    if src is None:
+    if src is None or src['kind'] == 'podcast':
+        abort(404)
+    return render_template('reading_source.html', source=src)
+
+
+@app.route('/podcasts')
+def podcasts():
+    return render_template('reading.html', podcasts=True, index=factoids.get_history().reading_index(podcasts=True))
+
+
+@app.route('/podcasts/<slug>')
+def podcast_source(slug):
+    src = factoids.get_history().reading_source(slug)
+    if src is None or src['kind'] != 'podcast':
         abort(404)
     return render_template('reading_source.html', source=src)
 

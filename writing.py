@@ -32,10 +32,10 @@ import statistics
 import sys
 import time
 import xml.etree.ElementTree as ET
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 
@@ -108,7 +108,7 @@ def sync_sources(conn, path=SOURCES_FILE):
 
 # ---- adding and removing sources
 
-KINDS = ('criticism', 'essay', 'interview', 'news')
+KINDS = ('criticism', 'essay', 'interview', 'news', 'podcast')
 FEED_GUESSES = ('/feed/', '/feed', '/rss', '/atom.xml', '/rss.xml', '/index.xml')
 
 
@@ -248,6 +248,9 @@ def parse_feed(data, base=''):
         guid = e.find('guid')
         if not url and guid is not None and (guid.text or '').startswith('http'):
             url = guid.text
+        if not url and guid is not None and guid.text:  # no episode page: the show's page, told apart by the guid below
+            ch = root.find('channel/link')
+            url = ch.text.strip() if ch is not None and ch.text and ch.text.strip() else None
         if not url or not title:
             continue
         raw = ''
@@ -267,7 +270,12 @@ def parse_feed(data, base=''):
                         if h.startswith(('http', '/'))})
         items.append({'url': canonical(url, base), 'title': title, 'published': parse_date(d.text if d is not None else None),
                       'author': author, 'tags': [t for t in tags if t], 'excerpt': short[:EXCERPT_CHARS],
-                      'body_text': body[:MAX_BODY_CHARS], 'links': links[:60]})
+                      'body_text': body[:MAX_BODY_CHARS], 'links': links[:60], 'guid': (guid.text or '').strip() if guid is not None else ''})
+    # podcast hosts often give every episode the show's page as its link: tell them apart by guid, so none overwrites another
+    shared = {u for u, n in Counter(i['url'] for i in items).items() if n > 1}
+    for i in items:
+        if i['url'] in shared:
+            i['url'] += '#' + quote(i['guid'] or i['title'], safe='')
     return items
 
 
@@ -424,7 +432,7 @@ def suppressed(conn):
 
 # ---- publishing
 
-PUBLISH_KINDS = ('criticism', 'essay', 'interview')  # news is kept and matched, but isn't what we're listing
+PUBLISH_KINDS = ('criticism', 'essay', 'interview', 'podcast')  # news is kept and matched, but isn't what we're listing
 
 PUBLISH_SCHEMA = """
 drop table if exists writing_match;
@@ -1036,7 +1044,7 @@ def main(argv=None):
     so.add_argument('state', choices=['add', 'remove', 'on', 'off'])
     so.add_argument('name', help='its name; for add, the site or feed address')
     so.add_argument('--name', dest='as_name', help='add: what to call it (default: the site\'s own name)')
-    so.add_argument('--kind', default='criticism', choices=KINDS, help='add: criticism (default), essay, interview or news (matched but not listed)')
+    so.add_argument('--kind', default='criticism', choices=KINDS, help='add: criticism (default), essay, interview, podcast or news (matched but not listed)')
     so.add_argument('--members', action='store_true', help='add: mostly for paying members (we still only use the public feed)')
     so.add_argument('--roundup', action='store_true', help='add: posts that cover many artists at once')
     so.set_defaults(fn=cmd_toggle)
