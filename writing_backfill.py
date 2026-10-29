@@ -13,17 +13,19 @@ source is left alone for the rest of a run after a 429 or 503, or MAX_ERRORS fai
 
     python writing.py backfill [--source NAME] [--sitemaps N] [--pages N] [--feed-requests N]
 """
+import difflib
 import gzip
 import html
 import json
 import re
 import threading
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from urllib import robotparser
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import requests
 
@@ -394,6 +396,117 @@ def deepen(conn, matcher, sources, pages=40, workers=4, seconds=SOURCE_SECONDS, 
             if todo[i]:
                 log(f"  {by_id[i]['name']}: read {n} of {len(todo[i])} teasers in full" + (f", {left} left" if left else ''))
     return read
+
+
+class NoLookup(Exception):
+    """This site has no search we can use (no such API, not JSON, robots.txt says no): don't try its other episodes."""
+
+
+def _fold(s):
+    s = unicodedata.normalize('NFKD', html.unescape(s or '')).encode('ascii', 'ignore').decode().lower()
+    s = re.sub(r'[^a-z0-9]+', ' ', s).strip()
+    return re.sub(r'^(episode|ep|e)\s*\d+\s*', '', s)  # a site's 'Episode 55:' in front
+
+
+def same_title(a, b):
+    """The same episode title, allowing for a site's 'Episode 55:' in front or different punctuation and accents."""
+    a, b = _fold(a), _fold(b)
+    if not a or not b:
+        return False
+    if (a in b or b in a) and min(len(a), len(b)) >= 0.6 * max(len(a), len(b)):
+        return True
+    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.9
+
+
+def wp_episode_page(root, title, show_url, session):
+    """A WordPress site's own page for the episode with this title, from its search API, or None. The search wants every
+    word to match, so it asks with the title's words (no punctuation or accents), then with just its first few. Raises
+    NoLookup when the site has no such API, Throttled when it says slow down."""
+    words = _fold(title).split()
+    queries = list(dict.fromkeys([' '.join(words[:25]), ' '.join(words[:5])]))
+    host = urlparse(root).netloc.removeprefix('www.')
+    where = lambda u: (urlparse(u).netloc.removeprefix('www.'), urlparse(u).path.rstrip('/'))  # not the scheme: http or https
+    show = where(show_url)
+    for q in queries:
+        url = f'{root}/wp-json/wp/v2/search?search={quote(q)}&per_page=10&_fields=title,url,subtype'
+        if not allowed(url, session):
+            raise NoLookup('robots.txt disallows the API')
+        r = polite(url, session)
+        if r.status_code in (400, 401, 403, 404, 405, 410):
+            raise NoLookup(f'no search API ({r.status_code})')
+        r.raise_for_status()
+        try:
+            data = r.json()
+        except ValueError:
+            raise NoLookup('not a WordPress API')
+        if not isinstance(data, list):
+            raise NoLookup('not a WordPress API')
+        for d in data:
+            found = d.get('url') or ''
+            if urlparse(found).netloc.removeprefix('www.') == host and where(found) != show and same_title(d.get('title'), title):
+                return found
+    return None
+
+
+def lookup_episodes(src, rows, log, seconds=SOURCE_SECONDS):
+    """In a thread: look up these episodes. -> ({item_id: page url or None}, no_api reason or None)"""
+    session = requests.Session()
+    out, errors, deadline = {}, 0, time.monotonic() + seconds
+    for r in rows:
+        if time.monotonic() > deadline:
+            break
+        show_url = r['url'].split('#')[0]
+        try:
+            out[r['item_id']] = wp_episode_page('https://' + urlparse(show_url).netloc, r['title'], show_url, session)
+        except NoLookup as e:
+            return out, str(e)
+        except Throttled as e:
+            log(f"  ! {src['name']}: {e}; stopping here for this run")
+            break
+        except requests.RequestException as e:
+            errors += 1
+            log(f"  ! {src['name']}: {type(e).__name__}: {str(e)[:80]}")
+            if errors >= MAX_ERRORS:
+                break
+    return out, None
+
+
+def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS, log=print):
+    """Podcast feeds often give every episode the show's page as its link (stored as page#guid), so a visitor lands on the
+    show, not the episode. Look the episode up on the show's own site, newest first, at most `pages` per show, and keep the
+    page it finds (item.page_url; page_tried 1 found, 2 not). A show whose site has no usable search, or whose first
+    DEEPEN_PROBE lookups mostly found nothing, is left alone. -> number of episode pages found."""
+    sources, todo = list(sources), {}
+    for s in list(sources):
+        tried, found = conn.execute('select count(*), coalesce(sum(page_tried=1), 0) from item where source_id=? and page_tried in (1, 2)',
+                                    (s['source_id'],)).fetchone()
+        if tried >= DEEPEN_PROBE and found < tried * DEEPEN_MIN_GAIN:
+            sources.remove(s)
+            continue
+        todo[s['source_id']] = conn.execute(
+            "select item_id, url, title from item where source_id=? and page_tried is null and url like '%#%' "
+            'and url not in (select url from item_hidden) order by published desc limit ?',
+            (s['source_id'], min(pages, max(DEEPEN_PROBE - tried, 1)))).fetchall()
+    by_id, total = {s['source_id']: s for s in sources}, 0
+    with ThreadPoolExecutor(workers) as ex:
+        futs = {ex.submit(lookup_episodes, by_id[i], rows, log, seconds): i for i, rows in todo.items() if rows and i in by_id}
+        for fut in as_completed(futs):
+            i = futs[fut]
+            got, no_api = fut.result()
+            for item_id, page in got.items():
+                if page:
+                    conn.execute('update item set page_url=?, page_tried=1 where item_id=?', (page, item_id))
+                else:
+                    conn.execute('update item set page_tried=2 where item_id=?', (item_id,))
+            if no_api:  # the same for every episode of this show
+                conn.execute("update item set page_tried=2 where source_id=? and page_tried is null and url like '%#%'", (i,))
+                log(f"  {by_id[i]['name']}: no episode pages from its site ({no_api})")
+            else:
+                n = sum(1 for p in got.values() if p)
+                log(f"  {by_id[i]['name']}: found {n} of {len(got)} episode pages")
+            conn.commit()
+            total += sum(1 for p in got.values() if p)
+    return total
 
 
 def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_requests=5, workers=4, seconds=SOURCE_SECONDS, log=print):

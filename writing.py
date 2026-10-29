@@ -7,6 +7,7 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
 
     python writing.py run [--all] [--source NAME]   check the sources that are due, match new items, print the report
     python writing.py backfill [--source NAME]      reach back through a site's sitemaps (see writing_backfill.py)
+    python writing.py episodes [--pages N]          find podcast episodes' own pages, where the feed links only to the show
     python writing.py deepen [--pages N]            read the full text of pieces the feed gave only a teaser for
     python writing.py why URL [ARTIST]              why a piece did (or didn't) match
     python writing.py rematch                       match every stored item again (after new artists arrive)
@@ -80,6 +81,9 @@ def connect(path=CRAWL_DB):
     conn.executescript(SCHEMA)
     if 'backfill' not in {r[1] for r in conn.execute('pragma table_info(source)')}:
         conn.execute('alter table source add column backfill text')
+    for col in ('page_url text', 'page_tried integer'):  # an episode's own page, found from the show's site (null: not found / not tried; 1 found, 2 not)
+        if col.split()[0] not in {r[1] for r in conn.execute('pragma table_info(item)')}:
+            conn.execute(f'alter table item add column {col}')
     if 'deepened' not in {r[1] for r in conn.execute('pragma table_info(item)')}:
         conn.execute('alter table item add column deepened integer')  # null: not tried; 1: full text read; 2: page wouldn't give it
     return conn
@@ -525,7 +529,7 @@ def publish(conn, birds_path=BIRDS_DB):
     marks = ','.join('?' * len(PUBLISH_KINDS))
     out_ids, stands_for = suppressed(conn)
     rows = conn.execute(
-        f"select i.item_id, i.url, i.title, i.published, s.name source, s.kind source_kind, s.members_only, s.home_url, s.note, "
+        f"select i.item_id, coalesce(i.page_url, i.url) url, i.title, i.published, s.name source, s.kind source_kind, s.members_only, s.home_url, s.note, "
         f"m.artist_id, m.album_id, m.kind, m.score from match m join item i using (item_id) join source s using (source_id) "
         f"where m.status in ('auto','confirmed') and s.active=1 and s.kind in ({marks})", PUBLISH_KINDS).fetchall()
     rows = [dict(r) for r in rows]
@@ -660,7 +664,7 @@ def report(conn, birds, since, shows=8, limit=40, out=print):
     out(f"\n== {sum(r['status'] == 'review' for r in rows)} more matches to review (python writing.py review)")
 
 
-def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB, deepen_pages=40):
+def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB, deepen_pages=40, episode_pages=40):
     """Check the sources that are due (or all, or one), match what's new, print the report, publish into birdnest.db.
     rematch_first: match everything stored against the artists as they are now, for after a new show's artists arrive."""
     conn, birds = connect(), sqlite3.connect(birds_path)
@@ -688,6 +692,8 @@ def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB, 
     print(f'{total} new items')
     if deepen_pages:
         deepen_sources(conn, matcher, deepen_pages)
+    if episode_pages:
+        episodes_sources(conn, episode_pages)
     report(conn, birds, started)
     pieces, matches = publish(conn, birds_path)
     print(f'\npublished {pieces} pieces / {matches} matches to {birds_path}')
@@ -705,6 +711,26 @@ def deepen_sources(conn, matcher, pages=40, source=None, minutes=5):
     n = writing_backfill.deepen(conn, matcher, sources, pages, seconds=minutes * 60)
     print(f'{n} thin items read in full')
     return n
+
+
+def episodes_sources(conn, pages=40, source=None, minutes=5):
+    """Find the own page of podcast episodes whose feed links only to the show's page, from the show's site. See
+    writing_backfill.resolve_episodes."""
+    import writing_backfill
+    q, params = "select * from source where active=1 and kind='podcast'", []
+    if source:
+        q += ' and name=?'
+        params.append(source)
+    n = writing_backfill.resolve_episodes(conn, conn.execute(q + ' order by name', params).fetchall(), pages, seconds=minutes * 60)
+    print(f'{n} episode pages found')
+    return n
+
+
+def cmd_episodes(args):
+    conn = connect()
+    episodes_sources(conn, args.pages, args.source, args.minutes)
+    pieces, matches = publish(conn, BIRDS_DB)
+    print(f'\npublished {pieces} pieces / {matches} matches to {BIRDS_DB}')
 
 
 def cmd_deepen(args):
@@ -728,6 +754,8 @@ def cmd_why(args):
     body = it['body_text'] or ''
     state = {None: 'not tried', 1: 'full text read', 2: "tried; the page wouldn't give it"}.get(it['deepened'], '?')
     print(f"{it['title']}  ({it['source']}, {(it['published'] or '')[:10]})\n  tags: {', '.join(json.loads(it['tags'] or '[]')) or '-'}")
+    if it['page_url']:
+        print(f"  episode page: {it['page_url']}")
     print(f"  text stored: {len(body)} chars ({'a teaser only' if len(body) < THIN_CHARS else 'full'}; {state})")
     print('  hidden' if conn.execute('select 1 from item_hidden where url=?', (url,)).fetchone() else '  not hidden')
     print('stored matches:')
@@ -1113,6 +1141,8 @@ The pieces, for doing by hand:
   rematch                           match every stored item again; needed after new artists arrive (refresh_writing.py does it)
   backfill [--source NAME]          reach back through a site's sitemaps (or its WordPress API / paged feed): a gentle slice,
             [--minutes M]           polite and resumable. M is the time each source gets in each phase (default 5)
+  episodes [--source NAME]          podcast feeds often link every episode to the show's page: look each episode up on the show's own
+           [--pages N] [--minutes M]  site (WordPress search) and link to its page (run does 40 a show; raise N for a backlog)
   deepen [--source NAME]            some feeds give only a teaser, so a name inside the article is never seen: read those pieces
          [--pages N] [--minutes M]  in full, newest first, and match again (run does 40 a source; raise N to drain a backlog)
   publish                           copy the accepted matches into birdnest.db (run, backfill and review already do this)
@@ -1170,6 +1200,11 @@ def main(argv=None):
     dp.add_argument('--pages', type=int, default=40, help='most pages to fetch per source per run')
     dp.add_argument('--minutes', type=float, default=5, help='most time each source gets')
     dp.set_defaults(fn=cmd_deepen)
+    ep = sub.add_parser('episodes', help="find podcast episodes' own pages")
+    ep.add_argument('--source', help='just this one')
+    ep.add_argument('--pages', type=int, default=40, help='most episodes to look up per show per run')
+    ep.add_argument('--minutes', type=float, default=5, help='most time each show gets')
+    ep.set_defaults(fn=cmd_episodes)
     wy = sub.add_parser('why', help='what we stored and matched for one piece')
     wy.add_argument('url')
     wy.add_argument('artist', nargs='?', help='an artist you expected it to match')
