@@ -179,6 +179,8 @@ fetching), `refresh_writing.py` (the weekly script), `writing_sources.json`, `te
 - Only WordPress sites work: the REST search (`/wp-json/wp/v2/search`), asked with the title's words and then its first five,
   and only a result on the same host whose title matches (`same_title`) is used. A show whose site has no such API is marked
   at once; one whose first 20 lookups mostly find nothing is left alone (same rule as `deepen`).
+  Both `episodes` and `deepen` work in rounds: the first tries 20 (the probe); a show that passed carries on in the same run,
+  up to `--pages`; one that failed is dropped with a message. Anything stopped early or left over says so ("run it again").
 - First probe (October 2026): works for Heat Rocks (maximumfun.org). No usable API on Talkhouse, Switched on Pop, Sound Opinions,
   Life of the Record, MOJO Record Club, Phantom Power, Sound Expertise, Fela Kuti; Rock's Backpages disallows it in robots.txt;
   Goldmine has the API but its episodes aren't found there. Open: other ways in for those (a site's own search page or JSON, the

@@ -348,6 +348,11 @@ DEEPEN_PROBE = 20      # pages read before judging whether a source's articles h
 DEEPEN_MIN_GAIN = 0.1  # ...and the share of them that must have, or the source is left alone
 
 
+def probe_limit(tried, budget):
+    """How many to try next: until a source has had DEEPEN_PROBE tries, only enough to judge whether it is worth going on."""
+    return min(budget, DEEPEN_PROBE - tried) if tried < DEEPEN_PROBE else budget
+
+
 def deepen(conn, matcher, sources, pages=40, workers=4, seconds=SOURCE_SECONDS, log=print):
     """Some feeds (PopMatters, Loud and Quiet, Chicago Reader...) carry only a one-sentence teaser, so a name that is
     only inside the article never matches. Read the full page of items holding less than THIN_CHARS of text, newest
@@ -355,46 +360,56 @@ def deepen(conn, matcher, sources, pages=40, workers=4, seconds=SOURCE_SECONDS, 
     whose first DEEPEN_PROBE pages gave more text in under DEEPEN_MIN_GAIN of cases is not tried again (podcasts' show notes
     are usually already the whole text).
     -> number of items read."""
-    todo, sources = {}, list(sources)
-    for s in list(sources):
-        tried, gained = conn.execute('select count(*), coalesce(sum(deepened=1), 0) from item where source_id=? and deepened in (1, 2)',
-                                     (s['source_id'],)).fetchone()
-        if tried >= DEEPEN_PROBE and gained < tried * DEEPEN_MIN_GAIN:
-            log(f"  {s['name']}: not reading teasers in full (only {gained} of {tried} pages so far had more text than the feed)")
-            sources.remove(s)
-            continue
-        # until a source has had its probe, try only enough pages to decide whether it is worth it
-        todo[s['source_id']] = conn.execute(
-            'select item_id, url from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ? '
-            'and url not in (select url from item_hidden) order by published desc limit ?',
-            (s['source_id'], writing.THIN_CHARS, min(pages, max(DEEPEN_PROBE - tried, 1)))).fetchall()
-    by_id = {s['source_id']: s for s in sources}
-    stamp, read = iso(now()), 0
-    with ThreadPoolExecutor(workers) as ex:
-        futs = {ex.submit(fetch_candidates, by_id[i], [r['url'] for r in rows], log, seconds): i for i, rows in todo.items() if rows}
-        for fut in as_completed(futs):
-            i = futs[fut]
-            pages_read, n = fut.result(), 0
-            for r in todo[i]:
-                if r['url'] not in pages_read:
-                    continue  # not reached this run (time ran out or the site said slow down): try again next time
-                page = pages_read[r['url']]
-                item = conn.execute('select * from item where item_id=?', (r['item_id'],)).fetchone()
-                if page and len(page['body_text']) > len(item['body_text'] or ''):
-                    links = sorted(set(json.loads(item['links'] or '[]')) | set(page['links']))[:60]
-                    conn.execute('update item set body_text=?, links=?, deepened=1 where item_id=?',
-                                 (page['body_text'], json.dumps(links), r['item_id']))
-                    writing.match_item(conn, matcher, r['item_id'], item['title'], json.loads(item['tags'] or '[]'), item['url'],
-                                       page['body_text'], links, stamp)
-                    n += 1
-                else:
-                    conn.execute('update item set deepened=2 where item_id=?', (r['item_id'],))
-            conn.commit()
-            read += n
-            left = conn.execute('select count(*) from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ?',
-                                (i, writing.THIN_CHARS)).fetchone()[0]
-            if todo[i]:
+    sources = list(sources)
+    budget, stamp, read = {s['source_id']: pages for s in sources}, iso(now()), 0
+    while sources:  # rounds: the first is the probe; a source that passed it carries on, up to `pages` in all
+        todo, batch = {}, []
+        for s in sources:
+            tried, gained = conn.execute('select count(*), coalesce(sum(deepened=1), 0) from item where source_id=? and deepened in (1, 2)',
+                                         (s['source_id'],)).fetchone()
+            if tried >= DEEPEN_PROBE and gained < tried * DEEPEN_MIN_GAIN:
+                log(f"  {s['name']}: not reading teasers in full any more (only {gained} of {tried} pages had more text than the feed)")
+                continue
+            rows = conn.execute(
+                'select item_id, url from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ? '
+                'and url not in (select url from item_hidden) order by published desc limit ?',
+                (s['source_id'], writing.THIN_CHARS, probe_limit(tried, budget[s['source_id']]))).fetchall()
+            if rows:
+                todo[s['source_id']] = rows
+                batch.append(s)
+        by_id, sources = {s['source_id']: s for s in batch}, []
+        with ThreadPoolExecutor(workers) as ex:
+            futs = {ex.submit(fetch_candidates, by_id[i], [r['url'] for r in rows], log, seconds): i for i, rows in todo.items()}
+            for fut in as_completed(futs):
+                i = futs[fut]
+                pages_read, n, done = fut.result(), 0, 0
+                for r in todo[i]:
+                    if r['url'] not in pages_read:
+                        continue  # not reached this run (time ran out or the site said slow down): try again next time
+                    done += 1
+                    page = pages_read[r['url']]
+                    item = conn.execute('select * from item where item_id=?', (r['item_id'],)).fetchone()
+                    if page and len(page['body_text']) > len(item['body_text'] or ''):
+                        links = sorted(set(json.loads(item['links'] or '[]')) | set(page['links']))[:60]
+                        conn.execute('update item set body_text=?, links=?, deepened=1 where item_id=?',
+                                     (page['body_text'], json.dumps(links), r['item_id']))
+                        writing.match_item(conn, matcher, r['item_id'], item['title'], json.loads(item['tags'] or '[]'), item['url'],
+                                           page['body_text'], links, stamp)
+                        n += 1
+                    else:
+                        conn.execute('update item set deepened=2 where item_id=?', (r['item_id'],))
+                conn.commit()
+                read += n
+                budget[i] -= done
+                left = conn.execute('select count(*) from item where source_id=? and deepened is null and length(coalesce(body_text, \'\')) < ?',
+                                    (i, writing.THIN_CHARS)).fetchone()[0]
                 log(f"  {by_id[i]['name']}: read {n} of {len(todo[i])} teasers in full" + (f", {left} left" if left else ''))
+                if done < len(todo[i]):
+                    log(f"  {by_id[i]['name']}: stopped early (time ran out or the site said slow down): run it again to carry on")
+                elif budget[i] > 0:
+                    sources.append(by_id[i])  # finished its round with pages to spare: judge it again, and go on if it is worth it
+                elif left:
+                    log(f"  {by_id[i]['name']}: reached the {pages} pages for this run; run it again for the rest")
     return read
 
 
@@ -476,36 +491,52 @@ def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS,
     show, not the episode. Look the episode up on the show's own site, newest first, at most `pages` per show, and keep the
     page it finds (item.page_url; page_tried 1 found, 2 not). A show whose site has no usable search, or whose first
     DEEPEN_PROBE lookups mostly found nothing, is left alone. -> number of episode pages found."""
-    sources, todo = list(sources), {}
-    for s in list(sources):
-        tried, found = conn.execute('select count(*), coalesce(sum(page_tried=1), 0) from item where source_id=? and page_tried in (1, 2)',
-                                    (s['source_id'],)).fetchone()
-        if tried >= DEEPEN_PROBE and found < tried * DEEPEN_MIN_GAIN:
-            sources.remove(s)
-            continue
-        todo[s['source_id']] = conn.execute(
-            "select item_id, url, title from item where source_id=? and page_tried is null and url like '%#%' "
-            'and url not in (select url from item_hidden) order by published desc limit ?',
-            (s['source_id'], min(pages, max(DEEPEN_PROBE - tried, 1)))).fetchall()
-    by_id, total = {s['source_id']: s for s in sources}, 0
-    with ThreadPoolExecutor(workers) as ex:
-        futs = {ex.submit(lookup_episodes, by_id[i], rows, log, seconds): i for i, rows in todo.items() if rows and i in by_id}
-        for fut in as_completed(futs):
-            i = futs[fut]
-            got, no_api = fut.result()
-            for item_id, page in got.items():
-                if page:
-                    conn.execute('update item set page_url=?, page_tried=1 where item_id=?', (page, item_id))
-                else:
-                    conn.execute('update item set page_tried=2 where item_id=?', (item_id,))
-            if no_api:  # the same for every episode of this show
-                conn.execute("update item set page_tried=2 where source_id=? and page_tried is null and url like '%#%'", (i,))
-                log(f"  {by_id[i]['name']}: no episode pages from its site ({no_api})")
-            else:
+    sources = list(sources)
+    budget, total = {s['source_id']: pages for s in sources}, 0
+    while sources:  # rounds, as in deepen: the first is the probe, and a source that passed it carries on
+        todo, batch = {}, []
+        for s in sources:
+            tried, found = conn.execute('select count(*), coalesce(sum(page_tried=1), 0) from item where source_id=? and page_tried in (1, 2)',
+                                        (s['source_id'],)).fetchone()
+            if tried >= DEEPEN_PROBE and found < tried * DEEPEN_MIN_GAIN:
+                log(f"  {s['name']}: not looking up episode pages any more (only {found} of {tried} lookups found one)")
+                continue
+            rows = conn.execute(
+                "select item_id, url, title from item where source_id=? and page_tried is null and url like '%#%' "
+                'and url not in (select url from item_hidden) order by published desc limit ?',
+                (s['source_id'], probe_limit(tried, budget[s['source_id']]))).fetchall()
+            if rows:
+                todo[s['source_id']] = rows
+                batch.append(s)
+        by_id, sources = {s['source_id']: s for s in batch}, []
+        with ThreadPoolExecutor(workers) as ex:
+            futs = {ex.submit(lookup_episodes, by_id[i], rows, log, seconds): i for i, rows in todo.items()}
+            for fut in as_completed(futs):
+                i = futs[fut]
+                got, no_api = fut.result()
+                for item_id, page in got.items():
+                    if page:
+                        conn.execute('update item set page_url=?, page_tried=1 where item_id=?', (page, item_id))
+                    else:
+                        conn.execute('update item set page_tried=2 where item_id=?', (item_id,))
                 n = sum(1 for p in got.values() if p)
-                log(f"  {by_id[i]['name']}: found {n} of {len(got)} episode pages")
-            conn.commit()
-            total += sum(1 for p in got.values() if p)
+                total += n
+                budget[i] -= len(got)
+                if no_api:  # the same for every episode of this show
+                    conn.execute("update item set page_tried=2 where source_id=? and page_tried is null and url like '%#%'", (i,))
+                    log(f"  {by_id[i]['name']}: no episode pages from its site ({no_api})")
+                else:
+                    log(f"  {by_id[i]['name']}: found {n} of {len(got)} episode pages")
+                conn.commit()
+                left = conn.execute("select count(*) from item where source_id=? and page_tried is null and url like '%#%'", (i,)).fetchone()[0]
+                if no_api or not left:
+                    continue
+                if len(got) < len(todo[i]):
+                    log(f"  {by_id[i]['name']}: stopped early (time ran out or the site said slow down): run it again to carry on")
+                elif budget[i] > 0:
+                    sources.append(by_id[i])
+                else:
+                    log(f"  {by_id[i]['name']}: reached the {pages} lookups for this run; {left} more: run it again")
     return total
 
 

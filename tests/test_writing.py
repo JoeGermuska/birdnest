@@ -598,12 +598,12 @@ def test_deepen_gives_up_on_a_source_whose_pages_hold_nothing_more(matcher, tmp_
     src = conn.execute('select * from source order by source_id').fetchall()
     wb.deepen(conn, matcher, src, pages=40, log=lambda *a: None)
     assert len([u for u in fetched if int(u.rsplit('/', 1)[1]) <= 30]) == wb.DEEPEN_PROBE  # only enough to judge
+    assert len([u for u in fetched if int(u.rsplit('/', 1)[1]) > 30]) == 30                  # a source that passed goes on, in the same run
     fetched.clear()
     said = []
     wb.deepen(conn, matcher, src, pages=40, log=said.append)
     assert not [u for u in fetched if int(u.rsplit('/', 1)[1]) <= 30]                        # then left alone
     assert any('quiet' in m and 'not reading' in m for m in said)
-    assert fetched                                                                            # the rich source goes on
 
 
 def test_a_page_announces_its_feeds():
@@ -694,3 +694,40 @@ def test_podcast_episodes_get_their_own_page(tmp_path, monkeypatch):
     # each is tried once, and what was found is what gets published
     calls.clear()
     assert wb.resolve_episodes(conn, src, pages=10, log=lambda *a: None) == 0 and not calls
+
+
+def test_episode_lookups_go_on_after_a_good_probe_and_say_when_they_stop(tmp_path, monkeypatch):
+    import writing_backfill as wb
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 'Good', 'u', 'podcast'), (2, 'Bad', 'v', 'podcast')")
+    for i in range(1, 61):
+        sid = 1 if i <= 30 else 2
+        conn.execute("insert into item (item_id, source_id, url, title, published, tags, links) values (?,?,?,?,?,'[]','[]')",
+                     (i, sid, f"http://{'good' if sid == 1 else 'bad'}.example/show#g{i}", f'Episode number {i}', f'2026-09-{(i % 28) + 1:02d}'))
+    conn.commit()
+
+    class Resp:
+        status_code = 200
+        def __init__(self, payload):
+            self.payload = payload
+        def json(self):
+            return self.payload
+        def raise_for_status(self):
+            pass
+
+    def polite(url, session, stream=False, accept=None):
+        if 'good.example' in url:
+            n = url.split('search=')[1].split('&')[0].replace('%20', ' ').replace('episode number ', '')
+            return Resp([{'title': f'Episode number {n}', 'url': f'https://good.example/ep/{n}/'}])
+        return Resp([])  # the other site's search works but finds nothing
+
+    monkeypatch.setattr(wb, 'polite', polite)
+    monkeypatch.setattr(wb, 'allowed', lambda url, session: True)
+    said = []
+    src = conn.execute('select * from source order by source_id').fetchall()
+    assert wb.resolve_episodes(conn, src, pages=25, log=said.append) == 25
+    tried = lambda sid: conn.execute('select count(*) from item where source_id=? and page_tried is not null', (sid,)).fetchone()[0]
+    assert tried(1) == 25 and tried(2) == wb.DEEPEN_PROBE                  # went on after the probe, up to the 25; the other stopped at the probe
+    assert any('Bad' in m and 'not looking up episode pages any more' in m for m in said)
+    assert any('Good' in m and 'reached the 25' in m and '5 more' in m and 'run it again' in m for m in said)
+    assert wb.resolve_episodes(conn, src, pages=25, log=lambda *a: None) == 5 and tried(1) == 30  # a second run finishes it
