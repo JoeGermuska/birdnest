@@ -399,11 +399,11 @@
  },
  {
   "name": "Popcast",
-  "home_url": "https://play.acast.com/s/popcast",
-  "feed_url": "https://feeds.acast.com/public/shows/45af8fd4-cba8-4416-ad85-168552f927d8",
+  "home_url": "https://www.nytimes.com/column/popcast-pop-music-podcast",
+  "feed_url": "https://feeds.simplecast.com/W1rB_kgL",
   "kind": "podcast",
-  "backfill": "feed",
-  "roundup": true
+  "roundup": true,
+  "backfill": "feed"
  },
  {
   "name": "Now Is Podcast",
@@ -419,13 +419,6 @@
   "kind": "podcast",
   "backfill": "feed",
   "roundup": true
- },
- {
-  "name": "The John Peel Lecture",
-  "home_url": "http://www.bbc.co.uk/programmes/b0175jw5",
-  "feed_url": "https://podcasts.files.bbci.co.uk/b0175jw5.rss",
-  "kind": "podcast",
-  "backfill": "feed"
  },
  {
   "name": "World Service Music Documentaries",
@@ -452,13 +445,6 @@
   "name": "Heat Rocks",
   "home_url": "http://maximumfun.org/shows/heat-rocks",
   "feed_url": "https://feeds.simplecast.com/sUxwITUa",
-  "kind": "podcast",
-  "backfill": "feed"
- },
- {
-  "name": "Sounds to Grow On",
-  "home_url": "http://www.folkways.si.edu/learn_discover/sounds_to_grow_on.aspx",
-  "feed_url": "https://folkways.si.edu/content/rss/sounds_to_grow_on.xml",
   "kind": "podcast",
   "backfill": "feed"
  },
