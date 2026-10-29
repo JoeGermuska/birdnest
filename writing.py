@@ -13,6 +13,7 @@ Member-only sites are handled by their public feeds: we never log in or fetch pa
     python writing.py publish                       copy the accepted matches into birdnest.db (run does this too)
     python writing.py report [--days N]             what matched lately, again
     python writing.py sources                       sync writing_sources.json into the database and list it
+    python writing.py add URL                       offer one page for matching (and its feed, if it has one)
     python writing.py source add URL | remove NAME | off|on NAME   change the list of sources
     python writing.py review [--artist NAME] [--list]   confirm or reject the borderline matches, one at a time
     python writing.py veto ARTIST | hide URL | unhide URL | duplicates   keep wrong matches and duplicates off the site
@@ -92,7 +93,7 @@ def sync_sources(conn, path=SOURCES_FILE):
     names = set()
     for s in wanted:
         names.add(s['name'])
-        row = (s['name'], s.get('home_url'), s['feed_url'], s.get('kind', 'criticism'), int(s.get('members_only', False)),
+        row = (s['name'], s.get('home_url'), s.get('feed_url'), s.get('kind', 'criticism'), int(s.get('members_only', False)),
                int(s.get('roundup', False)), s.get('note'), s.get('backfill', 'sitemap'))
         if conn.execute('select 1 from source where name=?', (s['name'],)).fetchone():
             conn.execute('update source set home_url=?, feed_url=?, kind=?, members_only=?, roundup=?, note=?, backfill=? where name=?',
@@ -112,6 +113,16 @@ KINDS = ('criticism', 'essay', 'interview', 'news', 'podcast')
 FEED_GUESSES = ('/feed/', '/feed', '/rss', '/atom.xml', '/rss.xml', '/index.xml')
 
 
+def feed_links(text, base):
+    """The feeds a page announces in its <head> (not the comment feeds), as absolute addresses."""
+    found = []
+    for tag in re.findall(r'<link[^>]+type=["\']application/(?:rss|atom)\+xml["\'][^>]*>', text):
+        href, label = re.search(r'href=["\']([^"\']+)', tag), re.search(r'title=["\']([^"\']*)', tag)
+        if href and 'comment' not in (label.group(1).lower() if label else '') and '/comments/' not in href.group(1):
+            found.append(urljoin(base, html.unescape(href.group(1))))
+    return list(dict.fromkeys(found))
+
+
 def discover_feed(url, session):
     """Find a site's feed from its address (or from the feed's own). -> {feed_url, home_url, title, items}; ValueError if none."""
     headers = {'User-Agent': USER_AGENT}
@@ -128,11 +139,7 @@ def discover_feed(url, session):
     title = (re.search(r'<meta[^>]+property=["\']og:site_name["\'][^>]+content=["\']([^"\']+)', text)
              or re.search(r'<title[^>]*>([^<]+)', text))
     title = plain(title.group(1)) if title else None
-    found = []
-    for tag in re.findall(r'<link[^>]+type=["\']application/(?:rss|atom)\+xml["\'][^>]*>', text):
-        href, label = re.search(r'href=["\']([^"\']+)', tag), re.search(r'title=["\']([^"\']*)', tag)
-        if href and 'comment' not in (label.group(1).lower() if label else '') and '/comments/' not in href.group(1):
-            found.append(urljoin(r.url, html.unescape(href.group(1))))
+    found = feed_links(text, r.url)
     for cand in dict.fromkeys(found + [root + g for g in FEED_GUESSES]):
         try:
             fr = session.get(cand, headers=headers, timeout=25)
@@ -183,6 +190,65 @@ def add_source(url, name=None, kind='criticism', members_only=False, roundup=Fal
         + ('has a sitemap, so the backfill can read its archive' if mapped else
            'no sitemap found: the backfill will try its WordPress API or a paged feed'))
     return entry
+
+
+def site(url):
+    return urlparse(url).netloc.lower().removeprefix('www.')
+
+
+def elsewhere_name(kind):
+    return 'Elsewhere' if kind == 'criticism' else f'Elsewhere ({kind}s)'
+
+
+def ensure_elsewhere(conn, kind, sources_file=SOURCES_FILE):
+    """The catch-all source for single pages added by hand (it has no feed and no archive to read). -> its row"""
+    name = elsewhere_name(kind)
+    existing = json.load(open(sources_file))
+    if not any(s['name'] == name for s in existing):
+        existing.append({'name': name, 'kind': kind, 'feed_url': None, 'backfill': 'none',
+                         'note': 'single pages added by hand with writing.py add; no feed'})
+        json.dump(existing, open(sources_file, 'w'), indent=1, ensure_ascii=False)
+    sync_sources(conn, sources_file)
+    return conn.execute('select * from source where name=?', (name,)).fetchone()
+
+
+def plan_page(conn, matcher, url, page, source=None, kind='criticism', title=None, date=None):
+    """What adding this page would do: {title, published, source (name), source_row (or None for the catch-all), matches,
+    feeds (announced by the page, not already listed, and only when the site isn't one we follow)}. ValueError if it can't be."""
+    title = (title or page['title'] or '').strip()
+    if not title:
+        raise ValueError('no title found on the page; give one with --title')
+    published = page['published']
+    if date:
+        published = parse_date(date)
+        if not published:
+            raise ValueError(f'--date {date!r} is not a date (use YYYY-MM-DD)')
+    sources = conn.execute('select * from source where active=1').fetchall()
+    if source:
+        row = next((s for s in sources if s['name'].lower() == source.lower()), None)
+        if not row:
+            raise ValueError(f'no source named {source!r}; python writing.py sources lists them')
+    else:  # a site we already follow files it there
+        row = next((s for s in sources if s['home_url'] and site(s['home_url']) == site(url)), None)
+    followed = row is not None and row['feed_url'] is not None
+    feeds = [] if followed else [f for f in page.get('feeds', []) if not any(f == s['feed_url'] for s in sources)]
+    matches = matcher.match(title=title, tags=page['tags'], url=url, body=page['body_text'] or page['excerpt'], links=page['links'])
+    return {'title': title, 'published': published, 'source': row['name'] if row else elsewhere_name(kind),
+            'source_row': row, 'kind': row['kind'] if row else kind, 'matches': matches, 'feeds': feeds}
+
+
+def store_page(conn, matcher, url, page, plan, sources_file=SOURCES_FILE):
+    """Keep the page as an item of its source (the catch-all, made when it is first needed) and match it. -> item_id, or None
+    when we already hold it."""
+    import writing_backfill
+    src = plan['source_row'] or ensure_elsewhere(conn, plan['kind'], sources_file)
+    it = {'url': url, 'title': plan['title'], 'published': plan['published'], 'tags': page['tags'], 'excerpt': page['excerpt'],
+          'body_text': page['body_text'], 'links': page['links']}
+    if not writing_backfill.store_item(conn, matcher, src['source_id'], it, iso(now())):
+        return None
+    conn.execute('update item set deepened=1 where url=?', (url,))  # the whole page was read: nothing more to deepen
+    conn.commit()
+    return conn.execute('select item_id from item where url=?', (url,)).fetchone()[0]
 
 
 def remove_source(name, sources_file=SOURCES_FILE):
@@ -603,7 +669,7 @@ def refresh(source=None, force=False, rematch_first=False, birds_path=BIRDS_DB, 
     matcher = Matcher(birds)
     if rematch_first:
         rematch(conn, matcher)
-    q = 'select * from source where active=1'
+    q = 'select * from source where active=1 and feed_url is not null'
     params = []
     if source:
         q += ' and name=?'
@@ -677,6 +743,77 @@ def cmd_why(args):
         hits = [(a, n) for a, n in names.items() if key in norm(n)]
         print(f'{args.artist!r} in our artists: ' + ('; '.join(f'{n} ({a})' for a, n in hits[:8]) or 'none'))
         print(f'  appears in the stored text: {key in norm(body + " " + (it["excerpt"] or "") + " " + it["title"])}')
+
+
+def cmd_add(args):
+    """add URL: offer one page for matching: show what it would match, then keep it under its site's source, or under
+    'Elsewhere'. If the page announces a feed, offer to follow the site."""
+    import writing_backfill
+    conn, birds = connect(), sqlite3.connect(BIRDS_DB)
+    sync_sources(conn)
+    url = canonical(args.url)
+    have = conn.execute('select s.name from item i join source s using(source_id) where i.url=?', (url,)).fetchone()
+    if have:
+        print(f"already stored, under {have['name']}; 'python writing.py why {url}' shows what it matched")
+        return
+    session = requests.Session()
+    try:
+        page = writing_backfill.fetch_page(url, session)
+    except requests.RequestException as e:
+        print(f'could not fetch it: {e}')
+        return
+    if page is None:
+        print("could not read it (robots.txt says no, it isn't a web page, or the site refused)")
+        return
+    matcher = Matcher(birds)
+    try:
+        plan = plan_page(conn, matcher, url, page, args.source, args.kind, args.title, args.date)
+    except ValueError as e:
+        print(e)
+        return
+    names = dict(birds.execute('select artist_id, name from artist'))
+    print(f"{plan['title']}\n  {(plan['published'] or 'no date')[:10]} · {len(page['body_text'])} chars of text · would go under {plan['source']} ({plan['kind']})")
+    for m in plan['matches']:
+        print(f"  {names.get(m['artist_id'])}: {m['kind']} {m['score']} {'(held for review)' if m['status'] == 'review' else ''}")
+    if not plan['matches']:
+        print('  matches none of the artists we have: it would be kept, but nothing shows until one of them matches')
+    if args.dry_run:
+        return
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print('run it again with --yes to add it')
+            return
+        if input('add it? [Y/n] ').strip().lower() in ('n', 'no'):
+            return
+    item_id = store_page(conn, matcher, url, page, plan)
+    if item_id is None:
+        print('already stored')
+        return
+    pieces, matches = publish(conn, BIRDS_DB)
+    print(f'added; published {pieces} pieces / {matches} matches to {BIRDS_DB}')
+    for i, feed in enumerate(plan['feeds'], 1):
+        print(f'  this page announces a feed{f" ({i})" if len(plan["feeds"]) > 1 else ""}: {feed}')
+    if not plan['feeds']:
+        return
+    cmd = f"python writing.py source add {plan['feeds'][0]} --kind {plan['kind']}"
+    if args.yes or not sys.stdin.isatty():
+        print(f'  to follow the site: {cmd}')
+        return
+    pick = input(f"follow it (so its new posts are checked)? number to add, or n [{'1' if len(plan['feeds']) == 1 else 'n'}]: ").strip().lower()
+    pick = pick or ('1' if len(plan['feeds']) == 1 else 'n')
+    if not pick.isdigit() or not 1 <= int(pick) <= len(plan['feeds']):
+        print(f'  not following; later: {cmd}')
+        return
+    try:
+        entry = add_source(plan['feeds'][int(pick) - 1], None, plan['kind'])
+    except (ValueError, requests.RequestException) as e:
+        print(f'  not added: {e}')
+        return
+    sync_sources(conn)
+    conn.execute('update item set source_id=(select source_id from source where name=?) where item_id=?', (entry['name'], item_id))
+    conn.commit()
+    pieces, matches = publish(conn, BIRDS_DB)
+    print(f"  following {entry['name']!r}; the page now counts as one of its pieces. next: python writing.py run --source \"{entry['name']}\"")
 
 
 def cmd_run(args):
@@ -996,6 +1133,9 @@ Deciding:
   hide URL [--reason WHY]           keep one piece off the site (junk, not writing, a duplicate you'd rather not show)
   unhide URL                        bring it back
   duplicates                        pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically
+  add URL [--source NAME] [--kind K] [--title T] [--date D] [-n] [-y]
+                                    offer one page for matching: shows what it would match, then keeps it under its site's source
+                                    or 'Elsewhere', and offers to follow the site if the page announces a feed
   source add URL [--kind K] [--name N] [--members] [--roundup]
                                     add a site: finds its feed, notes whether the backfill can read its sitemap, writes
                                     writing_sources.json. Then: run --source NAME to fetch it now
@@ -1048,6 +1188,16 @@ def main(argv=None):
     so.add_argument('--members', action='store_true', help='add: mostly for paying members (we still only use the public feed)')
     so.add_argument('--roundup', action='store_true', help='add: posts that cover many artists at once')
     so.set_defaults(fn=cmd_toggle)
+    ad = sub.add_parser('add', help='offer one page for matching')
+    ad.add_argument('url')
+    ad.add_argument('--source', help="file it under this source (default: the source for its site, else 'Elsewhere')")
+    ad.add_argument('--kind', default='criticism', choices=[k for k in KINDS if k != 'news'],
+                    help="for 'Elsewhere': criticism (default), essay, interview or podcast")
+    ad.add_argument('--title', help="when the page doesn't give one")
+    ad.add_argument('--date', help='YYYY-MM-DD, when the page does not give one or has it wrong')
+    ad.add_argument('-n', '--dry-run', action='store_true', help='only show what it would match')
+    ad.add_argument('-y', '--yes', action='store_true', help="don't ask first (and don't offer to follow a feed)")
+    ad.set_defaults(fn=cmd_add)
     hd = sub.add_parser('hide', help='keep one piece off the site')
     hd.add_argument('url')
     hd.add_argument('--reason', default='')

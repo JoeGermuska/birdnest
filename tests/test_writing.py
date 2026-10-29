@@ -604,3 +604,40 @@ def test_deepen_gives_up_on_a_source_whose_pages_hold_nothing_more(matcher, tmp_
     assert not [u for u in fetched if int(u.rsplit('/', 1)[1]) <= 30]                        # then left alone
     assert any('quiet' in m and 'not reading' in m for m in said)
     assert fetched                                                                            # the rich source goes on
+
+
+def test_a_page_announces_its_feeds():
+    head = """<link rel="alternate" type="application/rss+xml" title="Site" href="/feed/">
+              <link rel="alternate" type="application/rss+xml" title="Comments on Site" href="/comments/feed/">
+              <link rel="alternate" type="application/atom+xml" href="https://other.example/atom.xml">"""
+    assert writing.feed_links(head, 'https://ex.com/post') == ['https://ex.com/feed/', 'https://other.example/atom.xml']
+
+
+def test_one_page_is_offered_for_matching(matcher, tmp_path):
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    sources = tmp_path / 'sources.json'
+    sources.write_text(json.dumps([{'name': 'Known', 'home_url': 'https://www.known.example', 'feed_url': 'https://known.example/feed', 'kind': 'criticism'}]))
+    writing.sync_sources(conn, str(sources))
+    page = {'title': 'Takaat and the noise of Dolly Parton', 'published': '2026-10-01T00:00:00Z', 'tags': [], 'excerpt': '',
+            'body_text': 'Takaat plays Dolly Parton songs.', 'links': [], 'feeds': ['https://stray.example/feed']}
+    # a page from a site we follow goes under that source, and needs no feed offer
+    known = writing.plan_page(conn, matcher, 'https://known.example/a', page)
+    assert known['source'] == 'Known' and known['feeds'] == [] and {m['artist_id'] for m in known['matches']} >= {1, 3}
+    # any other page goes under 'Elsewhere', and its feed is offered
+    plan = writing.plan_page(conn, matcher, 'https://stray.example/a', page, title='Better title', date='2026-09-30')
+    assert plan['source'] == 'Elsewhere' and plan['feeds'] == ['https://stray.example/feed']
+    assert plan['title'] == 'Better title' and plan['published'].startswith('2026-09-30')
+    assert writing.plan_page(conn, matcher, 'https://stray.example/a', page, kind='podcast')['source'] == 'Elsewhere (podcasts)'
+    item_id = writing.store_page(conn, matcher, 'https://stray.example/a', page, plan, str(sources))
+    assert item_id and writing.store_page(conn, matcher, 'https://stray.example/a', page, plan, str(sources)) is None
+    row = conn.execute('select s.name, s.feed_url, s.backfill, i.deepened from item i join source s using(source_id)').fetchone()
+    assert tuple(row) == ('Elsewhere', None, 'none', 1)
+    assert 'Elsewhere' in {s['name'] for s in json.loads(sources.read_text())}
+    assert conn.execute('select count(*) from match where item_id=?', (item_id,)).fetchone()[0] >= 1  # the body still names an artist
+    # no feed means it is never fetched, and it survives the next sync
+    writing.sync_sources(conn, str(sources))
+    assert conn.execute("select active from source where name='Elsewhere'").fetchone()[0] == 1
+    with pytest.raises(ValueError):
+        writing.plan_page(conn, matcher, 'https://stray.example/b', {**page, 'title': ''})
+    with pytest.raises(ValueError):
+        writing.plan_page(conn, matcher, 'https://stray.example/b', page, source='No Such Source')
