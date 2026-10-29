@@ -641,3 +641,56 @@ def test_one_page_is_offered_for_matching(matcher, tmp_path):
         writing.plan_page(conn, matcher, 'https://stray.example/b', {**page, 'title': ''})
     with pytest.raises(ValueError):
         writing.plan_page(conn, matcher, 'https://stray.example/b', page, source='No Such Source')
+
+
+def test_episode_titles_are_compared_loosely():
+    import writing_backfill as wb
+    assert wb.same_title('Women Behaving Boldly #2: Aretha Franklin Retrospective feat. Lynnée Denise',
+                         'Episode 55: Women Behaving Boldly #2. Aretha Franklin Retrospective feat. Lynnée Denise')
+    assert wb.same_title('Valerie June on Etta James&#8217; &#8220;At Last!&#8221; (1960)', 'Valerie June on Etta James’ “At Last!” (1960)')
+    assert not wb.same_title('Bob Mould', 'Bob Mould and the long story of Hüsker Dü, part one')  # one name inside a longer, different title
+    assert not wb.same_title('', 'anything')
+
+
+def test_podcast_episodes_get_their_own_page(tmp_path, monkeypatch):
+    import writing_backfill as wb
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 'Show', 'u', 'podcast'), (2, 'Other', 'v', 'podcast')")
+    rows = [(1, 1, 'Episode one', 'http://show.example/shows/x#g1', '2026-10-03'), (2, 1, 'Episode two', 'http://show.example/shows/x#g2', '2026-10-02'),
+            (3, 1, 'No such episode', 'http://show.example/shows/x#g3', '2026-10-01'), (4, 2, 'Whatever', 'http://nowp.example/x#g4', '2026-10-01')]
+    for item_id, sid, title, url, pub in rows:
+        conn.execute("insert into item (item_id, source_id, url, title, published, tags, links) values (?,?,?,?,?,'[]','[]')", (item_id, sid, url, title, pub))
+    conn.commit()
+    calls = []
+
+    class Resp:
+        def __init__(self, status, payload=None):
+            self.status_code, self.payload = status, payload
+        def json(self):
+            return self.payload
+        def raise_for_status(self):
+            pass
+
+    def polite(url, session, stream=False, accept=None):
+        calls.append(url)
+        if 'nowp.example' in url:
+            return Resp(404)
+        if 'search=episode%20one' in url:
+            return Resp(200, [{'title': 'Episode 1: Episode one', 'url': 'https://show.example/episodes/x/ep1/'},
+                              {'title': 'Episode one', 'url': 'https://elsewhere.example/ep1/'}])  # another site's is not used
+        if 'search=episode%20two' in url:
+            return Resp(200, [{'title': 'Episode two', 'url': 'https://show.example/shows/x/'}])      # the show's own page is not an episode
+        return Resp(200, [])
+
+    monkeypatch.setattr(wb, 'polite', polite)
+    monkeypatch.setattr(wb, 'allowed', lambda url, session: True)
+    src = conn.execute('select * from source order by source_id').fetchall()
+    assert wb.resolve_episodes(conn, src, pages=10, log=lambda *a: None) == 1
+    got = {r['item_id']: (r['page_url'], r['page_tried']) for r in conn.execute('select * from item')}
+    assert got[1] == ('https://show.example/episodes/x/ep1/', 1)
+    assert got[2] == (None, 2) and got[3] == (None, 2)
+    assert got[4] == (None, 2)  # no search API: marked, and it cost one request
+    assert len([c for c in calls if 'nowp.example' in c]) == 1
+    # each is tried once, and what was found is what gets published
+    calls.clear()
+    assert wb.resolve_episodes(conn, src, pages=10, log=lambda *a: None) == 0 and not calls

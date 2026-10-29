@@ -170,3 +170,16 @@ fetching), `refresh_writing.py` (the weekly script), `writing_sources.json`, `te
   `writing_sources.json`. Matching, review, veto, `hide` and publishing work as for any piece.
 - If the page announces a feed in its `<head>` and we don't follow the site, it offers to add it as a source (the page then
   moves to that source). With `-y` or without a terminal it only prints the `source add` command.
+
+## Podcast episode pages
+
+- Many podcast hosts link every episode to the show's page, so a published episode would land on the show. `writing.py episodes`
+  (also run weekly by `refresh`, 40 a show) looks each such episode up on the show's own site and keeps the page it finds in
+  `item.page_url`; `publish` uses it in place of the stored `page#guid` URL. `page_tried`: 1 found, 2 not (each is tried once).
+- Only WordPress sites work: the REST search (`/wp-json/wp/v2/search`), asked with the title's words and then its first five,
+  and only a result on the same host whose title matches (`same_title`) is used. A show whose site has no such API is marked
+  at once; one whose first 20 lookups mostly find nothing is left alone (same rule as `deepen`).
+- First probe (October 2026): works for Heat Rocks (maximumfun.org). No usable API on Talkhouse, Switched on Pop, Sound Opinions,
+  Life of the Record, MOJO Record Club, Phantom Power, Sound Expertise, Fela Kuti; Rock's Backpages disallows it in robots.txt;
+  Goldmine has the API but its episodes aren't found there. Open: other ways in for those (a site's own search page or JSON, the
+  episode list on the show's page, Spotify/Apple links). To retry a show: `update item set page_tried=null where source_id=...`.
