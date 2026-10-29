@@ -644,5 +644,12 @@
   "note": "Substack mirror of PSF which doesn't really offer a feed",
   "kind": "criticism",
   "backfill": "feed"
+ },
+ {
+  "name": "Elsewhere",
+  "kind": "criticism",
+  "feed_url": null,
+  "backfill": "none",
+  "note": "single pages added by hand with writing.py add; no feed"
  }
 ]
