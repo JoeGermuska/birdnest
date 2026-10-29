@@ -213,7 +213,7 @@ class _Page(HTMLParser):
 
 
 def fetch_page(url, session, base_name=''):
-    """-> {title, published, tags, excerpt, body_text, links} or None when robots.txt says no or it isn't HTML."""
+    """-> {title, published, tags, excerpt, body_text, links, feeds} or None when robots.txt says no or it isn't HTML."""
     if not allowed(url, session):
         return None
     r = polite(url, session, stream=True, accept='text/html')
@@ -234,7 +234,7 @@ def fetch_page(url, session, base_name=''):
     body = ' '.join(p.art_text if len(' '.join(p.art_text)) > 300 else p.all_text)
     tags = [t.strip() for t in p.meta.get('article:tag', []) if t.strip()]
     links = sorted({urljoin(url, h) for h in p.links if MUSIC_LINK.search(h)})[:60]
-    return {'title': title, 'published': parse_date(date), 'tags': tags, 'body_text': re.sub(r'\s+', ' ', body)[:writing.MAX_BODY_CHARS],
+    return {'title': title, 'published': parse_date(date), 'tags': tags, 'feeds': writing.feed_links(raw, url), 'body_text': re.sub(r'\s+', ' ', body)[:writing.MAX_BODY_CHARS],
             'excerpt': re.sub(r'\s+', ' ', first('og:description', 'description'))[:writing.EXCERPT_CHARS], 'links': links}
 
 
@@ -400,7 +400,7 @@ def backfill(conn, matcher, sources, max_sitemaps=15, max_pages=50, feed_request
     conn.executescript(SCHEMA)
     started = iso(now())
     by_feed = [s for s in sources if (s['backfill'] or 'sitemap') == 'feed']
-    by_map = [s for s in sources if s not in by_feed]
+    by_map = [s for s in sources if s not in by_feed and s['backfill'] != 'none']  # 'none': single pages, no archive
     new = 0
     # phase C: sources without sitemaps, a few requests each
     state = {r['source_id']: r for r in conn.execute('select * from backfill_feed')}

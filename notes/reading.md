@@ -159,3 +159,14 @@ fetching), `refresh_writing.py` (the weekly script), `writing_sources.json`, `te
 - Many hosts give every episode the show's page as its link (or none): `parse_feed` then makes the URL unique with `#guid`.
 - Talk shows that name many artists in passing are `roundup`. Added from an Overcast OPML export; to add one:
   `python writing.py source add FEEDURL --kind podcast`.
+
+## Adding a single page
+
+- `python writing.py add URL` offers one page for matching: it reads the page (politely, robots.txt respected), shows the
+  title, date and what it would match, and asks before keeping it. `-n` only shows, `-y` doesn't ask, `--title` and
+  `--date` fill in what the page doesn't give, `--source NAME` files it under a source we follow.
+- Otherwise it goes under the source for its site if we follow one, else under `Elsewhere` (`Elsewhere (podcasts)`, etc. with
+  `--kind`): a source with no feed and no archive (`feed_url` null, `backfill: none`) that `add` creates in
+  `writing_sources.json`. Matching, review, veto, `hide` and publishing work as for any piece.
+- If the page announces a feed in its `<head>` and we don't follow the site, it offers to add it as a source (the page then
+  moves to that source). With `-y` or without a terminal it only prints the `source add` command.
