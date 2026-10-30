@@ -779,6 +779,8 @@ def test_a_squarespace_episode_list_gives_every_episode_page(tmp_path, monkeypat
 
 def test_episodes_retry_forgets_the_ones_not_found(tmp_path, monkeypatch):
     import writing_backfill as wb
+    monkeypatch.chdir(tmp_path)  # the sources file is a relative path, and it must list the show or the sync switches it off
+    (tmp_path / 'writing_sources.json').write_text(json.dumps([{'name': 'Show', 'feed_url': 'u', 'kind': 'podcast'}]))
     conn = writing.connect(str(tmp_path / 'crawl.db'))
     conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 'Show', 'u', 'podcast')")
     conn.execute("insert into item (item_id, source_id, url, title, published, tags, links, page_tried, page_url) values "
