@@ -901,3 +901,24 @@ def test_episodes_picks_up_a_changed_sources_file(tmp_path, monkeypatch):
     monkeypatch.setattr(wb, 'resolve_episodes', lambda conn, sources, pages, seconds=0, **kw: seen.append([s['episode_pages'] for s in sources]) or 0)
     writing.episodes_sources(conn)
     assert seen == [['https://s.example/episodes/{year}']]  # without the sync it would still be empty
+
+
+def test_a_piece_is_shown_and_found_by_its_episode_page(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'writing_sources.json').write_text(json.dumps([{'name': 'Show', 'feed_url': 'u', 'kind': 'podcast'}]))
+    conn = writing.connect(str(tmp_path / 'writing_crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 'Show', 'u', 'podcast')")
+    conn.execute("insert into item (item_id, source_id, url, title, published, tags, links, page_url) values "
+                 "(1,1,'http://s.example/shows/x#g1','An episode','2026-01-01','[]','[]','https://s.example/episodes/x/an-episode/')")
+    conn.execute("insert into match values (1, 5, null, 0.5, 'about', 'title', 'review', '2026-01-02')")
+    conn.commit()
+    # the review queue shows (and opens) the episode page, not the key we store it under
+    row = conn.execute("select coalesce(i.page_url, i.url) url from match m join item i using(item_id) where m.status='review'").fetchone()
+    assert row['url'] == 'https://s.example/episodes/x/an-episode/'
+    # hide and why take either address
+    writing.main(['hide', 'https://s.example/episodes/x/an-episode', '--reason', 'test'])
+    assert 'hidden: An episode' in capsys.readouterr().out
+    assert conn.execute('select url from item_hidden').fetchall()[0][0] == 'http://s.example/shows/x#g1'  # under the key the pipeline checks
+    writing.main(['unhide', 'https://s.example/episodes/x/an-episode/'])
+    assert 'shown again' in capsys.readouterr().out
+    assert not conn.execute('select count(*) from item_hidden').fetchone()[0]

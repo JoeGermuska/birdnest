@@ -670,7 +670,7 @@ def report(conn, birds, since, shows=8, limit=40, out=print):
     albums = {a: n for a, n in birds.execute('select album_id, name from album')}
     recent = recent_artists(birds, shows)
     rows = conn.execute(
-        "select m.*, i.title, i.url, i.published, s.name as source, s.members_only, s.kind from match m "
+        "select m.*, i.title, coalesce(i.page_url, i.url) url, i.published, s.name as source, s.members_only, s.kind from match m "
         "join item i using (item_id) join source s using (source_id) where m.created_at >= ? and m.status in ('auto','review') "
         "order by m.score desc, i.published desc", (since,)).fetchall()
     out_ids, _ = suppressed(conn)
@@ -783,10 +783,12 @@ def cmd_why(args):
     """why URL [ARTIST]: what we stored for a piece, what it matched, and what the matcher says now."""
     conn, birds = connect(), sqlite3.connect(BIRDS_DB)
     url = canonical(args.url)
-    it = conn.execute('select i.*, s.name as source from item i join source s using(source_id) where url=?', (url,)).fetchone()
+    it = conn.execute("select i.*, s.name as source from item i join source s using(source_id) "
+                      "where i.url=? or i.page_url=? or rtrim(i.page_url, '/')=?", (url, url, url)).fetchone()
     if not it:
         print(f'no stored piece at {url}; it may not be in a feed or sitemap we read yet')
         return
+    url = it['url']  # the address we hold it under
     names = dict(birds.execute('select artist_id, name from artist'))
     body = it['body_text'] or ''
     state = {None: 'not tried', 1: 'full text read', 2: "tried; the page wouldn't give it"}.get(it['deepened'], '?')
@@ -1040,7 +1042,7 @@ def veto(conn, birds, name, drop_all=False, dry_run=False, force=False, interact
             f"{n} (id {a}): {about.get(a) or 'nothing known'}" for a, n in found[:15]))
         return 0, False
     aid, artist = found[0]
-    pieces = conn.execute("select m.item_id, i.title, i.url, s.name source, m.signals, m.status from match m "
+    pieces = conn.execute("select m.item_id, i.title, coalesce(i.page_url, i.url) url, s.name source, m.signals, m.status from match m "
                           "join item i using (item_id) join source s using (source_id) "
                           "where m.artist_id=? and m.status in ('auto','review','confirmed') order by i.published desc", (aid,)).fetchall()
     held = lambda p: bool(CORROBORATED & set(p['signals'].split(',')))  # an album or a link behind it: a plain veto keeps it
@@ -1122,7 +1124,8 @@ def cmd_hide(args):
     """hide URL: keep a piece off the site (a duplicate, junk, not writing). unhide URL undoes it."""
     conn = connect()
     url = canonical(args.url)
-    item = conn.execute('select item_id, title from item where url=?', (url,)).fetchone()
+    item = conn.execute("select item_id, title, url from item where url=? or page_url=? or rtrim(page_url, '/')=?", (url, url, url)).fetchone()
+    url = item['url'] if item else url  # hidden under the address we hold it under, though it may be named by its episode page
     if args.undo:
         cur = conn.execute('delete from item_hidden where url=?', (url,))
         conn.commit()
@@ -1161,7 +1164,7 @@ def cmd_review(args):
     for a, n in names.items():
         same.setdefault(n.lower(), []).append(a)
     names = {a: (f'{n} (id {a})' if len(same[n.lower()]) > 1 else n) for a, n in names.items()}  # told apart when they share a name
-    rows = conn.execute("select m.*, i.title, i.url, s.name source from match m join item i using(item_id) "
+    rows = conn.execute("select m.*, i.title, coalesce(i.page_url, i.url) url, s.name source from match m join item i using(item_id) "
                         "join source s using(source_id) where m.status='review'").fetchall()
     out_ids, _ = suppressed(conn)
     rows = [r for r in rows if r['item_id'] not in out_ids]
