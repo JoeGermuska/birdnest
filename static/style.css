@@ -937,3 +937,5 @@ body table[data-sortable] th { font-weight: 500; }
 .reading-about { font-size: smaller; color: var(--ink-2); }
 .reading-about a { color: inherit; }
 h3.reading-kind { font-size: 1rem; margin: 18px 0 6px; color: var(--ink-2); }
+
+.autocomplete-kind { color: var(--muted, inherit); font-size: var(--size-note); margin-left: 6px; }

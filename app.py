@@ -293,13 +293,44 @@ def search():
 
 @app.route('/autocomplete')
 def autocomplete():
-    db = Database(init_client=False)
-    query = request.args.get('q', '').strip()
-    if not query:
+    """Suggestions that each point at a page: artists, albums and genres, best matches first.
+    A track title isn't offered: it would only run the text search."""
+    query = request.args.get('q', '').strip().lower()
+    if len(query) < 2:
         return jsonify([])
+    history = factoids.get_history()
+    words = query.split()
 
-    suggestions = db.get_autocomplete_suggestions(app.session, query)
-    return jsonify(suggestions)
+    def rank(name):  # -1: exactly the query, 0: starts with it, 1: a word does, 2: it's in there somewhere
+        name = (name or '').lower()
+        if not all(w in name for w in words):
+            return None
+        if name == query:
+            return -1
+        if name.startswith(query):
+            return 0
+        return 1 if any(part.startswith(words[0]) for part in name.replace('-', ' ').split()) else 2
+
+    found = []
+    for a in history.artists.values():
+        r = rank(a['name'])
+        shows = len(history.artist_shows.get(a['artist_id'], ()))
+        if r is not None and shows:
+            found.append((r, 0, -shows, {'type': 'artist', 'label': a['name'],
+                                         'url': url_for('artist', spotify_id=a['spotify_id'])}))
+    for album_id, pids in history.album_shows.items():
+        album = history.albums[album_id]
+        r = rank(album['name'])
+        if r is not None:
+            by = ', '.join(history.artists[x]['name'] for x in history.album_artists[album_id] if x in history.artists)
+            found.append((r, 1, -len(pids), {'type': 'album', 'label': album['name'], 'detail': by,
+                                             'url': url_for('album', spotify_id=album['spotify_id'])}))
+    for g, aids in history.genre_artists.items():
+        r = rank(g)
+        if r is not None:
+            found.append((r, 2, -len(aids), {'type': 'genre', 'label': g, 'url': url_for('genre', genre_name=g)}))
+    found.sort(key=lambda f: f[:3] + (f[3]['label'].lower(),))
+    return jsonify([f[3] for f in found[:8]])
 
 @app.route('/genre/<genre_name>')
 def genre(genre_name):

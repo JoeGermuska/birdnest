@@ -187,16 +187,13 @@ class Database(object):
            GROUP_CONCAT(a.name,';') artist,
            album.name album
     from 
-        playlist p,
-        playlist_track pt,
         track t,
         track_artist ta,
         artist a,
         album 
     where t.track_id = ta.track_id 
          and ta.artist_id = a.artist_id
-         and p.playlist_id = pt.playlist_id
-         and pt.track_id = t.track_id
+         and exists (select 1 from playlist_track pt where pt.track_id = t.track_id)
          and t.album_id = album.album_id
     group by t.track_id, t.name'''
         session.execute(UPDATE_FTS_SQL)

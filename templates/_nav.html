@@ -135,7 +135,9 @@
 
         dropdown.innerHTML = suggestions
             .map((suggestion, index) =>
-                `<div class="autocomplete-item" data-index="${index}">${escapeHtml(suggestion)}</div>`)
+                `<div class="autocomplete-item" data-index="${index}" data-url="${escapeHtml(suggestion.url)}">`
+                + `${escapeHtml(suggestion.label)} <span class="autocomplete-kind">${escapeHtml(
+                    suggestion.type + (suggestion.detail ? ' · ' + suggestion.detail : ''))}</span></div>`)
             .join('');
 
         dropdown.style.display = 'block';
@@ -143,9 +145,8 @@
 
         dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
             item.addEventListener('click', function() {
-                searchInput.value = this.textContent;
                 hideDropdown();
-                searchInput.form.submit();
+                Turbo.visit(this.dataset.url);
             });
         });
     }
