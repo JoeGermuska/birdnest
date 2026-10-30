@@ -83,6 +83,8 @@ def connect(path=CRAWL_DB):
     conn.executescript(SCHEMA)
     if 'backfill' not in {r[1] for r in conn.execute('pragma table_info(source)')}:
         conn.execute('alter table source add column backfill text')
+    if 'episode_pages' not in {r[1] for r in conn.execute('pragma table_info(source)')}:
+        conn.execute('alter table source add column episode_pages text')  # a page (or a template with {year}) that lists a podcast's episodes
     for col in ('page_url text', 'page_tried integer'):  # an episode's own page, found from the show's site (null: not found / not tried; 1 found, 2 not)
         if col.split()[0] not in {r[1] for r in conn.execute('pragma table_info(item)')}:
             conn.execute(f'alter table item add column {col}')
@@ -100,13 +102,13 @@ def sync_sources(conn, path=SOURCES_FILE):
     for s in wanted:
         names.add(s['name'])
         row = (s['name'], s.get('home_url'), s.get('feed_url'), s.get('kind', 'criticism'), int(s.get('members_only', False)),
-               int(s.get('roundup', False)), s.get('note'), s.get('backfill', 'sitemap'))
+               int(s.get('roundup', False)), s.get('note'), s.get('backfill', 'sitemap'), s.get('episode_pages'))
         if conn.execute('select 1 from source where name=?', (s['name'],)).fetchone():
-            conn.execute('update source set home_url=?, feed_url=?, kind=?, members_only=?, roundup=?, note=?, backfill=? where name=?',
-                         row[1:] + (s['name'],))
+            conn.execute('update source set home_url=?, feed_url=?, kind=?, members_only=?, roundup=?, note=?, backfill=?, episode_pages=? '
+                         'where name=?', row[1:] + (s['name'],))
         else:
-            conn.execute('insert into source (name, home_url, feed_url, kind, members_only, roundup, note, backfill, added_at) '
-                         'values (?,?,?,?,?,?,?,?,?)', row + (iso(now()),))
+            conn.execute('insert into source (name, home_url, feed_url, kind, members_only, roundup, note, backfill, episode_pages, added_at) '
+                         'values (?,?,?,?,?,?,?,?,?,?)', row + (iso(now()),))
     for (name,) in conn.execute('select name from source').fetchall():
         if name not in names:
             conn.execute('update source set active=0 where name=?', (name,))

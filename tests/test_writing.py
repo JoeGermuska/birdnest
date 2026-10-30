@@ -847,3 +847,41 @@ def test_a_page_we_cannot_read_is_added_from_what_we_are_given(tmp_path, monkeyp
     # an artist we don't know stops it before anything is stored
     writing.main(['add', 'https://closed.example/piece/two', '--title', 'x', '--artist', 'Nobody', '-y'])
     assert 'no artist' in capsys.readouterr().out
+
+
+def test_a_shows_own_list_of_episodes_gives_the_pages(tmp_path, monkeypatch):
+    import writing_backfill as wb
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind, episode_pages) values "
+                 "(1, 'Opinions', 'u', 'podcast', 'https://www.show.example/episodes/{year}')")
+    rows = [(1, 'A band finally gets its due', 'http://hosted.example/shows/o#g1', '2025-12-31'),
+            (2, 'RIP Somebody', 'http://hosted.example/shows/o#g2', '2025-12-30'),                      # an extra: not on the site's list
+            (3, 'Buried Treasures &amp; Sudan Archives', 'http://hosted.example/shows/o#g3', '2026-01-10')]
+    for item_id, title, url, pub in rows:
+        conn.execute("insert into item (item_id, source_id, url, title, published, tags, links) values (?,1,?,?,?,'[]','[]')", (item_id, url, title, pub))
+    conn.execute("insert into item (item_id, source_id, url, title, published, tags, links) values "
+                 "(4,1,'http://www.show.example/show/5','Already has its page','2020-01-01','[]','[]')")
+    conn.commit()
+    asked = []
+    lists = {'2025': '<ul><li><a href="/episodes/2024">2024</a><a href="/show/7">A Band Finally Gets Its Due</a></li></ul>',
+             '2026': '<a href="/show/8">Buried Treasures &amp; Sudan Archives</a><a href="https://elsewhere.example/x">A band finally gets its due</a>'}
+
+    class Resp:
+        status_code = 200
+        def __init__(self, text):
+            self.text = text
+
+    def polite(url, session, stream=False, accept=None):
+        asked.append(url)
+        return Resp(lists[url.rsplit('/', 1)[1]])
+
+    monkeypatch.setattr(wb, 'polite', polite)
+    monkeypatch.setattr(wb, 'allowed', lambda url, session: True)
+    said = []
+    src = conn.execute('select * from source').fetchall()
+    assert wb.resolve_episodes(conn, src, pages=40, log=said.append) == 2
+    assert asked == ['https://www.show.example/episodes/2025', 'https://www.show.example/episodes/2026']  # one page a year waiting, not one a year of the show
+    got = {r['item_id']: (r['page_url'], r['page_tried']) for r in conn.execute('select * from item')}
+    assert got[1] == ('https://www.show.example/show/7', 1) and got[3] == ('https://www.show.example/show/8', 1)
+    assert got[2] == (None, 2) and got[4] == (None, None)                                             # the extra keeps the show page; direct links untouched
+    assert any('found 2 of 3' in m and 'keep the show page' in m for m in said)

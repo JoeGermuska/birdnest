@@ -584,7 +584,8 @@
   "feed_url": "https://rss.art19.com/sound-opinions",
   "kind": "podcast",
   "backfill": "feed",
-  "roundup": true
+  "roundup": true,
+  "episode_pages": "https://www.soundopinions.org/episodes/{year}"
  },
  {
   "name": "Big Ears: Conversations About Music",

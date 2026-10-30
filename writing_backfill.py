@@ -499,6 +499,35 @@ def site_episode_index(root, session, max_pages=120):
     return {}
 
 
+def list_page_index(src, years, session):
+    """The links on a show's own list of episodes (source.episode_pages: a page, or a template with {year} for one page a
+    year), as {folded link text: address}: titles to match the feed's against. Only the show's own site."""
+    template = src['episode_pages']
+    urls = [template.format(year=y) for y in years] if '{year}' in template else [template]
+    host, index = urlparse(template).netloc.removeprefix('www.'), {}
+    for url in urls:
+        if not allowed(url, session):
+            raise NoLookup('robots.txt disallows the list')
+        r = polite(url, session)
+        if r.status_code >= 400:
+            continue
+        for href, text in re.findall(r'<a\s[^>]*?href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', r.text, flags=re.S | re.I):
+            found = urljoin(url, html.unescape(href))
+            title = _fold(re.sub(r'<[^>]+>', ' ', text))
+            if len(title.split()) >= 2 and urlparse(found).netloc.removeprefix('www.') == host:
+                index.setdefault(title, found)
+    return index
+
+
+def list_episodes(src, years, log, seconds=SOURCE_SECONDS):
+    """In a thread: read the show's list of episodes. -> ({}, None, {title: address}); the index is empty if it couldn't be read"""
+    try:
+        return {}, None, list_page_index(src, years, requests.Session())
+    except (NoLookup, Throttled, requests.RequestException) as e:
+        log(f"  ! {src['name']}: its list of episodes: {type(e).__name__}: {str(e)[:80]}")
+        return {}, None, {}
+
+
 def lookup_episodes(src, rows, log, seconds=SOURCE_SECONDS):
     """In a thread: look up these episodes. -> ({item_id: page url or None}, no_api reason or None, the site's episode list
     ({title: url}) when it has no search but does have a list)"""
@@ -551,7 +580,14 @@ def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS,
                 batch.append(s)
         by_id, sources = {s['source_id']: s for s in batch}, []
         with ThreadPoolExecutor(workers) as ex:
-            futs = {ex.submit(lookup_episodes, by_id[i], rows, log, seconds): i for i, rows in todo.items()}
+            futs = {}
+            for i, rows in todo.items():
+                if by_id[i]['episode_pages']:  # the show's own list of episodes, from the first year waiting to the last
+                    lo, hi = conn.execute("select min(substr(published, 1, 4)), max(substr(published, 1, 4)) from item where source_id=? "
+                                          "and page_tried is null and url like '%#%' and published is not null", (i,)).fetchone()
+                    futs[ex.submit(list_episodes, by_id[i], range(int(lo), int(hi) + 1) if lo else [], log, seconds)] = i
+                else:
+                    futs[ex.submit(lookup_episodes, by_id[i], rows, log, seconds)] = i
             for fut in as_completed(futs):
                 i = futs[fut]
                 got, no_api, index = fut.result()
@@ -563,7 +599,7 @@ def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS,
                 n = sum(1 for p in got.values() if p)
                 total += n
                 budget[i] -= len(got)
-                if no_api and index:  # no search, but a list of every episode: match them all from it
+                if index:  # a list of the show's episodes (no search needed): match every one waiting from it
                     pending = conn.execute("select item_id, title from item where source_id=? and page_tried is null and url like '%#%'", (i,)).fetchall()
                     n = 0
                     for r in pending:
@@ -571,7 +607,8 @@ def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS,
                         conn.execute('update item set page_url=?, page_tried=? where item_id=?', (page, 1 if page else 2, r['item_id']))
                         n += bool(page)
                     total += n
-                    log(f"  {by_id[i]['name']}: found {n} of {len(pending)} episode pages from its list of {len(index)} episodes")
+                    log(f"  {by_id[i]['name']}: found {n} of {len(pending)} episode pages from its list of {len(index)} episodes"
+                        + ('; the rest are not on it (extras, say) and keep the show page' if n < len(pending) else ''))
                 elif no_api:  # the same for every episode of this show
                     conn.execute("update item set page_tried=2 where source_id=? and page_tried is null and url like '%#%'", (i,))
                     log(f"  {by_id[i]['name']}: no episode pages from its site ({no_api})")
