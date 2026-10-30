@@ -885,3 +885,17 @@ def test_a_shows_own_list_of_episodes_gives_the_pages(tmp_path, monkeypatch):
     assert got[1] == ('https://www.show.example/show/7', 1) and got[3] == ('https://www.show.example/show/8', 1)
     assert got[2] == (None, 2) and got[4] == (None, None)                                             # the extra keeps the show page; direct links untouched
     assert any('found 2 of 3' in m and 'keep the show page' in m for m in said)
+
+
+def test_episodes_picks_up_a_changed_sources_file(tmp_path, monkeypatch):
+    import writing_backfill as wb
+    monkeypatch.chdir(tmp_path)  # the sources file is a relative path
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    (tmp_path / 'writing_sources.json').write_text(json.dumps([{'name': 'Show', 'feed_url': 'u', 'kind': 'podcast'}]))
+    writing.sync_sources(conn)
+    (tmp_path / 'writing_sources.json').write_text(json.dumps(
+        [{'name': 'Show', 'feed_url': 'u', 'kind': 'podcast', 'episode_pages': 'https://s.example/episodes/{year}'}]))
+    seen = []
+    monkeypatch.setattr(wb, 'resolve_episodes', lambda conn, sources, pages, seconds=0, **kw: seen.append([s['episode_pages'] for s in sources]) or 0)
+    writing.episodes_sources(conn)
+    assert seen == [['https://s.example/episodes/{year}']]  # without the sync it would still be empty

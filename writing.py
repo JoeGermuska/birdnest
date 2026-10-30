@@ -733,6 +733,7 @@ def deepen_sources(conn, matcher, pages=40, source=None, minutes=5):
     """Read the full text of items whose feed gave only a teaser, newest first, so a name in the article (not just its
     title and tags) can match. See writing_backfill.deepen."""
     import writing_backfill
+    sync_sources(conn)
     q, params = 'select * from source where active=1', []
     if source:
         q += ' and name=?'
@@ -747,6 +748,7 @@ def episodes_sources(conn, pages=40, source=None, minutes=5, retry=False):
     """Find the own page of podcast episodes whose feed links only to the show's page, from the show's site. See
     writing_backfill.resolve_episodes."""
     import writing_backfill
+    sync_sources(conn)  # so a change to writing_sources.json (episode_pages, say) counts straight away
     q, params = "select * from source where active=1 and kind='podcast'", []
     if source:
         q += ' and name=?'
