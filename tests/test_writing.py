@@ -775,3 +775,19 @@ def test_a_squarespace_episode_list_gives_every_episode_page(tmp_path, monkeypat
     assert got[7] == ('https://www.pop.example/episodes/song-7', 1)                  # punctuation differs: still the same title
     assert got[99] == (None, 2)
     assert any('from its list of 45 episodes' in m for m in said)
+
+
+def test_episodes_retry_forgets_the_ones_not_found(tmp_path, monkeypatch):
+    import writing_backfill as wb
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 'Show', 'u', 'podcast')")
+    conn.execute("insert into item (item_id, source_id, url, title, published, tags, links, page_tried, page_url) values "
+                 "(1,1,'http://s.example/#a','One','2026-01-01','[]','[]',2,null), (2,1,'http://s.example/#b','Two','2026-01-02','[]','[]',1,'https://s.example/two')")
+    conn.commit()
+    seen = []
+    monkeypatch.setattr(wb, 'resolve_episodes', lambda conn, sources, pages, seconds=0, **kw: seen.append(
+        conn.execute('select item_id from item where page_tried is null').fetchall()) or 0)
+    writing.episodes_sources(conn, 40, None, 5)
+    assert seen[-1] == []                                                      # not found stays not found
+    writing.episodes_sources(conn, 40, None, 5, retry=True)
+    assert [r[0] for r in seen[-1]] == [1]                                     # retry: only the one not found, never the one found

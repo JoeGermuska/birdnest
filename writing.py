@@ -713,7 +713,7 @@ def deepen_sources(conn, matcher, pages=40, source=None, minutes=5):
     return n
 
 
-def episodes_sources(conn, pages=40, source=None, minutes=5):
+def episodes_sources(conn, pages=40, source=None, minutes=5, retry=False):
     """Find the own page of podcast episodes whose feed links only to the show's page, from the show's site. See
     writing_backfill.resolve_episodes."""
     import writing_backfill
@@ -721,14 +721,19 @@ def episodes_sources(conn, pages=40, source=None, minutes=5):
     if source:
         q += ' and name=?'
         params.append(source)
-    n = writing_backfill.resolve_episodes(conn, conn.execute(q + ' order by name', params).fetchall(), pages, seconds=minutes * 60)
+    sources = conn.execute(q + ' order by name', params).fetchall()
+    if retry:  # forget the ones that weren't found (a new way of finding them, or a site that has changed)
+        for s in sources:
+            conn.execute('update item set page_tried=null where source_id=? and page_tried=2 and page_url is null', (s['source_id'],))
+        conn.commit()
+    n = writing_backfill.resolve_episodes(conn, sources, pages, seconds=minutes * 60)
     print(f'{n} episode pages found')
     return n
 
 
 def cmd_episodes(args):
     conn = connect()
-    episodes_sources(conn, args.pages, args.source, args.minutes)
+    episodes_sources(conn, args.pages, args.source, args.minutes, args.retry)
     pieces, matches = publish(conn, BIRDS_DB)
     print(f'\npublished {pieces} pieces / {matches} matches to {BIRDS_DB}')
 
@@ -1142,7 +1147,8 @@ The pieces, for doing by hand:
   backfill [--source NAME]          reach back through a site's sitemaps (or its WordPress API / paged feed): a gentle slice,
             [--minutes M]           polite and resumable. M is the time each source gets in each phase (default 5)
   episodes [--source NAME]          podcast feeds often link every episode to the show's page: look each episode up on the show's own
-           [--pages N] [--minutes M]  site (WordPress search) and link to its page (run does 40 a show; raise N for a backlog)
+           [--pages N] [--minutes M]  site (WordPress search, or a Squarespace list) and link to its page (run does 40 a show;
+           [--retry]                  raise N for a backlog; --retry looks again for the ones not found)
   deepen [--source NAME]            some feeds give only a teaser, so a name inside the article is never seen: read those pieces
          [--pages N] [--minutes M]  in full, newest first, and match again (run does 40 a source; raise N to drain a backlog)
   publish                           copy the accepted matches into birdnest.db (run, backfill and review already do this)
@@ -1204,6 +1210,7 @@ def main(argv=None):
     ep.add_argument('--source', help='just this one')
     ep.add_argument('--pages', type=int, default=40, help='most episodes to look up per show per run')
     ep.add_argument('--minutes', type=float, default=5, help='most time each show gets')
+    ep.add_argument('--retry', action='store_true', help="look again for the episodes that weren't found")
     ep.set_defaults(fn=cmd_episodes)
     wy = sub.add_parser('why', help='what we stored and matched for one piece')
     wy.add_argument('url')
