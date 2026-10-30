@@ -30,8 +30,10 @@ import html
 import json
 import re
 import sqlite3
+import shutil
 import statistics
 import sys
+import textwrap
 import time
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
@@ -906,7 +908,13 @@ def cmd_sources(args):
                count(distinct case when m.status in ('auto','confirmed') then m.artist_id end) artists
         from source s left join item i using (source_id) left join match m on m.item_id = i.item_id
         group by s.source_id order by about_items desc, s.name""").fetchall()
-    print(f"{'source':32} {'kind':10} {'check':8} {'items':>5} {'matched':>8} {'about':>6} {'artists':>7}  {'latest post':11}  notes")
+    fixed = 67  # the columns after the name, up to the notes
+    width = terminal_width(default=10_000) if sys.stdout.isatty() else 10_000  # piped: all of it
+    name_w = min(32, max(14, width - fixed - 20))
+    notes_w = max(0, width - fixed - name_w - 1)
+    clip = lambda text, n: text if len(text) <= n else text[:max(0, n - 1)] + '…' if n > 1 else ''
+    head = f"{'source':{name_w}} {'kind':10} {'check':8} {'items':>5} {'matched':>8} {'about':>6} {'artists':>7}  {'latest post':11}  notes"
+    print(clip(head, width))
     for r in rows:
         check = 'OFF' if not r['active'] else f"{r['interval_hours']:.0f}h" if r['interval_hours'] else 'new'
         pct = f"{100 * r['matched_items'] / r['items']:.0f}%" if r['items'] else '-'
@@ -915,8 +923,11 @@ def cmd_sources(args):
             'roundups' if r['roundup'] else '', f"! {r['last_error']}" if r['last_error'] else '',
             'no matches yet' if r['items'] and not r['matched_items'] else '',
             'quiet: nothing new in 60+ days' if r['latest'] and r['latest'] < iso(now() - timedelta(days=60)) else '') if n]
-        print(f"{r['name']:32} {r['kind']:10} {check:8} {r['items']:5} {pct:>8} {r['about_items']:6} {r['artists']:7}  {(r['latest'] or '')[:10]:11}  {'; '.join(notes)}")
-    print(f"\n{len(rows)} sources, {sum(r['items'] for r in rows)} items. matched = items with an accepted match; about = items about an artist we've played.")
+        line = (f"{clip(r['name'], name_w):{name_w}} {r['kind']:10} {check:8} {r['items']:5} {pct:>8} {r['about_items']:6} {r['artists']:7}  "
+                f"{(r['latest'] or '')[:10]:11}  ")
+        print((line + clip('; '.join(notes), notes_w)).rstrip() if width >= 10_000 else clip(line + '; '.join(notes), width).rstrip())
+    print('\n' + '\n'.join(textwrap.wrap(f"{len(rows)} sources, {sum(r['items'] for r in rows)} items. matched = items with an accepted match; "
+                                         f"about = items about an artist we've played.", min(width, 100))))
 
 
 def cmd_toggle(args):
@@ -1136,53 +1147,79 @@ def cmd_review(args):
         print(f'published {pieces} pieces / {matches} matches to {BIRDS_DB}')
 
 
-HELP = """writing.py: the index of music writing
+HELP_INTRO = ('writing.py: the index of music writing',)
+HELP_SECTIONS = [
+    (None, [('Weekly (after load_playlist.py): python refresh_writing.py',
+             'does the whole routine in one go: re-match, check the feeds that are due, a gentle slice of the backfill, publish.')]),
+    ('The pieces, for doing by hand:', [
+        ('run [--all] [--source NAME]', "check the feeds that are due (every one with --all, or just NAME), match what's new, publish"),
+        ('rematch', 'match every stored item again; needed after new artists arrive (refresh_writing.py does it)'),
+        ('backfill [--source NAME] [--minutes M]', "reach back through a site's sitemaps (or its WordPress API / paged feed): a gentle slice, "
+                                                  'polite and resumable. M is the time each source gets in each phase (default 5)'),
+        ('episodes [--source NAME] [--pages N] [--minutes M] [--retry]',
+         "podcast feeds often link every episode to the show's page: look each episode up on the show's own site (WordPress search, "
+         'or a Squarespace list) and link to its page (run does 40 a show; raise N for a backlog; --retry looks again for the ones '
+         'not found)'),
+        ('deepen [--source NAME] [--pages N] [--minutes M]',
+         'some feeds give only a teaser, so a name inside the article is never seen: read those pieces in full, newest first, and '
+         'match again (run does 40 a source; raise N to drain a backlog)'),
+        ('publish', 'copy the accepted matches into birdnest.db (run, backfill and review already do this)')]),
+    ('Looking:', [
+        ('sources', "every source: pieces stored, matched, about artists we've played, latest post, any trouble"),
+        ('report [--days N]', 'what matched lately'),
+        ('why URL [ARTIST]', 'one piece: the text we hold, what it matched, what the matcher says now, and whether an artist you '
+                             'expected to see is in our data and in that text')]),
+    ('Deciding:', [
+        ('review [--artist NAME] [--list]', "go through the borderline matches: y it's about them, n it isn't, x never match this "
+                                            'artist on the name alone, s skip, o open the piece, q quit (--list just prints them)'),
+        ('veto ARTIST [-n|-f|-i] [--all]',
+         "an artist's name alone never matches (a 'Dillinger' who isn't The Dillinger Escape Plan): drops their matches that rest on "
+         "the name, for good, after asking. -n (--dry-run) only lists them, -f (--force) doesn't ask, -i (--interactive) goes piece "
+         'by piece for when only some are wrong; --all also drops matches with an album or link behind them. unveto ARTIST undoes it'),
+        ('hide URL [--reason WHY]', "keep one piece off the site (junk, not writing, a duplicate you'd rather not show)"),
+        ('unhide URL', 'bring it back'),
+        ('duplicates', "pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically"),
+        ('add URL [--source NAME] [--kind K] [--title T] [--date D] [-n] [-y]',
+         "offer one page for matching: shows what it would match, then keeps it under its site's source or 'Elsewhere', and offers "
+         'to follow the site if the page announces a feed'),
+        ('source add URL [--kind K] [--name N] [--members] [--roundup]',
+         'add a site: finds its feed, notes whether the backfill can read its sitemap, writes writing_sources.json. Then: '
+         'run --source NAME to fetch it now'),
+        ('source remove NAME', 'take one out of the file (switched off, not published; what it gave stays stored)'),
+        ('source off|on NAME', 'stop or resume checking one source without removing it')]),
+]
+HELP_OUTRO = 'Whatever changes birdnest.db (publish does), commit it and deploy. See the top of writing.py for how it all works.'
 
-Weekly (after load_playlist.py): python refresh_writing.py
-  does the whole routine in one go: re-match, check the feeds that are due, a gentle slice of the backfill, publish.
 
-The pieces, for doing by hand:
-  run [--all] [--source NAME]       check the feeds that are due (every one with --all, or just NAME), match what's new, publish
-  rematch                           match every stored item again; needed after new artists arrive (refresh_writing.py does it)
-  backfill [--source NAME]          reach back through a site's sitemaps (or its WordPress API / paged feed): a gentle slice,
-            [--minutes M]           polite and resumable. M is the time each source gets in each phase (default 5)
-  episodes [--source NAME]          podcast feeds often link every episode to the show's page: look each episode up on the show's own
-           [--pages N] [--minutes M]  site (WordPress search, or a Squarespace list) and link to its page (run does 40 a show;
-           [--retry]                  raise N for a backlog; --retry looks again for the ones not found)
-  deepen [--source NAME]            some feeds give only a teaser, so a name inside the article is never seen: read those pieces
-         [--pages N] [--minutes M]  in full, newest first, and match again (run does 40 a source; raise N to drain a backlog)
-  publish                           copy the accepted matches into birdnest.db (run, backfill and review already do this)
+def terminal_width(default=100, cap=110):
+    """The terminal's width when writing to one (never wider than cap, for reading), else `default`."""
+    return min(cap, shutil.get_terminal_size((default, 24)).columns - 1) if sys.stdout.isatty() else default
 
-Looking:
-  sources                           every source: pieces stored, matched, about artists we've played, latest post, any trouble
-  report [--days N]                 what matched lately
-  why URL [ARTIST]                  one piece: the text we hold, what it matched, what the matcher says now, and whether an
-                                    artist you expected to see is in our data and in that text
 
-Deciding:
-  review [--artist NAME] [--list]   go through the borderline matches: y it's about them, n it isn't, x never match this artist
-                                    on the name alone, s skip, o open the piece, q quit (--list just prints them)
-  veto ARTIST [-n|-f|-i] [--all]    an artist's name alone never matches (a 'Dillinger' who isn't The Dillinger Escape Plan): drops
-                                    their matches that rest on the name, for good, after asking. -n (--dry-run) only lists them,
-                                    -f (--force) doesn't ask, -i (--interactive) goes piece by piece for when only some are wrong;
-                                    --all also drops matches with an album or link behind them. unveto ARTIST undoes it
-  hide URL [--reason WHY]           keep one piece off the site (junk, not writing, a duplicate you'd rather not show)
-  unhide URL                        bring it back
-  duplicates                        pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically
-  add URL [--source NAME] [--kind K] [--title T] [--date D] [-n] [-y]
-                                    offer one page for matching: shows what it would match, then keeps it under its site's source
-                                    or 'Elsewhere', and offers to follow the site if the page announces a feed
-  source add URL [--kind K] [--name N] [--members] [--roundup]
-                                    add a site: finds its feed, notes whether the backfill can read its sitemap, writes
-                                    writing_sources.json. Then: run --source NAME to fetch it now
-  source remove NAME                take one out of the file (switched off, not published; what it gave stays stored)
-  source off|on NAME                stop or resume checking one source without removing it
-
-Whatever changes birdnest.db (publish does), commit it and deploy. See the top of writing.py for how it all works."""
+def help_text(width=100):
+    """The help, wrapped to `width`: each command and what it does side by side when there is room, else one above the other."""
+    left, out = 36, [HELP_INTRO[0]]
+    wrap = lambda text, indent: textwrap.wrap(text, max(40, width), initial_indent=' ' * indent, subsequent_indent=' ' * indent)
+    for title, entries in HELP_SECTIONS:
+        out.append('')
+        if title:
+            out.append(title)
+        for usage, what in entries:
+            if not title:  # the weekly routine: a line, then what it does
+                out += [usage] + wrap(what, 2)
+            elif width >= 90 and len(usage) <= left - 2:
+                lines = wrap(what, left)
+                out.append(f'  {usage:<{left - 2}}' + lines[0].lstrip())
+                out += lines[1:]
+            else:
+                out.append(f'  {usage}')
+                out += wrap(what, 6)
+    out += ['', *textwrap.wrap(HELP_OUTRO, width)]
+    return '\n'.join(out)
 
 
 def cmd_help(args):
-    print(HELP)
+    print(help_text(terminal_width()))
 
 
 def main(argv=None):
