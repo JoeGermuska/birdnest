@@ -50,6 +50,22 @@ SOURCE_SECONDS = 300  # most time one source gets in each phase of a run, so a s
 _lock, _robots, _last, _delay = threading.Lock(), {}, {}, {}
 
 
+# Hosts that carry many shows and are never a show's own WordPress site: don't look for wp-json there.
+NOT_WORDPRESS = ('art19.com', 'rss.com', 'patreon.com', 'nytimes.com', 'bbc.co.uk', 'bbc.com', 'iheart.com', 'substack.com',
+                 'megaphone.fm', 'simplecast.com', 'libsyn.com', 'spotify.com', 'apple.com', 'soundcloud.com', 'youtube.com',
+                 'acast.com', 'omny.fm', 'buzzsprout.com', 'anchor.fm', 'podbean.com', 'npr.org', 'wnyc.org', 'feedburner.com')
+
+
+def may_be_wordpress(src):
+    """Worth asking for wp-json? Only when the source names its own site, and it isn't a platform that hosts many shows."""
+    host = (urlparse(src['home_url'] or '').hostname or '').lower()
+    return bool(host) and not any(host == d or host.endswith('.' + d) for d in NOT_WORDPRESS)
+
+
+class NoApi(Exception):
+    """The site answered, but not with the WordPress API (a page of HTML instead of JSON)."""
+
+
 class Throttled(Exception):
     """The site asked us to slow down (429, 503): leave it alone for the rest of this run."""
 
@@ -278,8 +294,12 @@ def _wp_posts(root, page, session):
     if r.status_code == 400:  # past the last page
         return None
     r.raise_for_status()
+    try:
+        posts = r.json()
+    except ValueError:
+        raise NoApi('not JSON')
     out = []
-    for p in r.json():
+    for p in posts:
         out.append({'url': canonical(p['link']), 'title': plain_html(p['title']['rendered']),
                     'published': parse_date((p.get('date_gmt') or '') + 'Z' if p.get('date_gmt') else None),
                     'tags': [], 'excerpt': plain_html(p['excerpt']['rendered'])[:writing.EXCERPT_CHARS],
@@ -297,7 +317,7 @@ def page_feed(src, method, next_page, max_requests, log):
     session = requests.Session()
     root = '{0.scheme}://{0.netloc}'.format(urlparse(src['home_url'] or src['feed_url']))
     items, failed = [], False
-    methods = [method] if method else ['wp-json', 'paged']
+    methods = [method] if method else ['wp-json', 'paged'] if may_be_wordpress(src) else ['paged']
     for m in methods:
         page, first_urls, got = next_page or 1, None, 0
         try:
@@ -328,7 +348,8 @@ def page_feed(src, method, next_page, max_requests, log):
             log(f"  ! {src['name']}: {m}: {type(e).__name__}: {str(e)[:80]}")
             if got or method:  # worked before, or the method is settled: try again next time
                 return m, page, False, items
-            if not (isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code in (401, 403, 404)):
+            if not (isinstance(e, NoApi) or isinstance(e, requests.HTTPError) and e.response is not None
+                    and e.response.status_code in (401, 403, 404)):
                 failed = True  # not a plain 'no such thing': maybe a bad moment, so don't write the site off
     return ('none', 1, False, items) if failed else ('none', 1, True, items)
 

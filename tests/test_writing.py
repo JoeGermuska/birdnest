@@ -901,3 +901,35 @@ def test_episodes_picks_up_a_changed_sources_file(tmp_path, monkeypatch):
     monkeypatch.setattr(wb, 'resolve_episodes', lambda conn, sources, pages, seconds=0, **kw: seen.append([s['episode_pages'] for s in sources]) or 0)
     writing.episodes_sources(conn)
     assert seen == [['https://s.example/episodes/{year}']]  # without the sync it would still be empty
+
+
+def test_wp_json_is_only_asked_of_a_shows_own_site(monkeypatch):
+    import writing_backfill as wb
+    assert wb.may_be_wordpress({'home_url': 'https://www.afropop.org/'})
+    assert not wb.may_be_wordpress({'home_url': 'https://art19.com/shows/sound-opinions'})
+    assert not wb.may_be_wordpress({'home_url': 'https://www.nytimes.com/column/popcast'})
+    assert not wb.may_be_wordpress({'home_url': None})
+
+    asked = []
+
+    class Resp:
+        status_code, ok, text, content = 200, True, '<html>', b'<html>'
+        def json(self):
+            raise ValueError('not json')
+        def raise_for_status(self):
+            pass
+
+    def polite(url, session, stream=False, accept=None):
+        asked.append(url)
+        return Resp()
+
+    monkeypatch.setattr(wb, 'polite', polite)
+    monkeypatch.setattr(wb, 'allowed', lambda url, session: True)
+    monkeypatch.setattr(wb.writing, 'parse_feed', lambda content, url: [])
+    src = {'name': 'S', 'home_url': 'https://art19.com/shows/x', 'feed_url': 'https://rss.art19.com/x'}
+    assert wb.page_feed(src, None, 1, 2, print)[0] == 'paged'
+    assert not any('wp-json' in u for u in asked)
+    # HTML where the API should be is "no API", not a bad moment: the site is settled, not retried forever
+    src = {'name': 'S', 'home_url': 'https://s.example/', 'feed_url': 'https://s.example/feed'}
+    monkeypatch.setattr(wb, 'polite', lambda url, session, stream=False, accept=None: Resp() if 'wp-json' in url else type('R', (Resp,), {'status_code': 404, 'ok': False})())
+    assert wb.page_feed(src, None, 1, 2, print)[:3] == ('paged', 1, True)
