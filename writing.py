@@ -218,7 +218,29 @@ def ensure_elsewhere(conn, kind, sources_file=SOURCES_FILE):
     return conn.execute('select * from source where name=?', (name,)).fetchone()
 
 
-def plan_page(conn, matcher, url, page, source=None, kind='criticism', title=None, date=None):
+def blank_page():
+    """A page we couldn't read: nothing but what the person gives (title, date, text)."""
+    return {'title': '', 'published': None, 'tags': [], 'excerpt': '', 'body_text': '', 'links': [], 'feeds': []}
+
+
+def resolve_artists(birds, names):
+    """Artist ids from names (as we spell them, ignoring case and accents) or ids. ValueError if one is unknown or ambiguous."""
+    rows = birds.execute('select artist_id, name from artist').fetchall()
+    ids = []
+    for n in names:
+        if n.strip().isdigit():
+            hits = [r[0] for r in rows if r[0] == int(n)]
+        else:
+            hits = [r[0] for r in rows if norm(r[1]) == norm(n)]
+        if not hits:
+            raise ValueError(f'no artist {n!r} in our data (only artists we have played are there)')
+        if len(hits) > 1:
+            raise ValueError(f'{n!r} is more than one artist ({", ".join(str(h) for h in hits)}): give the id instead')
+        ids.append(hits[0])
+    return ids
+
+
+def plan_page(conn, matcher, url, page, source=None, kind='criticism', title=None, date=None, artists=()):
     """What adding this page would do: {title, published, source (name), source_row (or None for the catch-all), matches,
     feeds (announced by the page, not already listed, and only when the site isn't one we follow)}. ValueError if it can't be."""
     title = (title or page['title'] or '').strip()
@@ -240,7 +262,7 @@ def plan_page(conn, matcher, url, page, source=None, kind='criticism', title=Non
     feeds = [] if followed else [f for f in page.get('feeds', []) if not any(f == s['feed_url'] for s in sources)]
     matches = matcher.match(title=title, tags=page['tags'], url=url, body=page['body_text'] or page['excerpt'], links=page['links'])
     return {'title': title, 'published': published, 'source': row['name'] if row else elsewhere_name(kind),
-            'source_row': row, 'kind': row['kind'] if row else kind, 'matches': matches, 'feeds': feeds}
+            'source_row': row, 'kind': row['kind'] if row else kind, 'matches': matches, 'feeds': feeds, 'forced': list(artists)}
 
 
 def store_page(conn, matcher, url, page, plan, sources_file=SOURCES_FILE):
@@ -252,9 +274,13 @@ def store_page(conn, matcher, url, page, plan, sources_file=SOURCES_FILE):
           'body_text': page['body_text'], 'links': page['links']}
     if not writing_backfill.store_item(conn, matcher, src['source_id'], it, iso(now())):
         return None
-    conn.execute('update item set deepened=1 where url=?', (url,))  # the whole page was read: nothing more to deepen
+    conn.execute('update item set deepened=1 where url=?', (url,))  # nothing more to read from it
+    item_id = conn.execute('select item_id from item where url=?', (url,)).fetchone()[0]
+    for artist_id in plan.get('forced', ()):  # the person said it is about them: confirmed, so a rematch keeps it
+        conn.execute("insert or replace into match values (?,?,?,?,?,?,?,?)",
+                     (item_id, artist_id, None, 1.0, 'about', 'manual', 'confirmed', iso(now())))
     conn.commit()
-    return conn.execute('select item_id from item where url=?', (url,)).fetchone()[0]
+    return item_id
 
 
 def remove_source(name, sources_file=SOURCES_FILE):
@@ -791,26 +817,36 @@ def cmd_add(args):
     if have:
         print(f"already stored, under {have['name']}; 'python writing.py why {url}' shows what it matched")
         return
+    text = sys.stdin.read() if args.text == '-' else args.text
     session = requests.Session()
+    page, why = None, None
     try:
         page = writing_backfill.fetch_page(url, session)
     except requests.RequestException as e:
-        print(f'could not fetch it: {e}')
-        return
+        why = f'could not fetch it: {e}'
     if page is None:
-        print("could not read it (robots.txt says no, it isn't a web page, or the site refused)")
-        return
+        why = why or "could not read it (robots.txt says no, it isn't a web page, or the site refused)"
+        if not args.title:
+            print(f'{why}\nto add it anyway, give --title, and if you can --date, --text (or - for stdin) and --artist NAME')
+            return
+        print(f'{why}; going on with what you gave: matching on the title, the address{" and your text" if text else ""}')
+        page = blank_page()
+    if text:
+        page['body_text'], page['excerpt'] = re.sub(r'\s+', ' ', text).strip()[:MAX_BODY_CHARS], re.sub(r'\s+', ' ', text).strip()[:EXCERPT_CHARS]
     matcher = Matcher(birds)
     try:
-        plan = plan_page(conn, matcher, url, page, args.source, args.kind, args.title, args.date)
+        plan = plan_page(conn, matcher, url, page, args.source, args.kind, args.title, args.date, resolve_artists(birds, args.artist or []))
     except ValueError as e:
         print(e)
         return
     names = dict(birds.execute('select artist_id, name from artist'))
     print(f"{plan['title']}\n  {(plan['published'] or 'no date')[:10]} · {len(page['body_text'])} chars of text · would go under {plan['source']} ({plan['kind']})")
+    for artist_id in plan['forced']:
+        print(f"  {names.get(artist_id)}: about (you said so)")
+    plan['matches'] = [m for m in plan['matches'] if m['artist_id'] not in plan['forced']]
     for m in plan['matches']:
         print(f"  {names.get(m['artist_id'])}: {m['kind']} {m['score']} {'(held for review)' if m['status'] == 'review' else ''}")
-    if not plan['matches']:
+    if not plan['matches'] and not plan['forced']:
         print('  matches none of the artists we have: it would be kept, but nothing shows until one of them matches')
     if args.dry_run:
         return
@@ -1179,9 +1215,10 @@ HELP_SECTIONS = [
         ('hide URL [--reason WHY]', "keep one piece off the site (junk, not writing, a duplicate you'd rather not show)"),
         ('unhide URL', 'bring it back'),
         ('duplicates', "pieces a site serves at two URLs ('/blog/x' and '/news/x'): one is kept automatically"),
-        ('add URL [--source NAME] [--kind K] [--title T] [--date D] [-n] [-y]',
+        ('add URL [--source NAME] [--kind K] [--title T] [--date D] [--text TEXT|-] [--artist NAME]... [-n] [-y]',
          "offer one page for matching: shows what it would match, then keeps it under its site's source or 'Elsewhere', and offers "
-         'to follow the site if the page announces a feed'),
+         'to follow the site if the page announces a feed. A page it cannot read is added anyway if you give --title (--text and '
+         '--artist say what the page says and who it is about)'),
         ('source add URL [--kind K] [--name N] [--members] [--roundup]',
          'add a site: finds its feed, notes whether the backfill can read its sitemap, writes writing_sources.json. Then: '
          'run --source NAME to fetch it now'),
@@ -1274,6 +1311,8 @@ def main(argv=None):
                     help="for 'Elsewhere': criticism (default), essay, interview or podcast")
     ad.add_argument('--title', help="when the page doesn't give one")
     ad.add_argument('--date', help='YYYY-MM-DD, when the page does not give one or has it wrong')
+    ad.add_argument('--text', help="the page's text, when it can't be read or is cut off by a paywall (- reads it from stdin)")
+    ad.add_argument('--artist', action='append', metavar='NAME_OR_ID', help='say it is about this artist (repeat for several)')
     ad.add_argument('-n', '--dry-run', action='store_true', help='only show what it would match')
     ad.add_argument('-y', '--yes', action='store_true', help="don't ask first (and don't offer to follow a feed)")
     ad.set_defaults(fn=cmd_add)

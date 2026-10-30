@@ -96,6 +96,7 @@ Rules that came out of reading real results:
 
 - `python writing.py add URL` offers one page for matching: it reads the page (politely, robots.txt respected), shows the title, date and what it would match, and asks before keeping it. `-n` only shows, `-y` doesn't ask, `--title` and `--date` fill in what the page doesn't give, `--source NAME` files it under a source we follow.
 - Otherwise it goes under the source for its site if we follow one, else under `Elsewhere` (`Elsewhere (podcasts)`, etc. with `--kind`): a source with no feed and no archive (`feed_url` null, `backfill: none`) that `add` creates in `writing_sources.json`. Matching, review, veto, `hide` and publishing work as for any piece.
+- A page it can't read (robots.txt, a login, a paywall) is still added if you give `--title`: it matches on the title, the URL and whatever you supply, `--text TEXT` (or `-` to read it from stdin; also for a page that's cut off by a paywall) and `--artist NAME_OR_ID` (repeatable) for "this is about them" (a confirmed match, so a rematch keeps it; an ambiguous name needs the id). Only the title, date and link are published, as always.
 - If the page announces a feed in its `<head>` and we don't follow the site, it offers to add it as a source (the page then moves to that source). With `-y` or without a terminal it only prints the `source add` command.
 
 ## Podcast episode pages

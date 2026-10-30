@@ -791,3 +791,59 @@ def test_episodes_retry_forgets_the_ones_not_found(tmp_path, monkeypatch):
     assert seen[-1] == []                                                      # not found stays not found
     writing.episodes_sources(conn, 40, None, 5, retry=True)
     assert [r[0] for r in seen[-1]] == [1]                                     # retry: only the one not found, never the one found
+
+
+def test_artists_can_be_named_for_a_page():
+    c = sqlite3.connect(':memory:')
+    c.execute('create table artist (artist_id integer, name text)')
+    c.executemany('insert into artist values (?,?)', [(1, 'Björk'), (2, 'Prince'), (3, 'Prince')])
+    assert writing.resolve_artists(c, ['bjork', '2']) == [1, 2]                  # case and accents don't matter; an id works
+    with pytest.raises(ValueError, match='more than one artist'):
+        writing.resolve_artists(c, ['Prince'])
+    with pytest.raises(ValueError, match='no artist'):
+        writing.resolve_artists(c, ['Nobody Here'])
+
+
+def test_a_page_we_cannot_read_is_added_from_what_we_are_given(tmp_path, monkeypatch, capsys):
+    import writing_backfill as wb
+    monkeypatch.chdir(tmp_path)                                                   # the crawl db and sources file are relative paths
+    (tmp_path / 'writing_sources.json').write_text('[]')
+    birds = tmp_path / 'birds.db'
+    c = sqlite3.connect(birds)
+    c.executescript("""
+        create table artist (artist_id integer, name text, spotify_id text);
+        create table album (album_id integer, name text);
+        create table album_artist (album_id integer, artist_id integer);
+        create table track (track_id integer, name text);
+        create table track_artist (track_id integer, artist_id integer);
+        create table mb_artist (artist_id integer, mbid text);
+        create table artist_link (artist_id integer, source text, url text);
+        insert into artist values (1, 'Takaat', null), (2, 'Sleater-Kinney', null);""")
+    c.commit()
+    monkeypatch.setattr(writing, 'BIRDS_DB', str(birds))
+    monkeypatch.setattr(wb, 'fetch_page', lambda url, session, name='': None)    # robots.txt says no
+    url = 'https://closed.example/piece/one'
+    # without a title it stops and says what to give
+    writing.main(['add', url, '-y'])
+    out = capsys.readouterr().out
+    assert 'could not read it' in out and '--title' in out
+    assert not sqlite3.connect(tmp_path / 'writing_crawl.db').execute('select count(*) from item').fetchone()[0]
+    # with one it goes on, matching the title, the address and the text, and the person's say-so
+    writing.main(['add', url, '--title', 'Takaat, in conversation', '--date', '2026-10-01', '--text', 'A long talk with Sleater-Kinney.',
+                  '--artist', '2', '-y'])
+    out = capsys.readouterr().out
+    assert 'going on with what you gave' in out and 'added' in out
+    crawl = sqlite3.connect(tmp_path / 'writing_crawl.db')
+    crawl.row_factory = sqlite3.Row
+    item = crawl.execute('select i.*, s.name source from item i join source s using(source_id)').fetchone()
+    assert item['source'] == 'Elsewhere' and item['published'].startswith('2026-10-01') and 'Sleater-Kinney' in item['body_text']
+    ms = {r['artist_id']: (r['kind'], r['status'], r['signals']) for r in crawl.execute('select * from match')}
+    assert ms[1][0] == 'about' and ms[2] == ('about', 'confirmed', 'manual')     # one matched from the title, one said outright
+    pub = sqlite3.connect(birds).execute('select url, title from writing').fetchall()
+    assert pub == [(url, 'Takaat, in conversation')]
+    # a rematch keeps what the person confirmed
+    writing.rematch(writing.connect(str(tmp_path / 'writing_crawl.db')), Matcher(sqlite3.connect(birds)))
+    assert crawl.execute("select status from match where artist_id=2").fetchone()[0] == 'confirmed'
+    # an artist we don't know stops it before anything is stored
+    writing.main(['add', 'https://closed.example/piece/two', '--title', 'x', '--artist', 'Nobody', '-y'])
+    assert 'no artist' in capsys.readouterr().out
