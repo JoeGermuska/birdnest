@@ -49,8 +49,10 @@ writing_sources.json  ->  writing.py  ->  writing_crawl.db  ->  (publish)  ->  b
 - **Teasers.** Some feeds (PopMatters, Loud and Quiet, Chicago Reader, Stereogum, Bandcamp Daily...) carry only a sentence, so
   a name that appears only inside the article was never seen (an interview tagged "João Donato" that also named Jobim
   matched only Donato). `writing.py deepen` (40 pages a source in each weekly `run`, newest first) fetches the full page
-  of any item holding under 1,000 characters, once (`item.deepened`: 1 read, 2 no text), and matches it again. Raise
-  `--pages` to drain a backlog. `writing.py why URL [ARTIST]` shows what we hold for a piece and why it did or didn't match.
+  of any item holding under 1,000 characters, once (`item.deepened`: 1 read, 2 no text), and matches it again. The 40 a
+  week is deliberately gentle, so a big pile of waiting teasers (a newly added source, say) takes weeks; to work through
+  it faster in one sitting run `python writing.py deepen --source NAME --pages 300` (about 10 minutes, 2 s a request). A
+  source whose first 20 pages mostly held nothing more than its feed is left alone, with a message. `writing.py why URL [ARTIST]` shows what we hold for a piece and why it did or didn't match.
 - **`birdnest.db`** gets only what's published: `writing` (url, title, date, source, members flag), `writing_source`
   (slug, name, kind, home url) and `writing_match` (which piece is about or mentions which artist and album). Titles,
   dates and links only; no excerpt or text is published.
