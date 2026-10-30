@@ -6,8 +6,10 @@
 {% block content %}
 <section class="detail genre-map viz-root">
     <h1>Genre map</h1>
-    <p class="detail-meta">Every play, split evenly across the Spotify genres of its artists and grouped into
-        families. Box size is plays. Pick a family, or click its name on the map, to zoom in; click a genre to open it. Plays by artists with no genres
+    <p class="detail-meta">Genre is weird. Spotify assigns it to artists, not tracks. Before they laid off <a href="https://en.wikipedia.org/wiki/Glenn_McDonald_(data_engineer)">Glen McDonald</a>, they had very inventive genres derived from data analysis (as revealed on <a href="https://everynoise.com">everynoise.com</a>), but more recently, things have gotten a lot more simplistic. Don't take any of it too seriously, since the <a href="/artist/4TMHGUX5WI7OOm53PqSDAT">Grateful Dead</a> are tagged as <a href="/genre/motown">Motown</a> (among many others).
+    </p>
+    <p>
+        Box size is plays. Pick a family, or click its name on the map, to zoom in; click a genre to open it. Plays by artists with no genres
         (<span id="untagged"></span>) are left out.</p>
     <div class="year-filter" id="year-filter" role="group" aria-label="Year">
         <button type="button" data-year="all" aria-pressed="true">All years</button>
