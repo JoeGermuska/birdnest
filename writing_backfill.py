@@ -22,6 +22,7 @@ import threading
 import time
 import unicodedata
 import xml.etree.ElementTree as ET
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from urllib import robotparser
@@ -463,8 +464,44 @@ def wp_episode_page(root, title, show_url, session):
     return None
 
 
+def site_episode_index(root, session, max_pages=120):
+    """Squarespace sites list a section as JSON (/episodes?format=json, with each item's title and address): read the
+    biggest section of the sitemap that way. -> {folded title: page url}, empty when the site isn't like that."""
+    sm = root + '/sitemap.xml'
+    if not allowed(sm, session):
+        return {}
+    r = polite(sm, session)
+    if r.status_code >= 400 or '<sitemapindex' in r.text[:2000]:
+        return {}
+    sections = Counter(p[0] for p in (urlparse(l).path.strip('/').split('/') for l in re.findall(r'<loc>([^<]+)</loc>', r.text)) if len(p) > 1)
+    for section, n in sections.most_common(3):
+        if n < 20:
+            break
+        index, url, pages = {}, f'{root}/{quote(section)}?format=json', 0
+        while url and pages < max_pages:
+            if not allowed(url, session):
+                break
+            try:
+                d = polite(url, session).json()
+            except ValueError:
+                break
+            items = d.get('items') if isinstance(d, dict) else None
+            if not items:
+                break
+            for it in items:
+                if it.get('title') and str(it.get('fullUrl', '')).startswith('/'):
+                    index[_fold(it['title'])] = root + it['fullUrl']
+            nxt = (d.get('pagination') or {}).get('nextPageUrl')
+            url = f'{root}{nxt}&format=json' if nxt else None
+            pages += 1
+        if len(index) >= 20:
+            return index
+    return {}
+
+
 def lookup_episodes(src, rows, log, seconds=SOURCE_SECONDS):
-    """In a thread: look up these episodes. -> ({item_id: page url or None}, no_api reason or None)"""
+    """In a thread: look up these episodes. -> ({item_id: page url or None}, no_api reason or None, the site's episode list
+    ({title: url}) when it has no search but does have a list)"""
     session = requests.Session()
     out, errors, deadline = {}, 0, time.monotonic() + seconds
     for r in rows:
@@ -474,7 +511,11 @@ def lookup_episodes(src, rows, log, seconds=SOURCE_SECONDS):
         try:
             out[r['item_id']] = wp_episode_page('https://' + urlparse(show_url).netloc, r['title'], show_url, session)
         except NoLookup as e:
-            return out, str(e)
+            try:
+                return out, str(e), site_episode_index('https://' + urlparse(show_url).netloc, session)
+            except (requests.RequestException, Throttled) as e2:
+                log(f"  ! {src['name']}: its episode list: {type(e2).__name__}: {str(e2)[:80]}")
+                return out, str(e), {}
         except Throttled as e:
             log(f"  ! {src['name']}: {e}; stopping here for this run")
             break
@@ -483,7 +524,7 @@ def lookup_episodes(src, rows, log, seconds=SOURCE_SECONDS):
             log(f"  ! {src['name']}: {type(e).__name__}: {str(e)[:80]}")
             if errors >= MAX_ERRORS:
                 break
-    return out, None
+    return out, None, {}
 
 
 def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS, log=print):
@@ -513,7 +554,7 @@ def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS,
             futs = {ex.submit(lookup_episodes, by_id[i], rows, log, seconds): i for i, rows in todo.items()}
             for fut in as_completed(futs):
                 i = futs[fut]
-                got, no_api = fut.result()
+                got, no_api, index = fut.result()
                 for item_id, page in got.items():
                     if page:
                         conn.execute('update item set page_url=?, page_tried=1 where item_id=?', (page, item_id))
@@ -522,7 +563,16 @@ def resolve_episodes(conn, sources, pages=40, workers=4, seconds=SOURCE_SECONDS,
                 n = sum(1 for p in got.values() if p)
                 total += n
                 budget[i] -= len(got)
-                if no_api:  # the same for every episode of this show
+                if no_api and index:  # no search, but a list of every episode: match them all from it
+                    pending = conn.execute("select item_id, title from item where source_id=? and page_tried is null and url like '%#%'", (i,)).fetchall()
+                    n = 0
+                    for r in pending:
+                        page = index.get(_fold(r['title'])) or next((u for k, u in index.items() if same_title(k, r['title'])), None)
+                        conn.execute('update item set page_url=?, page_tried=? where item_id=?', (page, 1 if page else 2, r['item_id']))
+                        n += bool(page)
+                    total += n
+                    log(f"  {by_id[i]['name']}: found {n} of {len(pending)} episode pages from its list of {len(index)} episodes")
+                elif no_api:  # the same for every episode of this show
                     conn.execute("update item set page_tried=2 where source_id=? and page_tried is null and url like '%#%'", (i,))
                     log(f"  {by_id[i]['name']}: no episode pages from its site ({no_api})")
                 else:
