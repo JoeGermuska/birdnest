@@ -186,4 +186,5 @@ fetching), `refresh_writing.py` (the weekly script), `writing_sources.json`, `te
 - First probe (October 2026): works for Heat Rocks (maximumfun.org, WordPress search) and Switched On Pop (Squarespace list). No usable API or list on Talkhouse, Sound Opinions,
   Life of the Record, MOJO Record Club, Phantom Power, Sound Expertise, Fela Kuti; Rock's Backpages disallows it in robots.txt;
   Goldmine has the API but its episodes aren't found there. Open: other ways in for those (a site's own search page or JSON, the
-  episode list on the show's page, Spotify/Apple links). To retry a show: `update item set page_tried=null where source_id=...`.
+  episode list on the show's page, Spotify/Apple links). Each episode is tried once, so after adding a new way in (or when a site changes) run
+  `python writing.py episodes --source NAME --retry`: it forgets only the ones not found, never one already found.
