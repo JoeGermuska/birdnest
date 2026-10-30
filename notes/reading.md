@@ -176,12 +176,14 @@ fetching), `refresh_writing.py` (the weekly script), `writing_sources.json`, `te
 - Many podcast hosts link every episode to the show's page, so a published episode would land on the show. `writing.py episodes`
   (also run weekly by `refresh`, 40 a show) looks each such episode up on the show's own site and keeps the page it finds in
   `item.page_url`; `publish` uses it in place of the stored `page#guid` URL. `page_tried`: 1 found, 2 not (each is tried once).
-- Only WordPress sites work: the REST search (`/wp-json/wp/v2/search`), asked with the title's words and then its first five,
+- Two methods. A show whose site has no search API but is Squarespace (`/episodes?format=json`, found from the biggest section of its
+  sitemap, 20 an item per page) is matched from that list of every episode by title, in one go (Switched On Pop: 485 of 530).
+  WordPress sites work: the REST search (`/wp-json/wp/v2/search`), asked with the title's words and then its first five,
   and only a result on the same host whose title matches (`same_title`) is used. A show whose site has no such API is marked
   at once; one whose first 20 lookups mostly find nothing is left alone (same rule as `deepen`).
   Both `episodes` and `deepen` work in rounds: the first tries 20 (the probe); a show that passed carries on in the same run,
   up to `--pages`; one that failed is dropped with a message. Anything stopped early or left over says so ("run it again").
-- First probe (October 2026): works for Heat Rocks (maximumfun.org). No usable API on Talkhouse, Switched on Pop, Sound Opinions,
+- First probe (October 2026): works for Heat Rocks (maximumfun.org, WordPress search) and Switched On Pop (Squarespace list). No usable API or list on Talkhouse, Sound Opinions,
   Life of the Record, MOJO Record Club, Phantom Power, Sound Expertise, Fela Kuti; Rock's Backpages disallows it in robots.txt;
   Goldmine has the API but its episodes aren't found there. Open: other ways in for those (a site's own search page or JSON, the
   episode list on the show's page, Spotify/Apple links). To retry a show: `update item set page_tried=null where source_id=...`.

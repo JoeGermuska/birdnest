@@ -665,7 +665,7 @@ def test_podcast_episodes_get_their_own_page(tmp_path, monkeypatch):
 
     class Resp:
         def __init__(self, status, payload=None):
-            self.status_code, self.payload = status, payload
+            self.status_code, self.payload, self.text = status, payload, ''
         def json(self):
             return self.payload
         def raise_for_status(self):
@@ -690,7 +690,7 @@ def test_podcast_episodes_get_their_own_page(tmp_path, monkeypatch):
     assert got[1] == ('https://show.example/episodes/x/ep1/', 1)
     assert got[2] == (None, 2) and got[3] == (None, 2)
     assert got[4] == (None, 2)  # no search API: marked, and it cost one request
-    assert len([c for c in calls if 'nowp.example' in c]) == 1
+    assert len([c for c in calls if 'nowp.example' in c]) == 2  # the one search, then a look for an episode list; not one request per episode
     # each is tried once, and what was found is what gets published
     calls.clear()
     assert wb.resolve_episodes(conn, src, pages=10, log=lambda *a: None) == 0 and not calls
@@ -731,3 +731,47 @@ def test_episode_lookups_go_on_after_a_good_probe_and_say_when_they_stop(tmp_pat
     assert any('Bad' in m and 'not looking up episode pages any more' in m for m in said)
     assert any('Good' in m and 'reached the 25' in m and '5 more' in m and 'run it again' in m for m in said)
     assert wb.resolve_episodes(conn, src, pages=25, log=lambda *a: None) == 5 and tried(1) == 30  # a second run finishes it
+
+
+def test_a_squarespace_episode_list_gives_every_episode_page(tmp_path, monkeypatch):
+    import writing_backfill as wb
+    conn = writing.connect(str(tmp_path / 'crawl.db'))
+    conn.execute("insert into source (source_id, name, feed_url, kind) values (1, 'Pop', 'u', 'podcast')")
+    titles = [f'Song number {i}: why it works' for i in range(1, 46)]
+    for i, title in enumerate(titles, 1):
+        conn.execute("insert into item (item_id, source_id, url, title, published, tags, links) values (?,1,?,?,?,'[]','[]')",
+                     (i, f'http://www.pop.example/#g{i}', title.replace(':', ' -') if i == 7 else title, f'2026-09-{(i % 28) + 1:02d}'))
+    conn.execute("insert into item (item_id, source_id, url, title, published, tags, links) values (99,1,'http://www.pop.example/#gx','Not on the site','2026-01-01','[]','[]')")
+    conn.commit()
+    sitemap = '<urlset>' + ''.join(f'<url><loc>https://pop.example/episodes/song-{i}</loc></url>' for i in range(1, 46)) + '<url><loc>https://pop.example/about</loc></url></urlset>'
+
+    class Resp:
+        def __init__(self, status, payload=None, text=''):
+            self.status_code, self.payload, self.text = status, payload, text
+        def json(self):
+            if self.payload is None:
+                raise ValueError('not json')
+            return self.payload
+        def raise_for_status(self):
+            pass
+
+    def polite(url, session, stream=False, accept=None):
+        if '/wp-json/' in url:
+            return Resp(404)
+        if url.endswith('/sitemap.xml'):
+            return Resp(200, text=sitemap)
+        offset = int(url.split('offset=')[1].split('&')[0]) if 'offset=' in url else 0
+        items = [{'title': titles[i], 'fullUrl': f'/episodes/song-{i + 1}'} for i in range(offset, min(offset + 20, 45))]
+        nxt = {'nextPageUrl': f'/episodes?offset={offset + 20}'} if offset + 20 < 45 else {}
+        return Resp(200, {'items': items, 'pagination': nxt})
+
+    monkeypatch.setattr(wb, 'polite', polite)
+    monkeypatch.setattr(wb, 'allowed', lambda url, session: True)
+    src = conn.execute('select * from source').fetchall()
+    said = []
+    assert wb.resolve_episodes(conn, src, pages=5, log=said.append) == 45         # all of them, though only 5 were asked for: no request each
+    got = {r['item_id']: (r['page_url'], r['page_tried']) for r in conn.execute('select * from item')}
+    assert got[1] == ('https://www.pop.example/episodes/song-1', 1) and got[45][1] == 1
+    assert got[7] == ('https://www.pop.example/episodes/song-7', 1)                  # punctuation differs: still the same title
+    assert got[99] == (None, 2)
+    assert any('from its list of 45 episodes' in m for m in said)
