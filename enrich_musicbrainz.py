@@ -97,7 +97,8 @@ def main(db_path='birdnest.db'):
             artists = [r['artist']['id'] for r in u.get('relations', []) if 'artist' in r]
             if artists and u['resource'] in by_url:
                 matches[by_url[u['resource']]] = artists[0]
-        print(f"matched {len(matches)} of {min(i + URL_BATCH, len(todo))}")
+        if i + URL_BATCH < len(todo):  # the last batch's tally is the "done" line
+            print(f"matched {len(matches)} of {i + URL_BATCH}")
     with con:
         con.executemany("insert or replace into mb_artist (artist_id) values (?)",
                         [(a,) for a, _ in todo if a not in matches])

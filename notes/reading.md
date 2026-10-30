@@ -80,6 +80,8 @@ Rules that came out of reading real results:
 - Work down the review queue; `x` the artists whose bare names keep coming up.
 - Ideas shelved, in rough order of appeal: "writing about what we played" on show pages; a latest-reading strip on the home page; a ✎ marker on the artists ranking and a "Written about" ranking (needs the backfill's depth); a Reading search. (A "played but not written about" list was rejected: we only see the sources we monitor.)
 - Matching, bigger options we decided against for now: a catalogue of all MusicBrainz artist names, so names we've never played can claim words too; a small model trained on the review verdicts; asking a language model about the borderline band only (pennies a week, but the judgment stops being ours).
+- Later, review UX: the review output (the queue, and the podcast review) is too dense and hard to scan. Rework how a row is laid out so the decision can be made at a glance.
+- Later, entity extraction: a hunch (not tested) that a proper pass at extracting the names a piece mentions, rather than matching our known names against its text, might solve more of the matching problems than the signal tweaks do. Worth weighing the cost against what it would fix before building anything; it sits near the shelved options above (a MusicBrainz name catalogue, a model trained on verdicts).
 - Bluesky ideas parked: Constellation lookups per artist; people-over-posts.
 
 ## Files
